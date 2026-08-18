@@ -3,17 +3,45 @@ description: >
   Ejecuta los gates G1, G3 y G4 sobre el repositorio evaluado. Accion COMPUESTA a proposito:
   asi el workflow reutilizable NO tiene que clonar el repositorio del estandar, que con un
   GITHUB_TOKEN acotado al repo del llamador es imposible cuando el estandar es privado.
-  GitHub resuelve la accion desde este repositorio si la politica de acceso de Actions lo permite.
 
 runs:
   using: composite
   steps:
+    # AGREGA, NO FALLA RAPIDO. Medido el 18-ago-2026: con los pasos en serie, el validador
+    # oficial encontro 3 errores, aborto, y los gates del estandar -higiene de contenido e
+    # inventario- NUNCA CORRIERON. El desarrollador veia 3 de 5 defectos y necesitaba dos
+    # rondas para enterarse del token literal que llevaba dentro. Por eso los dos pasos
+    # llevan continue-on-error y el veredicto se emite al final.
     - name: G1 | conformidad con la especificacion Agent Skills
+      id: espec
       shell: bash
+      continue-on-error: true
       run: gh skill publish --dry-run
       env:
         GH_TOKEN: ${{ github.token }}
 
     - name: G1 G3 G4 | validador del estandar agentico
+      id: agentico
       shell: bash
+      continue-on-error: true
       run: python "${{ github.action_path }}/../../../validador/validar.py" .
+
+    - name: Veredicto
+      shell: bash
+      run: |
+        ESPEC='${{ steps.espec.outcome }}'
+        el estandar='${{ steps.agentico.outcome }}'
+        {
+          echo "## Veredicto de conformidad"
+          echo
+          echo "| Gate | Resultado |"
+          echo "|---|---|"
+          echo "| Especificacion Agent Skills | $ESPEC |"
+          echo "| Estandar del estandar (G1 G3 G4) | $el estandar |"
+        } >> "$GITHUB_STEP_SUMMARY"
+        if [ "$ESPEC" = "success" ] && [ "$el estandar" = "success" ]; then
+          echo "**CONFORME** | cero consumo de modelo" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+        echo "**NO CONFORME** | corrige TODO lo listado arriba antes de volver a empujar" >> "$GITHUB_STEP_SUMMARY"
+        exit 1
