@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "demo.plataforma.agentico",
+  "version": "0.1.0",
+  "description": "Plugin de plataforma del Track Agentico: asistente de autoria de artefactos y esqueletos conformes al estandar agentico.",
+  "author": { "name": "Plataforma Agentica (demo)" },
+  "repository": "https://github.com/Banca-Copilot-demo/estandar-agentico",
+  "license": "Proprietary",
+  "keywords": ["agentico", "agentico", "estandar", "autoria"]
+}
