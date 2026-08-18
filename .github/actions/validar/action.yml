@@ -1,0 +1,19 @@
+name: Validar artefactos agenticos del estandar
+description: >
+  Ejecuta los gates G1, G3 y G4 sobre el repositorio evaluado. Accion COMPUESTA a proposito:
+  asi el workflow reutilizable NO tiene que clonar el repositorio del estandar, que con un
+  GITHUB_TOKEN acotado al repo del llamador es imposible cuando el estandar es privado.
+  GitHub resuelve la accion desde este repositorio si la politica de acceso de Actions lo permite.
+
+runs:
+  using: composite
+  steps:
+    - name: G1 | conformidad con la especificacion Agent Skills
+      shell: bash
+      run: gh skill publish --dry-run
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+    - name: G1 G3 G4 | validador del estandar agentico
+      shell: bash
+      run: python "${{ github.action_path }}/../../../validador/validar.py" .

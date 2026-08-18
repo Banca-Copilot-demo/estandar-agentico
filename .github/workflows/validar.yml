@@ -2,27 +2,19 @@ name: Validar artefactos agenticos
 
 # WORKFLOW REUTILIZABLE. No corre solo: lo invocan los repositorios de dominio.
 #
-# POR QUE VIVE AQUI Y NO EN CADA DOMINIO: un gate que el evaluado pueda borrar no es un gate.
-# Los dominios lo llaman por referencia y GitHub lo trae en tiempo de ejecucion, asi que hay
-# UN SOLO SITIO donde corregir una comprobacion y la correccion aplica a todos los dominios.
+# POR QUE VIVE AQUI: un gate que el evaluado pueda borrar no es un gate. Los dominios lo
+# llaman por referencia y GitHub lo trae en tiempo de ejecucion, asi que hay UN SOLO SITIO
+# donde corregir una comprobacion.
 #
-# LO QUE COMPRUEBA:
-#   - `gh skill publish --dry-run`  -> conformidad con la especificacion Agent Skills (oficial)
-#   - `validador/validar.py`        -> lo que la herramienta no sabe: manifiesto Agent Plugins,
-#                                      gobierno del estandar, inventario real e higiene de contenido
+# POR QUE NO CLONA ESTE REPOSITORIO: el GITHUB_TOKEN esta acotado al repositorio del
+# LLAMADOR, asi que no puede leer este repo si es privado. En su lugar se usa una accion
+# COMPUESTA, que GitHub resuelve por la politica de acceso de Actions sin necesitar token.
 #
-# PERMISOS: solo lectura de contenido y escritura de checks/PR. NO usa `secrets: inherit`
-# a proposito: el validador valida archivos, no necesita ningun secreto, y heredarlos
-# invertiria la relacion de confianza con cada repo que lo llama.
+# NO usa `secrets: inherit` a proposito: el validador valida archivos, no necesita ningun
+# secreto, y heredarlos invertiria la relacion de confianza con cada repo que lo llama.
 
 on:
   workflow_call:
-    inputs:
-      ref-estandar:
-        description: Version del estandar contra la que validar
-        required: false
-        type: string
-        default: main
 
 permissions:
   contents: read
@@ -36,22 +28,10 @@ jobs:
       - name: Descargar el repositorio evaluado
         uses: actions/checkout@v4
 
-      - name: Descargar el estandar
-        uses: actions/checkout@v4
-        with:
-          repository: Banca-Copilot-demo/estandar-agentico
-          ref: ${{ inputs.ref-estandar }}
-          path: .estandar
+      - name: Ejecutar los gates
+        uses: Banca-Copilot-demo/estandar-agentico/.github/actions/validar@main
 
-      - name: G1 | conformidad con la especificacion Agent Skills
-        run: gh skill publish --dry-run
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: G1 G3 G4 | validador del estandar agentico
-        run: python .estandar/validador/validar.py .
-
-      - name: Veredicto en el resumen del PR
+      - name: Veredicto en el resumen
         if: always()
         run: |
           echo "## Veredicto de conformidad" >> "$GITHUB_STEP_SUMMARY"
