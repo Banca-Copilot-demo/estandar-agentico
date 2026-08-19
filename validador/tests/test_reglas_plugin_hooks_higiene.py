@@ -125,6 +125,8 @@ def test_token_literal_es_error():
 
 
 def test_rutas_de_maquina_son_error_en_windows_y_en_unix():
+    # El nombre de usuario del ejemplo es INVENTADO a proposito: esta es la prueba de la regla que
+    # prohibe rutas de maquina, asi que usar una real aqui seria filtrar exactamente lo que se veta.
     assert _errores(revisar_higiene("f.md", r"C:\Users\jdoe\proyecto\x.yaml"))
     assert _errores(revisar_higiene("f.md", "/Users/t72582/Desktop/Projects/x/SKILL.md"))
 
