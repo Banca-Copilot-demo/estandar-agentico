@@ -14,6 +14,14 @@ inputs:
       Repositorio del indice al que se avisa que hay una version nueva. Vacio = no se avisa.
     required: false
     default: ""
+  port-client-id:
+    description: Client ID de Port. Vacio = no se publica la ficha en el catalogo.
+    required: false
+    default: ""
+  port-client-secret:
+    description: Client secret de Port.
+    required: false
+    default: ""
   token-indice:
     description: >
       Token con permiso de escritura sobre el repositorio del indice. El GITHUB_TOKEN NO sirve:
@@ -157,6 +165,25 @@ runs:
           -F "client_payload[etiqueta]=${GITHUB_REF_NAME}"
       env:
         GH_TOKEN: ${{ inputs.token-indice }}
+
+    # FASE 4c · LA FICHA. Se construye del PREDICADO FIRMADO -- `veredicto.json` --, no releyendo el
+    # repositorio: si se leyera el repositorio, la ficha podria decir algo distinto de lo que se
+    # sello, y habria dos fuentes de verdad sobre el mismo artefacto.
+    #
+    # UPSERT y no POST: la ficha se ACTUALIZA en cada publicacion en vez de duplicarse, que es lo que
+    # permite que el `status` refleje siempre el ultimo veredicto.
+    - name: Ficha en el catalogo (Port)
+      if: inputs.port-client-id != '' && inputs.port-client-secret != ''
+      shell: bash
+      env:
+        ID: ${{ inputs.port-client-id }}
+        SECRETO: ${{ inputs.port-client-secret }}
+        DIGEST: ${{ steps.empaquetar.outputs.digest }}
+        ETIQUETA: ${{ github.ref_name }}
+      run: |
+        token="$(curl -sf -X POST "https://api.port.io/v1/auth/access_token"           -H 'Content-Type: application/json'           -d "{\"clientId\":\"$ID\",\"clientSecret\":\"$SECRETO\"}"           | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')"
+
+        python3 "${{ github.action_path }}/fichas.py"           --veredicto veredicto.json           --repositorio "$GITHUB_REPOSITORY"           --etiqueta "$ETIQUETA"           --sha "$GITHUB_SHA"           --digest "$DIGEST"           --token "$token"
 
     - name: Resumen de la publicacion
       if: always()

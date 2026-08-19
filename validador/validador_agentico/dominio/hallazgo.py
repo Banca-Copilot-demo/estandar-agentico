@@ -62,6 +62,20 @@ class Inventario:
 
 
 @dataclass(frozen=True)
+class ArtefactoPublicado:
+    """Lo que el catalogo necesita saber de UN artefacto. Sale del envelope, que el gate ya valido."""
+
+    id: str
+    tipo: str
+    ruta: str
+    owner_team: str
+    owner_contact: str
+    version: str
+    data_classification: str
+    standard_version: str
+
+
+@dataclass(frozen=True)
 class Veredicto:
     """Resultado de validar un repositorio. Inmutable: se construye una vez, al final.
 
@@ -72,6 +86,7 @@ class Veredicto:
 
     hallazgos: tuple[Hallazgo, ...]
     inventario: Inventario
+    artefactos: tuple[ArtefactoPublicado, ...] = ()
 
     @property
     def errores(self) -> tuple[Hallazgo, ...]:

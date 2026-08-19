@@ -20,6 +20,12 @@ on:
         type: string
         default: ""
     secrets:
+      port-client-id:
+        description: Client ID de Port. Sin el, no se publica la ficha del catalogo.
+        required: false
+      port-client-secret:
+        description: Client secret de Port.
+        required: false
       token-indice:
         description: >
           Token con escritura sobre el repositorio del indice. Opcional: sin el, la publicacion se
@@ -49,4 +55,6 @@ jobs:
         uses: Banca-Copilot-demo/estandar-agentico/.github/actions/publicar@main
         with:
           repositorio-indice: ${{ inputs.repositorio-indice }}
+          port-client-id: ${{ secrets.port-client-id }}
+          port-client-secret: ${{ secrets.port-client-secret }}
           token-indice: ${{ secrets.token-indice }}

@@ -17,7 +17,13 @@ from validador_agentico.adaptadores import repositorio as adaptador_repositorio
 from validador_agentico.adaptadores.repositorio import ArchivoJson, ContenidoRepositorio
 from validador_agentico.dominio import reglas_aprobacion, reglas_higiene, reglas_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
-from validador_agentico.dominio.hallazgo import Hallazgo, Inventario, Veredicto, error
+from validador_agentico.dominio.hallazgo import (
+    ArtefactoPublicado,
+    Hallazgo,
+    Inventario,
+    Veredicto,
+    error,
+)
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +48,8 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
         *_revisar_mezcla(archivos_cambiados),
     ]
     log.info("%d hallazgo(s) en %s", len(hallazgos), raiz.name)
-    return Veredicto(hallazgos=tuple(hallazgos), inventario=inventario)
+    return Veredicto(hallazgos=tuple(hallazgos), inventario=inventario,
+                     artefactos=_listar_artefactos(contenido))
 
 
 def _construir_inventario(contenido: ContenidoRepositorio) -> Inventario:
@@ -152,3 +159,37 @@ def _revisar_mezcla(archivos_cambiados: tuple[str, ...] | None) -> list[Hallazgo
     if archivos_cambiados is None:
         return []
     return reglas_aprobacion.revisar_mezcla_de_aprobadores(archivos_cambiados)
+
+
+_TIPO_POR_COLECCION = (("skills", "skill"), ("prompts", "prompt"))
+
+
+def _artefacto_publicado(tipo: str, ruta: str, frontmatter: dict) -> ArtefactoPublicado | None:
+    """`None` cuando el envelope no esta completo: un artefacto sin gobierno no tiene ficha que
+    publicar, y el gate ya lo habra marcado como error."""
+    metadata = frontmatter.get("metadata") or {}
+    identificador = metadata.get("id")
+    if not identificador:
+        return None
+    return ArtefactoPublicado(
+        id=identificador,
+        tipo=tipo,
+        ruta=ruta,
+        owner_team=metadata.get("owner_team", ""),
+        owner_contact=metadata.get("owner_contact", ""),
+        version=str(metadata.get("version", "")),
+        data_classification=metadata.get("data_classification", ""),
+        standard_version=str(metadata.get("standard_version", "")),
+    )
+
+
+def _listar_artefactos(contenido: ContenidoRepositorio) -> tuple[ArtefactoPublicado, ...]:
+    publicados: list[ArtefactoPublicado] = []
+    for coleccion, tipo in _TIPO_POR_COLECCION:
+        for artefacto in getattr(contenido, coleccion):
+            if artefacto.frontmatter is None:
+                continue
+            publicado = _artefacto_publicado(tipo, artefacto.ruta_relativa, artefacto.frontmatter)
+            if publicado is not None:
+                publicados.append(publicado)
+    return tuple(publicados)

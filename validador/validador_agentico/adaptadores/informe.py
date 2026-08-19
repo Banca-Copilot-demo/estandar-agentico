@@ -25,7 +25,7 @@ FORMATO_JSON = "json"
 FORMATOS = (FORMATO_TEXTO, FORMATO_JSON)
 
 # Version del PREDICADO, no del validador: solo cambia si cambia la forma del JSON firmado.
-_VERSION_PREDICADO = "1.0.0"
+_VERSION_PREDICADO = "1.1.0"
 _SANGRIA_JSON = 2
 
 
@@ -81,6 +81,15 @@ def render_json(veredicto: Veredicto, nombre_repositorio: str) -> str:
             "hooks": veredicto.inventario.hooks,
             "tiene_plugin": veredicto.inventario.tiene_plugin,
         },
+        # Una entrada por artefacto, para que la ficha del catalogo se construya de lo SELLADO y no
+        # releyendo el repositorio -- que seria una segunda fuente de verdad.
+        "artefactos": [
+            {"id": a.id, "tipo": a.tipo, "ruta": a.ruta, "owner_team": a.owner_team,
+             "owner_contact": a.owner_contact, "version": a.version,
+             "data_classification": a.data_classification,
+             "standard_version": a.standard_version}
+            for a in veredicto.artefactos
+        ],
         "errores": [_hallazgo_como_dato(h) for h in veredicto.errores],
         "avisos": [_hallazgo_como_dato(h) for h in veredicto.avisos],
     }
