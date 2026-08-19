@@ -1,0 +1,80 @@
+{
+  "identifier": "artefacto_agentico",
+  "title": "Artefacto Agentico",
+  "icon": "Blueprint",
+  "description": "Ficha de un artefacto agentico publicado. La escribe el CI con lo que salio del sello: NO se edita a mano y NO se descubre mirando GitHub.",
+  "schema": {
+    "properties": {
+      "tipo": {
+        "type": "string",
+        "title": "Tipo",
+        "description": "Uno de los seis tipos que el estandar gobierna.",
+        "enum": ["skill", "agent", "prompt", "mcp", "instructions", "hooks"]
+      },
+      "status": {
+        "type": "string",
+        "title": "Estado",
+        "description": "Derivado de los gates y de los evals. Vive aqui, no en el repositorio.",
+        "enum": ["draft", "conformant", "certified", "deprecated", "retired"],
+        "enumColors": {
+          "draft": "lightGray",
+          "conformant": "green",
+          "certified": "blue",
+          "deprecated": "orange",
+          "retired": "red"
+        }
+      },
+      "owner_team": {
+        "type": "string",
+        "title": "Equipo dueno",
+        "description": "Resuelto contra los equipos reales de la organizacion por G4."
+      },
+      "owner_contact": {
+        "type": "string",
+        "title": "Contacto",
+        "format": "email"
+      },
+      "data_classification": {
+        "type": "string",
+        "title": "Clasificacion del dato",
+        "enum": ["public", "internal", "confidential", "restricted"]
+      },
+      "standard_version": {
+        "type": "string",
+        "title": "Version del estandar que cumple"
+      },
+      "repo": {
+        "type": "string",
+        "title": "Repositorio de origen"
+      },
+      "ref": {
+        "type": "string",
+        "title": "Etiqueta publicada"
+      },
+      "sha": {
+        "type": "string",
+        "title": "Commit sellado",
+        "description": "Commit de 40 caracteres. Es lo que fija la instalacion: una etiqueta se puede reescribir, un commit no."
+      },
+      "digest": {
+        "type": "string",
+        "title": "Digest del paquete",
+        "description": "sha256 del .tar.gz atestado. Permite verificar antes de instalar."
+      },
+      "install_hint": {
+        "type": "string",
+        "title": "Como se instala",
+        "description": "El comando exacto. Si el artefacto no va en un plugin, su canal propio."
+      },
+      "en_marketplace": {
+        "type": "boolean",
+        "title": "Esta en el marketplace",
+        "description": "Falso no es un defecto: las entradas de un marketplace SON plugins, y el plugin es opcional."
+      }
+    },
+    "required": ["tipo", "status", "owner_team", "repo", "sha"]
+  },
+  "mirrorProperties": {},
+  "calculationProperties": {},
+  "relations": {}
+}

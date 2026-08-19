@@ -1,0 +1,61 @@
+name: Aplicar el blueprint de Port
+
+# El blueprint es CODIGO, no configuracion hecha a mano en una UI. Vive en port/ y lo aplica este
+# workflow, asi que el esquema de la ficha se revisa en un pull request como cualquier otra cosa.
+#
+# ES IDEMPOTENTE: intenta actualizar y, si no existe, lo crea. Correrlo dos veces no rompe nada.
+on:
+  push:
+    branches: [main]
+    paths: ["port/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Region del tenant. MEDIDO: con la region equivocada la API responde 401 `invalid_credentials`,
+  # que no menciona la region -- se parece a unas credenciales malas y manda a buscar donde no es.
+  API_PORT: https://api.port.io
+  BLUEPRINT: port/blueprint-artefacto-agentico.json
+
+jobs:
+  aplicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Aplicar el blueprint
+        env:
+          ID: ${{ secrets.PORT_CLIENT_ID }}
+          SECRETO: ${{ secrets.PORT_CLIENT_SECRET }}
+        run: |
+          if [ -z "${ID:-}" ] || [ -z "${SECRETO:-}" ]; then
+            echo "::error::faltan PORT_CLIENT_ID o PORT_CLIENT_SECRET"
+            exit 1
+          fi
+          token="$(curl -sf -X POST "$API_PORT/v1/auth/access_token" \
+            -H 'Content-Type: application/json' \
+            -d "{\"clientId\":\"$ID\",\"clientSecret\":\"$SECRETO\"}" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')"
+
+          identificador="$(python3 -c "import json;print(json.load(open('$BLUEPRINT'))['identifier'])")"
+
+          codigo="$(curl -s -o /tmp/r.json -w '%{http_code}' -X PUT \
+            "$API_PORT/v1/blueprints/$identificador" \
+            -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+            --data @"$BLUEPRINT")"
+
+          if [ "$codigo" = "404" ]; then
+            echo "No existia: se crea."
+            codigo="$(curl -s -o /tmp/r.json -w '%{http_code}' -X POST \
+              "$API_PORT/v1/blueprints" \
+              -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+              --data @"$BLUEPRINT")"
+          fi
+
+          case "$codigo" in
+            200|201) echo "Blueprint $identificador aplicado (HTTP $codigo)" ;;
+            *) echo "::error::Port respondio HTTP $codigo"; head -c 500 /tmp/r.json; exit 1 ;;
+          esac
+          echo "Blueprint \`$identificador\` aplicado en $API_PORT" >> "$GITHUB_STEP_SUMMARY"
