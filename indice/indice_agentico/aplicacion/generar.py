@@ -40,18 +40,15 @@ def _reunir_evidencia(repositorio: str, trabajo: Path, github, lector) -> Candid
         return Motivo.SIN_PAQUETE
 
     lectura = lector.leer_manifiesto(descargado)
-    # Sin plugin no se consulta la atestacion: el candidato se va a omitir de todas formas, y cada
-    # verificacion es una llamada a `gh` que tarda.
-    if not lectura.presente:
-        return Candidato(repositorio=repositorio, etiqueta=etiqueta, sha=sha,
-                         digest=lector.digest(descargado), lleva_plugin=False)
-
+    # La atestacion se verifica SIEMPRE, tambien para un artefacto suelto. Hubo una version que se
+    # la saltaba para ahorrar dos llamadas a `gh` -- y con eso un suelto publicado sin sellar salia
+    # como omision limpia. Correccion antes que llamadas ahorradas.
     return Candidato(
         repositorio=repositorio,
         etiqueta=etiqueta,
         sha=sha,
         digest=lector.digest(descargado),
-        lleva_plugin=True,
+        lleva_plugin=lectura.presente,
         manifiesto=lectura.contenido,
         atestacion_verificada=github.verificar_atestacion(descargado, repositorio),
         veredicto=github.veredicto_atestado(descargado, repositorio),

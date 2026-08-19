@@ -8,7 +8,8 @@ equipo del dominio no controla el repositorio del indice.
 
 Y una distincion que NO es la misma pregunta: el plugin es OPCIONAL en el estandar. Un artefacto
 suelto se gobierna por su propia metadata y se instala por su canal; simplemente no tiene entrada en
-`marketplace.json`, porque las entradas de un marketplace SON plugins. Eso se OMITE, no se rechaza.
+`marketplace.json`, porque las entradas de un marketplace SON plugins. Eso se OMITE, no se rechaza
+-- pero se le exige el sello igual: el plugin decide DONDE se lista, no SI es instalable.
 
 Que se exige a lo que SI lleva plugin, y por que cada cosa:
   - atestacion VERIFICADA sobre el digest -> prueba que el paquete salio del workflow del estandar
@@ -42,20 +43,25 @@ def _rechazar(motivo: Motivo) -> Decision:
 def evaluar(candidato: Candidato) -> Decision:
     """Decide el destino de un candidato: indexar, omitir o rechazar.
 
-    EL ORDEN DE LAS PREGUNTAS ES DELIBERADO. Lo primero que se pregunta es si el paquete lleva
-    plugin, porque un artefacto suelto es una OMISION -- correcta y esperada -- y no debe llegar a
-    las comprobaciones de sellado para acabar rechazado por un motivo que no le aplica.
+    EL ORDEN DE LAS PREGUNTAS ES DELIBERADO, y se corrigio: el SELLO se exige PRIMERO y a TODOS.
+    Preguntar antes por el plugin dejaba que un artefacto suelto se omitiera sin verificar nada, y
+    entonces algo publicado sin sellar llegaba a la ficha del catalogo como si estuviera bien --
+    exactamente el hueco que el sello existe para cerrar.
+
+    El plugin se pregunta DESPUES porque no decide si algo es instalable, solo DONDE se lista.
     """
     if candidato.digest is None:
         return _rechazar(Motivo.SIN_PAQUETE)
-    if not candidato.lleva_plugin:
-        return _omitir(Motivo.SIN_PLUGIN)
     if not candidato.atestacion_verificada:
         return _rechazar(Motivo.SIN_ATESTACION)
     if candidato.veredicto is None:
         return _rechazar(Motivo.SIN_VEREDICTO)
     if not candidato.veredicto.get("conforme"):
         return _rechazar(Motivo.NO_CONFORME)
+
+    # Sellado y conforme. A partir de aqui el plugin solo decide el canal de distribucion.
+    if not candidato.lleva_plugin:
+        return _omitir(Motivo.SIN_PLUGIN)
     if not candidato.manifiesto:
         return _rechazar(Motivo.SIN_MANIFIESTO)
 

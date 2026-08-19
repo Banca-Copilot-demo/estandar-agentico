@@ -76,3 +76,40 @@ def test_un_manifiesto_sin_description_no_bloquea_pero_deja_rastro():
     decision = evaluar(_candidato(manifiesto={"name": "x", "version": "0.2.0"}))
     assert decision.destino is Destino.INDEXAR
     assert "sin descripcion" in decision.entrada.description
+
+
+# ── el plugin decide DONDE se lista, no SI es instalable ────────────────────────────────────
+def test_un_suelto_sellado_se_OMITE_y_no_se_rechaza():
+    """El plugin es OPCIONAL en el estandar. Un skill suelto se gobierna por su metadata y se
+    instala por su canal; lo unico que no tiene es entrada en `marketplace.json`, porque las
+    entradas de un marketplace SON plugins. Rechazarlo hacia que el equipo del dominio buscase un
+    defecto que no existe."""
+    decision = evaluar(_candidato(lleva_plugin=False, manifiesto=None))
+    assert decision.destino is Destino.OMITIR
+    assert decision.motivo is Motivo.SIN_PLUGIN
+
+
+def test_un_suelto_SIN_SELLAR_se_rechaza_y_no_se_omite():
+    """El defecto medido: una version de esta regla preguntaba por el plugin ANTES del sello, y
+    entonces un artefacto suelto publicado sin atestacion salia como omision limpia y llegaba a la
+    ficha del catalogo. El sello se exige a todos; el plugin solo decide el canal."""
+    decision = evaluar(_candidato(lleva_plugin=False, manifiesto=None,
+                                  atestacion_verificada=False, veredicto=None))
+    assert decision.destino is Destino.RECHAZAR
+    assert decision.motivo is Motivo.SIN_ATESTACION
+
+
+def test_un_suelto_con_veredicto_negativo_se_rechaza():
+    # Mismo motivo: no llevar plugin no exime de haber pasado los gates.
+    decision = evaluar(_candidato(lleva_plugin=False, manifiesto=None,
+                                  veredicto={"conforme": False}))
+    assert decision.destino is Destino.RECHAZAR
+    assert decision.motivo is Motivo.NO_CONFORME
+
+
+def test_un_plugin_ILEGIBLE_si_se_rechaza():
+    """Distinto de no llevarlo: aqui el paquete DECLARA un plugin y esta roto. Antes los dos casos
+    daban `None` al leer el manifiesto y eran indistinguibles."""
+    decision = evaluar(_candidato(manifiesto=None))
+    assert decision.destino is Destino.RECHAZAR
+    assert decision.motivo is Motivo.SIN_MANIFIESTO
