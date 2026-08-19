@@ -20,6 +20,12 @@ from validador_agentico.dominio.hallazgo import Hallazgo, Severidad
 _COMANDO = {Severidad.ERROR: "error", Severidad.AVISO: "warning"}
 _SEPARADOR_LINEA = ":"
 
+# Medido en un pull request real: omitir `line` hace que GitHub registre la anotacion con
+# `start_line: 0`, y una linea 0 no existe en ningun diff -- la anotacion queda solo en la pestana de
+# checks y NO aparece sobre el archivo, que es justo lo que se buscaba. Los hallazgos sin linea son
+# casi siempre del frontmatter o del archivo entero, asi que se ancla a la primera linea.
+_LINEA_POR_DEFECTO = 1
+
 # Orden obligatorio: `%` primero, o se re-escaparian los `%` que introducen los demas.
 _ESCAPES = (("%", "%25"), ("\r", "%0D"), ("\n", "%0A"))
 
@@ -31,11 +37,11 @@ def _escapar(mensaje: str) -> str:
 
 
 def _ubicacion(donde: str) -> str:
-    """`donde` es `ruta` o `ruta:linea`. Sin linea, la anotacion se ancla al archivo completo."""
+    """`donde` es `ruta` o `ruta:linea`. Siempre se emite una linea: ver `_LINEA_POR_DEFECTO`."""
     ruta, separador, linea = donde.rpartition(_SEPARADOR_LINEA)
     if separador and linea.isdigit():
         return f"file={ruta},line={linea}"
-    return f"file={donde}"
+    return f"file={donde},line={_LINEA_POR_DEFECTO}"
 
 
 def _anotacion(hallazgo: Hallazgo) -> str:
