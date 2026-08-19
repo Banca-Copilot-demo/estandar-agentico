@@ -5,9 +5,13 @@ license: Proprietary
 compatibility: Requiere git y gh (GitHub CLI) en el PATH
 allowed-tools: Bash(git:*) Bash(gh:*) Read Write
 metadata:
-  author: plataforma-agentica-agentico
+  id: demo.plataforma.crear-artefacto-agentico
+  owner_team: plataforma-agentica
+  owner_contact: plataforma-agentica@ejemplo.dev
+  data_classification: internal
+  status: draft
   version: "0.1.0"
-  standard_version: "6.0.0"
+  standard_version: "7.0.0"
 ---
 
 # Crear un artefacto agentico conforme al estandar

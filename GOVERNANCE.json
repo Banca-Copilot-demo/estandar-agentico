@@ -4,6 +4,6 @@
   "owner": { "team": "plataforma-agentica", "contact": "plataforma-agentica@ejemplo.dev" },
   "status": "draft",
   "data_classification": "internal",
-  "standard_version": "6.0.0",
+  "standard_version": "7.0.0",
   "artifacts": { "skills": 1, "agents": 0, "prompts": 0, "mcps": 0, "instructions": 0 }
 }
