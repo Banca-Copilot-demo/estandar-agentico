@@ -45,6 +45,8 @@ def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
                         help="raiz del repositorio a validar (por defecto, el directorio actual)")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="logging de diagnostico en stderr")
+    parser.add_argument("--formato", choices=informe.FORMATOS, default=informe.FORMATO_TEXTO,
+                        help="`texto` para leerlo; `json` para firmarlo como predicado")
     return parser.parse_args(argv)
 
 
@@ -56,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         log.error("la raiz no existe o no es un directorio: %s", raiz)
         return SALIDA_NO_CONFORME
     veredicto = validar(raiz)
-    informe.imprimir(veredicto, raiz.name)
+    informe.imprimir(veredicto, raiz.name, argumentos.formato)
     return SALIDA_CONFORME if veredicto.conforme else SALIDA_NO_CONFORME
 
 

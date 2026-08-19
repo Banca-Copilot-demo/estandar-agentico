@@ -1,0 +1,87 @@
+name: Regenerar el indice de plugins del estandar
+description: >
+  Descubre los repositorios de dominio, verifica la atestacion de lo que cada uno publico y
+  reescribe `marketplace.json` solo con lo probado. Vive en el repo del estandar por el mismo
+  motivo que el validador: el codigo que decide que es instalable no puede estar donde lo edite
+  un equipo de dominio.
+
+inputs:
+  organizacion:
+    description: Organizacion de GitHub donde viven los repositorios de dominio.
+    required: true
+  topico:
+    description: Topico que marca un repositorio de dominio.
+    required: false
+    default: agent-skills
+  salida:
+    description: Ruta del catalogo a reescribir, relativa a la raiz del repositorio del indice.
+    required: false
+    default: .claude-plugin/marketplace.json
+  token:
+    description: >
+      Token con permiso de LECTURA sobre los repositorios de dominio y sus atestaciones. El
+      GITHUB_TOKEN del repositorio del indice NO sirve: esta acotado a su propio repositorio y no
+      puede ver los releases de los dominios cuando son privados.
+    required: true
+  version-python:
+    description: Version de Python con la que corre el generador.
+    required: false
+    default: "3.12"
+
+outputs:
+  indexados:
+    description: Numero de plugins que entraron al indice.
+    value: ${{ steps.generar.outputs.indexados }}
+
+runs:
+  using: composite
+  steps:
+    - name: Preparar Python ${{ inputs.version-python }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.version-python }}
+
+    - name: Instalar el generador del indice
+      shell: bash
+      run: pip install --quiet "${{ github.action_path }}/../../../indice"
+
+    - name: Generar el indice exigiendo atestacion verificada
+      id: generar
+      shell: bash
+      run: |
+        python -m indice_agentico.cli "${{ inputs.organizacion }}" \
+          --topico "${{ inputs.topico }}" \
+          --salida "${{ inputs.salida }}" \
+          --verbose
+        indexados="$(python -c "import json,sys; print(len(json.load(open(sys.argv[1], encoding='utf-8'))['plugins']))" "${{ inputs.salida }}")"
+        echo "indexados=$indexados" >> "$GITHUB_OUTPUT"
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+
+    # SE COMMITEA SOLO SI CAMBIO. Sin esta comprobacion, cada pasada programada dejaria un commit
+    # vacio y el historial del indice se volveria ilegible justo cuando hay que auditarlo.
+    - name: Commitear el indice si cambio
+      shell: bash
+      run: |
+        if git diff --quiet -- "${{ inputs.salida }}"; then
+          echo "El indice no cambio: no se commitea."
+          exit 0
+        fi
+        git config user.name "indice-agentico"
+        git config user.email "plataforma-agentica@ejemplo.dev"
+        git add "${{ inputs.salida }}"
+        git commit -m "indice: ${{ steps.generar.outputs.indexados }} plugin(s) con atestacion verificada"
+        git push
+
+    - name: Resumen del indice
+      if: always()
+      shell: bash
+      run: |
+        {
+          echo "## Indice de plugins"
+          echo
+          echo "Plugins indexados: **${{ steps.generar.outputs.indexados }}**"
+          echo
+          echo "Los rechazos y su motivo estan en el registro del paso anterior."
+          echo "Un rechazo NO es un fallo: el dominio se queda fuera del indice, los demas siguen."
+        } >> "$GITHUB_STEP_SUMMARY"

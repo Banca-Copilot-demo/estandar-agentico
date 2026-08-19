@@ -1,0 +1,159 @@
+name: Publicar un artefacto agentico del estandar
+description: >
+  Sella una version: revalida, empaqueta de forma determinista, atesta el veredicto y publica un
+  release inmutable. Accion COMPUESTA por el mismo motivo que la de validacion: el GITHUB_TOKEN
+  del repo del dominio no puede clonar el repo del estandar cuando este es privado.
+
+inputs:
+  version-python:
+    description: Version de Python con la que corre el validador.
+    required: false
+    default: "3.12"
+  repositorio-indice:
+    description: >
+      Repositorio del indice al que se avisa que hay una version nueva. Vacio = no se avisa.
+    required: false
+    default: ""
+  token-indice:
+    description: >
+      Token con permiso de escritura sobre el repositorio del indice. El GITHUB_TOKEN NO sirve:
+      esta acotado al repositorio del dominio. Sin este token la publicacion se completa igual y
+      el indice se pone al dia en su siguiente pasada programada.
+    required: false
+    default: ""
+
+outputs:
+  digest:
+    description: sha256 del paquete. Es el sujeto de la atestacion y lo que fija la instalacion.
+    value: ${{ steps.empaquetar.outputs.digest }}
+  version:
+    description: Version publicada, derivada de la etiqueta.
+    value: ${{ steps.etiqueta.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    # PUBLICAR SOLO DESDE UNA ETIQUETA. Un release derivado de una rama seria movil: la rama
+    # avanza y el puntero deja de significar lo mismo. La etiqueta ES el contrato de version.
+    - name: Comprobar que se publica desde una etiqueta
+      id: etiqueta
+      shell: bash
+      run: |
+        if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+          echo "::error::solo se publica desde una etiqueta; esto es ${GITHUB_REF_TYPE} ${GITHUB_REF_NAME}"
+          exit 1
+        fi
+        version="${GITHUB_REF_NAME#v}"
+        if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "::error::la etiqueta ${GITHUB_REF_NAME} no es vX.Y.Z"
+          exit 1
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - name: Preparar Python ${{ inputs.version-python }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.version-python }}
+
+    - name: Instalar el validador del estandar
+      shell: bash
+      run: pip install --quiet "${{ github.action_path }}/../../../validador"
+
+    # SE REVALIDA AQUI, aunque ya se valido en el pull request. El PR valido un commit; esto
+    # publica una ETIQUETA, y nada garantiza que apunten al mismo arbol. Sin este paso, el sello
+    # certificaria contenido que ningun gate ha visto.
+    - name: Revalidar el contenido que se va a sellar
+      id: veredicto
+      shell: bash
+      run: |
+        python -m validador_agentico.cli . --formato json > veredicto.json
+        cat veredicto.json
+
+    - name: Empaquetar de forma determinista
+      id: empaquetar
+      shell: bash
+      run: |
+        nombre="${GITHUB_REPOSITORY##*/}-${GITHUB_REF_NAME}.tar.gz"
+        digest="$(bash "${{ github.action_path }}/empaquetar.sh" . "$nombre")"
+        echo "paquete=$nombre" >> "$GITHUB_OUTPUT"
+        echo "digest=$digest"  >> "$GITHUB_OUTPUT"
+        echo "$nombre  sha256:$digest"
+
+    # DOS ATESTACIONES, porque prueban cosas distintas.
+    #
+    # La de PROCEDENCIA responde "quien construyo esto y desde que fuente" -- la firma un
+    # workflow reutilizable de GitHub, con OIDC, y eso es lo que la lleva a SLSA Build L3.
+    #
+    # La del VEREDICTO responde "que gates paso y con que resultado". Es informacion NUESTRA:
+    # ninguna atestacion nativa de GitHub la cubre. Va como predicado propio y es lo que permite
+    # que el indice exija conformidad probada en vez de creerse un campo de un JSON editable.
+    - name: Atestacion de procedencia (SLSA Build L3)
+      uses: actions/attest-build-provenance@v2
+      with:
+        subject-path: ${{ steps.empaquetar.outputs.paquete }}
+
+    - name: Atestacion del veredicto de conformidad
+      uses: actions/attest@v2
+      with:
+        subject-path: ${{ steps.empaquetar.outputs.paquete }}
+        predicate-type: https://ejemplo.dev/atestaciones/veredicto-de-conformidad/v1
+        predicate-path: veredicto.json
+
+    # RELEASE INMUTABLE. El ajuste es del REPOSITORIO, no de este workflow: si esta activado,
+    # GitHub bloquea la etiqueta y los assets y firma el release con Sigstore por su cuenta. Se
+    # comprueba y se avisa en vez de fallar, porque activarlo es una decision de la organizacion.
+    - name: ¿El repositorio tiene releases inmutables?
+      shell: bash
+      continue-on-error: true
+      run: |
+        inmutable="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.immutable_releases // "no expuesto"')"
+        echo "releases inmutables: $inmutable"
+        if [ "$inmutable" != "true" ]; then
+          echo "::warning::los releases de este repositorio NO son inmutables: la etiqueta y los assets se pueden reescribir"
+        fi
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+    - name: Publicar el release con el paquete
+      shell: bash
+      run: |
+        gh release create "${GITHUB_REF_NAME}" "${{ steps.empaquetar.outputs.paquete }}" \
+          --title "${GITHUB_REF_NAME}" \
+          --notes "Paquete determinista: sha256 \`${{ steps.empaquetar.outputs.digest }}\`
+        Atestado: procedencia (SLSA Build L3) y veredicto de conformidad del estandar.
+        Verificalo antes de instalar:
+        \`\`\`
+        gh attestation verify ${{ steps.empaquetar.outputs.paquete }} --repo ${GITHUB_REPOSITORY}
+        \`\`\`" \
+          || gh release upload "${GITHUB_REF_NAME}" "${{ steps.empaquetar.outputs.paquete }}" --clobber
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+    # EL DOMINIO AVISA, NO ESCRIBE. Solo dispara un evento; el indice se reconstruye a si mismo
+    # con su propio token y VERIFICA la atestacion antes de indexar. Asi ningun equipo de dominio
+    # necesita -- ni obtiene -- permiso de escritura sobre el indice.
+    - name: Avisar al repositorio del indice
+      if: inputs.repositorio-indice != '' && inputs.token-indice != ''
+      shell: bash
+      run: |
+        gh api "repos/${{ inputs.repositorio-indice }}/dispatches" \
+          -f event_type=version-publicada \
+          -F "client_payload[repositorio]=${GITHUB_REPOSITORY}" \
+          -F "client_payload[etiqueta]=${GITHUB_REF_NAME}"
+      env:
+        GH_TOKEN: ${{ inputs.token-indice }}
+
+    - name: Resumen de la publicacion
+      if: always()
+      shell: bash
+      run: |
+        {
+          echo "## Publicacion de ${GITHUB_REF_NAME}"
+          echo
+          echo "| Que | Valor |"
+          echo "|---|---|"
+          echo "| Version | ${{ steps.etiqueta.outputs.version }} |"
+          echo "| Paquete | \`${{ steps.empaquetar.outputs.paquete }}\` |"
+          echo "| Digest | \`sha256:${{ steps.empaquetar.outputs.digest }}\` |"
+          echo "| Atestaciones | procedencia + veredicto de conformidad |"
+        } >> "$GITHUB_STEP_SUMMARY"

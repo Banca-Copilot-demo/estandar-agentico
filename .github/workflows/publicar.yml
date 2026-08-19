@@ -1,0 +1,52 @@
+name: Publicar version
+
+# WORKFLOW REUTILIZABLE. Lo invocan los repositorios de dominio al empujar una etiqueta.
+#
+# POR QUE VIVE AQUI Y NO EN CADA DOMINIO: es el paso que CONVIERTE contenido en algo instalable.
+# Si cada dominio tuviera su propia copia, cada equipo podria quitarse el sello, el empaquetado
+# determinista o la revalidacion, y el indice no podria confiar en nada.
+#
+# LO QUE ESTE WORKFLOW NO HACE: no escribe en el repositorio del dominio. Lo que sale de aqui son
+# tres cosas inmutables -- una etiqueta, un paquete firmado y dos atestaciones --. El veredicto NO
+# se commitea en `GOVERNANCE.json`: seria un bucle de commits, y meter el digest dentro del
+# archivo que se hashea es circular.
+
+on:
+  workflow_call:
+    inputs:
+      repositorio-indice:
+        description: Repositorio del indice al que avisar. Vacio = no se avisa.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      token-indice:
+        description: >
+          Token con escritura sobre el repositorio del indice. Opcional: sin el, la publicacion se
+          completa y el indice se pone al dia en su siguiente pasada programada.
+        required: false
+
+# EL PERMISO MINIMO PARA CADA COSA, y ni uno mas:
+#   contents: write        -> crear el release y subirle el paquete
+#   id-token: write        -> el OIDC de Sigstore; es lo que hace la firma sin claves guardadas
+#   attestations: write    -> registrar las dos atestaciones en el repositorio
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el contenido que se va a sellar
+        uses: actions/checkout@v4
+        with:
+          # El empaquetado sale de `git ls-files`, asi que necesita el repositorio, no un export.
+          fetch-depth: 1
+
+      - name: Sellar y publicar
+        uses: Banca-Copilot-demo/estandar-agentico/.github/actions/publicar@main
+        with:
+          repositorio-indice: ${{ inputs.repositorio-indice }}
+          token-indice: ${{ secrets.token-indice }}

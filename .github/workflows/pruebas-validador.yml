@@ -1,14 +1,18 @@
-name: Pruebas del validador
+name: Pruebas del estandar
 
 # El validador es el gate de todos los dominios: si se rompe, el estandar deja de ser exigible.
 # Sus pruebas son PURAS -el dominio no toca disco- asi que corren en segundos y sin credenciales.
 
+# Se prueba TODO lo que decide si un artefacto se publica: el validador y el empaquetador. Los dos
+# son infraestructura de la que dependen todos los dominios, y los dos fallan en silencio si nadie
+# los prueba -- el empaquetador con especial facilidad: un digest inestable no rompe nada visible,
+# solo hace que la atestacion no pruebe nada.
 on:
   pull_request:
-    paths: ["validador/**"]
+    paths: ["validador/**", ".github/actions/publicar/**"]
   push:
     branches: [main]
-    paths: ["validador/**"]
+    paths: ["validador/**", ".github/actions/publicar/**"]
 
 permissions:
   contents: read
@@ -37,3 +41,15 @@ jobs:
         working-directory: validador
         shell: bash
         run: python -m pytest tests -q
+
+  empaquetado:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repositorio del estandar
+        uses: actions/checkout@v4
+
+      # Se empaqueta ESTE repositorio: sirve cualquiera con archivos versionados, y usar el propio
+      # evita depender de otro repo -- y de un token que pudiera leerlo.
+      - name: Comprobar que el empaquetado es determinista
+        shell: bash
+        run: bash .github/actions/publicar/probar-empaquetado.sh .
