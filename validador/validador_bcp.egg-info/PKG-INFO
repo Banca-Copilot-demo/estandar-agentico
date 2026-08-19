@@ -1,5 +1,0 @@
-Metadata-Version: 2.4
-Name: validador-agentico
-Version: 0.1.0
-Summary: Validador de artefactos agenticos del estandar: gates G1, G3 y G4.
-Requires-Python: >=3.11
