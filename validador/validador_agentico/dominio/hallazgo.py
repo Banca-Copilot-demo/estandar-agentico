@@ -55,6 +55,9 @@ class Inventario:
     mcps: int = 0
     hooks: int = 0
     tiene_plugin: bool = False
+    # El `name` del manifiesto. Es lo que se instala -- `copilot plugin install <name>@<catalogo>` --,
+    # y no el id de un artefacto: un plugin se instala completo.
+    nombre_plugin: str = ""
 
     def como_declarado(self) -> dict[str, int]:
         """Las claves con las que el inventario se declara en `GOVERNANCE.json`."""

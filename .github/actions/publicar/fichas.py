@@ -23,20 +23,26 @@ from pathlib import Path
 
 API_PORT = "https://api.port.io"
 BLUEPRINT = "artefacto_agentico"
+# `name` del catalogo del marketplace, el que resuelve `<plugin>@<catalogo>`.
+CATALOGO = "agentico"
 _TIEMPO_LIMITE_S = 30
 # `upsert` actualiza si ya existe, y `merge` conserva las propiedades que este payload no trae.
 _RUTA_ENTIDADES = f"/v1/blueprints/{BLUEPRINT}/entities?upsert=true&merge=true"
 
-# Los tipos que un plugin transporta. `instructions` no viaja en el plugin, asi que su ficha nunca
-# lleva `en_marketplace`: la especificacion no lo admite como componente.
-_TIPOS_EN_PLUGIN = frozenset({"skill", "agent", "prompt", "mcp", "hooks"})
+# Los tipos que un plugin TRANSPORTA de verdad. Agent Plugins v1 cubre skills y MCP; Copilot documenta
+# cinco componentes -- agents, skills, hooks, .mcp.json, lsp.json --. NI `prompt` NI `instructions`
+# estan en ninguna de las dos listas, asi que viajan por otro canal aunque vivan en el mismo
+# repositorio y esten dentro del paquete sellado.
+_TIPOS_EN_PLUGIN = frozenset({"skill", "agent", "mcp", "hooks"})
 
 
 def _pista_de_instalacion(artefacto: dict, en_marketplace: bool, repositorio: str,
-                          etiqueta: str) -> str:
+                          etiqueta: str, nombre_plugin: str) -> str:
     """El comando exacto que el consumidor copia. Si el artefacto no va en un plugin, su canal."""
     if en_marketplace:
-        return f"copilot plugin install {artefacto['id']}@agentico"
+        # Se instala el PLUGIN, no el artefacto: un plugin se instala completo. Poner aqui el id del
+        # artefacto daba un comando que no resuelve contra ninguna entrada del marketplace.
+        return f"copilot plugin install {nombre_plugin}@{CATALOGO}"
     if artefacto["tipo"] == "skill":
         return f"gh skill install {repositorio}/{artefacto['ruta']} --pin {etiqueta}"
     return f"referencia directa: {repositorio}@{etiqueta} · {artefacto['ruta']}"
@@ -60,8 +66,9 @@ def _entidad(artefacto: dict, veredicto: dict, argumentos: argparse.Namespace) -
             "ref": argumentos.etiqueta,
             "sha": argumentos.sha,
             "digest": argumentos.digest,
-            "install_hint": _pista_de_instalacion(artefacto, en_marketplace,
-                                                  argumentos.repositorio, argumentos.etiqueta),
+            "install_hint": _pista_de_instalacion(
+                artefacto, en_marketplace, argumentos.repositorio, argumentos.etiqueta,
+                veredicto["inventario"].get("nombre_plugin", "")),
             "en_marketplace": en_marketplace,
         },
     }

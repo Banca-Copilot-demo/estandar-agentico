@@ -60,7 +60,14 @@ def _construir_inventario(contenido: ContenidoRepositorio) -> Inventario:
         mcps=contenido.mcps,
         hooks=1 if contenido.hooks else 0,
         tiene_plugin=contenido.manifiesto is not None and contenido.manifiesto.es_legible,
+        nombre_plugin=_nombre_del_plugin(contenido),
     )
+
+
+def _nombre_del_plugin(contenido: ContenidoRepositorio) -> str:
+    if contenido.manifiesto is None or not contenido.manifiesto.es_legible:
+        return ""
+    return contenido.manifiesto.contenido.get("name", "")
 
 
 def _hallazgo_de_formato(archivo: ArchivoJson) -> list[Hallazgo]:
