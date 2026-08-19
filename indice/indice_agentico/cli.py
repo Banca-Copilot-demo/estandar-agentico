@@ -15,6 +15,7 @@ from pathlib import Path
 
 from indice_agentico.adaptadores import catalogo
 from indice_agentico.aplicacion.generar import generar
+from indice_agentico.dominio.candidato import Indice
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +59,35 @@ def _informar_rechazos(indice) -> None:
         log.warning("FUERA DEL INDICE %s: %s", rechazo.repositorio, rechazo.motivo.value)
 
 
+def escribir(indice: Indice, salida: Path, contenido: str) -> int:
+    """Escribe el catalogo, o explica por que no. Separado de `main` para poder probar el guardarail
+    sin parchear nada: recibe el indice y la ruta, y devuelve el codigo de salida."""
+    if indice.entradas:
+        salida.parent.mkdir(parents=True, exist_ok=True)
+        salida.write_text(contenido, encoding="utf-8")
+        log.info("escrito %s con %d plugin(s)", salida, len(indice.entradas))
+        return SALIDA_OK
+
+    # Un indice vacio sobreescribiendo uno que funcionaba desinstalaria todo de golpe. Nunca es un
+    # catalogo legitimo, asi que no se escribe -- pero el MOTIVO se distingue, porque los dos casos
+    # se arreglan en sitios distintos.
+    #
+    # Medido en CI: con el GITHUB_TOKEN del propio repositorio del indice, el descubrimiento
+    # devolvio CERO repositorios aunque en local devolvia uno. El token esta acotado a su
+    # repositorio y no ve los dominios privados. Sin distinguir los dos casos, ese fallo de
+    # credencial se leia como "nada paso las comprobaciones", y habria mandado a revisar los gates
+    # de los dominios en vez de el token.
+    if indice.rechazos:
+        log.error("se descubrieron %d repositorio(s) y NINGUNO paso las comprobaciones: revisa los "
+                  "motivos de arriba", len(indice.rechazos))
+    else:
+        log.error("no se descubrio NINGUN repositorio de dominio: revisa el token -- el "
+                  "GITHUB_TOKEN del repositorio del indice no ve los dominios privados -- y que "
+                  "los repositorios lleven el topico")
+    log.error("no se sobreescribe %s", salida)
+    return SALIDA_ERROR
+
+
 def main(argv: list[str] | None = None) -> int:
     argumentos = _parsear_argumentos(argv)
     _configurar_logging(argumentos.verbose)
@@ -71,18 +101,7 @@ def main(argv: list[str] | None = None) -> int:
     if argumentos.salida is None:
         print(contenido, end="")
         return SALIDA_OK
-
-    if not indice.entradas:
-        # Un indice vacio sobreescribiendo uno que funcionaba desinstalaria todo de golpe. Si no
-        # hay NADA que indexar es un fallo de credenciales o de red, no un catalogo legitimo.
-        log.error("ningun plugin paso las comprobaciones: no se sobreescribe %s",
-                  argumentos.salida)
-        return SALIDA_ERROR
-
-    argumentos.salida.parent.mkdir(parents=True, exist_ok=True)
-    argumentos.salida.write_text(contenido, encoding="utf-8")
-    log.info("escrito %s con %d plugin(s)", argumentos.salida, len(indice.entradas))
-    return SALIDA_OK
+    return escribir(indice, argumentos.salida, contenido)
 
 
 if __name__ == "__main__":

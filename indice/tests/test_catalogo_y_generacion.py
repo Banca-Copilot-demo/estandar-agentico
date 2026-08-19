@@ -123,3 +123,28 @@ def test_un_release_sin_paquete_no_se_confunde_con_no_tener_release():
 def test_sin_repositorios_el_indice_sale_vacio_y_no_falla():
     indice = generar("org", "agent-skills", github=GithubFalso([]), lector=LectorFalso())
     assert indice == Indice((), ())
+
+
+# ── el guardarail de escritura ─────────────────────────────────────────────────────────────
+def test_un_indice_vacio_no_sobreescribe_el_catalogo_existente(tmp_path):
+    """Defecto que cubre: sobreescribir con `plugins: []` desinstalaria todo de golpe. Toca disco
+    porque lo que se prueba ES el efecto en disco -- no es una regla de dominio (T1)."""
+    from indice_agentico import cli
+
+    previo = tmp_path / "marketplace.json"
+    previo.write_text('{"plugins": ["algo"]}', encoding="utf-8")
+
+    codigo = cli.escribir(Indice((), ()), previo, "{}")
+
+    assert codigo == cli.SALIDA_ERROR
+    assert "algo" in previo.read_text(encoding="utf-8")
+
+
+def test_un_indice_con_entradas_si_se_escribe(tmp_path):
+    from indice_agentico import cli
+
+    salida = tmp_path / "sub" / "marketplace.json"
+    codigo = cli.escribir(Indice((_entrada("a"),), ()), salida, "contenido")
+
+    assert codigo == cli.SALIDA_OK
+    assert salida.read_text(encoding="utf-8") == "contenido"
