@@ -54,16 +54,20 @@ def test_el_catalogo_avisa_de_que_esta_generado():
 class GithubFalso:
     """Doble del adaptador de GitHub. `sellado` decide si la atestacion verifica."""
 
-    def __init__(self, repositorios: list[str], *, sellado: bool = True, con_release: bool = True):
+    def __init__(self, repositorios: list[str], *, sellado: bool = True, con_release: bool = True,
+                 con_paquete: bool = True):
         self._repositorios = repositorios
         self._sellado = sellado
         self._con_release = con_release
+        self._con_paquete = con_paquete
 
     def repositorios_del_dominio(self, organizacion, topico):
         return self._repositorios
 
     def ultimo_release(self, repositorio):
-        return ("v0.2.0", "d" * 40, "paquete.tar.gz") if self._con_release else None
+        if not self._con_release:
+            return None
+        return "v0.2.0", "d" * 40, "paquete.tar.gz" if self._con_paquete else None
 
     def descargar_paquete(self, repositorio, etiqueta, paquete, destino):
         return Path(destino) / paquete
@@ -105,6 +109,15 @@ def test_un_repositorio_sin_releases_se_rechaza_por_ese_motivo_y_no_por_otro():
                      github=GithubFalso(["org/agentes-sdlc"], con_release=False),
                      lector=LectorFalso())
     assert indice.rechazos[0].motivo is Motivo.SIN_RELEASE
+
+
+def test_un_release_sin_paquete_no_se_confunde_con_no_tener_release():
+    """Defecto medido al ejecutar el generador contra la organizacion real: los dos casos daban el
+    mismo motivo, y el equipo del dominio habria buscado un release que si existia."""
+    indice = generar("org", "agent-skills",
+                     github=GithubFalso(["org/agentes-sdlc"], con_paquete=False),
+                     lector=LectorFalso())
+    assert indice.rechazos[0].motivo is Motivo.SIN_PAQUETE
 
 
 def test_sin_repositorios_el_indice_sale_vacio_y_no_falla():

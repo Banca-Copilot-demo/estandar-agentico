@@ -25,6 +25,8 @@ def _reunir_evidencia(repositorio: str, trabajo: Path, github, lector) -> Candid
     if release is None:
         return Motivo.SIN_RELEASE
     etiqueta, sha, nombre_paquete = release
+    if nombre_paquete is None:
+        return Motivo.SIN_PAQUETE
 
     descargado = github.descargar_paquete(repositorio, etiqueta, nombre_paquete, trabajo)
     if descargado is None:

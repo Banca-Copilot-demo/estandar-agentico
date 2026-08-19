@@ -87,6 +87,21 @@ runs:
     # La del VEREDICTO responde "que gates paso y con que resultado". Es informacion NUESTRA:
     # ninguna atestacion nativa de GitHub la cubre. Va como predicado propio y es lo que permite
     # que el indice exija conformidad probada en vez de creerse un campo de un JSON editable.
+    # PREFLIGHT MEDIDO EN LA DEMO. La API de atestaciones NO esta disponible para repositorios
+    # PRIVADOS de una organizacion sin plan pagado: el paso de atestacion falla con
+    # "Feature not available for the <org> organization", y sin este aviso el mensaje aparece
+    # cuatro pasos mas abajo, mezclado con la salida de una accion de terceros.
+    - name: ¿Esta organizacion puede atestar este repositorio?
+      shell: bash
+      continue-on-error: true
+      run: |
+        privado="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.private')"
+        if [ "$privado" = "true" ]; then
+          echo "::notice::repositorio PRIVADO: atestar exige plan Team o Enterprise en la organizacion. En un plan gratuito solo funciona en repositorios publicos."
+        fi
+      env:
+        GH_TOKEN: ${{ github.token }}
+
     - name: Atestacion de procedencia (SLSA Build L3)
       uses: actions/attest-build-provenance@v2
       with:

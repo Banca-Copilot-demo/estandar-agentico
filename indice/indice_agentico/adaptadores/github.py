@@ -47,20 +47,26 @@ def repositorios_del_dominio(organizacion: str, topico: str) -> list[str]:
     return sorted(repo["nameWithOwner"] for repo in json.loads(salida))
 
 
-def ultimo_release(repositorio: str) -> tuple[str, str, str] | None:
-    """Devuelve (etiqueta, sha, nombre del paquete) del ultimo release, o `None`."""
+def ultimo_release(repositorio: str) -> tuple[str, str, str | None] | None:
+    """Devuelve (etiqueta, sha, nombre del paquete) del ultimo release; el paquete es `None` si el
+    release no trae ninguno, y el valor entero es `None` si no hay release.
+
+    LA DISTINCION IMPORTA y no es cosmetica: se midio al ejecutarlo contra la organizacion real. Con
+    un solo `None` para los dos casos, un release que existia pero no traia paquete se reportaba
+    como "no tiene ningun release publicado", y el equipo del dominio se habria puesto a buscar por
+    que no se creo su release -- que si se creo --.
+    """
     salida = _gh("release", "view", "--repo", repositorio,
                  "--json", "tagName,targetCommitish,assets")
     if salida is None:
         return None
     release = json.loads(salida)
-    paquetes = [a["name"] for a in release.get("assets", [])
-                if a["name"].endswith(SUFIJO_PAQUETE)]
+    paquetes = sorted(a["name"] for a in release.get("assets", [])
+                      if a["name"].endswith(SUFIJO_PAQUETE))
     if not paquetes:
         log.warning("%s: el release %s no trae paquete %s",
                     repositorio, release["tagName"], SUFIJO_PAQUETE)
-        return None
-    return release["tagName"], release["targetCommitish"], sorted(paquetes)[0]
+    return release["tagName"], release["targetCommitish"], paquetes[0] if paquetes else None
 
 
 def descargar_paquete(repositorio: str, etiqueta: str, paquete: str, destino: Path) -> Path | None:

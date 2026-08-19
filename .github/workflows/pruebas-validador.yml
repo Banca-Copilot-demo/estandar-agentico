@@ -9,10 +9,10 @@ name: Pruebas del estandar
 # solo hace que la atestacion no pruebe nada.
 on:
   pull_request:
-    paths: ["validador/**", ".github/actions/publicar/**"]
+    paths: ["validador/**", "indice/**", ".github/actions/publicar/**"]
   push:
     branches: [main]
-    paths: ["validador/**", ".github/actions/publicar/**"]
+    paths: ["validador/**", "indice/**", ".github/actions/publicar/**"]
 
 permissions:
   contents: read
@@ -32,13 +32,19 @@ jobs:
         with:
           python-version: ${{ env.VERSION_PYTHON }}
 
-      - name: Instalar el validador y pytest
+      - name: Instalar el validador, el generador del indice y pytest
+        shell: bash
+        run: pip install --quiet -e validador -e indice pytest
+
+      - name: Pruebas del validador
         working-directory: validador
         shell: bash
-        run: pip install --quiet -e . pytest
+        run: python -m pytest tests -q
 
-      - name: Ejecutar las pruebas del dominio
-        working-directory: validador
+      # Estas son las que impiden que entre al indice algo sin atestacion verificada. Si se rompen,
+      # el estandar deja de ser exigible aunque todo lo demas siga en verde.
+      - name: Pruebas del generador del indice
+        working-directory: indice
         shell: bash
         run: python -m pytest tests -q
 
