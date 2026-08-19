@@ -25,15 +25,15 @@ comprobar() {  # comprobar <descripcion> <esperado> <obtenido>
   fi
 }
 
-primero="$("$AQUI/empaquetar.sh" "$RAIZ" "$TRABAJO/a.tar.gz")"
-segundo="$("$AQUI/empaquetar.sh" "$RAIZ" "$TRABAJO/b.tar.gz")"
+primero="$(bash "$AQUI/empaquetar.sh" "$RAIZ" "$TRABAJO/a.tar.gz")"
+segundo="$(bash "$AQUI/empaquetar.sh" "$RAIZ" "$TRABAJO/b.tar.gz")"
 comprobar "dos empaquetados seguidos dan el mismo digest" "$primero" "$segundo"
 
 # Toca las fechas de todo lo versionado: el contenido no cambio, el digest no debe cambiar.
 git -C "$RAIZ" ls-files -z | tr '\0' '\n' | while read -r archivo; do
   touch -d '2001-02-03 04:05:06' "$RAIZ/$archivo"
 done
-tras_tocar="$("$AQUI/empaquetar.sh" "$RAIZ" "$TRABAJO/c.tar.gz")"
+tras_tocar="$(bash "$AQUI/empaquetar.sh" "$RAIZ" "$TRABAJO/c.tar.gz")"
 comprobar "cambiar las fechas de modificacion no cambia el digest" "$primero" "$tras_tocar"
 
 # Cambiar un byte del contenido SI debe cambiar el digest: si no, el sello no probaria nada.
@@ -43,7 +43,7 @@ git clone --quiet --no-hardlinks "$RAIZ" "$copia"
 primer_archivo="$(head -1 "$TRABAJO/versionados")"
 printf '\n<byte de mas>\n' >> "$copia/$primer_archivo"
 git -C "$copia" add -A && git -C "$copia" -c user.email=p@p -c user.name=p commit --quiet -m x
-tras_editar="$("$AQUI/empaquetar.sh" "$copia" "$TRABAJO/d.tar.gz")"
+tras_editar="$(bash "$AQUI/empaquetar.sh" "$copia" "$TRABAJO/d.tar.gz")"
 if [ "$primero" = "$tras_editar" ]; then
   echo "  FALLO editar el contenido debe cambiar el digest (no cambio)"
   fallos=$((fallos + 1))
