@@ -1,0 +1,2 @@
+[console_scripts]
+validar-artefactos = validador_agentico.cli:main

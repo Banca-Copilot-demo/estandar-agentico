@@ -1,0 +1,39 @@
+name: Pruebas del validador
+
+# El validador es el gate de todos los dominios: si se rompe, el estandar deja de ser exigible.
+# Sus pruebas son PURAS -el dominio no toca disco- asi que corren en segundos y sin credenciales.
+
+on:
+  pull_request:
+    paths: ["validador/**"]
+  push:
+    branches: [main]
+    paths: ["validador/**"]
+
+permissions:
+  contents: read
+
+env:
+  VERSION_PYTHON: "3.12"
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repositorio del estandar
+        uses: actions/checkout@v4
+
+      - name: Preparar Python ${{ env.VERSION_PYTHON }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.VERSION_PYTHON }}
+
+      - name: Instalar el validador y pytest
+        working-directory: validador
+        shell: bash
+        run: pip install --quiet -e . pytest
+
+      - name: Ejecutar las pruebas del dominio
+        working-directory: validador
+        shell: bash
+        run: python -m pytest tests -q

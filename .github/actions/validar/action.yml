@@ -4,13 +4,32 @@ description: >
   asi el workflow reutilizable NO tiene que clonar el repositorio del estandar, que con un
   GITHUB_TOKEN acotado al repo del llamador es imposible cuando el estandar es privado.
 
+inputs:
+  version-python:
+    description: Version de Python con la que corre el validador.
+    required: false
+    default: "3.12"
+
 runs:
   using: composite
   steps:
-    # `gh skill publish` es EXCLUSIVO DE SKILLS. Medido el 18-ago-2026: ignora prompts, mcp e
-    # instructions -- da `ok` incluso con un .mcp.json que no es JSON valido -- y FALLA con
-    # "no skills found" si el repositorio no tiene ninguno. Sin esta condicion, un dominio de
-    # solo prompts o solo mcp seria rechazado por el motivo equivocado.
+    - name: Preparar Python ${{ inputs.version-python }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.version-python }}
+
+    # EL CONTRATO ES EL IMPORT, NO LA RUTA. Antes se invocaba el script con
+    # `python ${{ github.action_path }}/../../../validador/validar.py`, y ese `../../../` era
+    # fragil y opaco (Y5). Instalado como paquete, el validador se invoca por su modulo y la
+    # topologia del repositorio del estandar deja de ser parte del contrato.
+    - name: Instalar el validador del estandar
+      shell: bash
+      run: pip install --quiet "${{ github.action_path }}/../../../validador"
+
+    # `gh skill publish` es EXCLUSIVO DE SKILLS. Medido: ignora prompts, mcp e instructions -- da
+    # `ok` incluso con un .mcp.json que no es JSON valido -- y FALLA con "no skills found" si el
+    # repositorio no tiene ninguno. Sin esta condicion, un dominio de solo prompts seria
+    # rechazado por el motivo equivocado.
     - name: ¿Hay skills en el repositorio?
       id: hay
       shell: bash
@@ -38,9 +57,9 @@ runs:
       id: agentico
       shell: bash
       continue-on-error: true
-      run: python "${{ github.action_path }}/../../../validador/validar.py" .
+      run: python -m validador_agentico.cli . --verbose
 
-    - name: Veredicto
+    - name: Veredicto agregado de los gates
       shell: bash
       run: |
         ESPEC='${{ steps.espec.outcome }}'
