@@ -1,6 +1,6 @@
 """G3 · higiene de contenido: que el paquete no lleve dentro nada que no deba salir del banco.
 
-Hoy el unico control de seguridad vigente en el estandar es el escaneo de secretos, asi que este gate no
+Hoy el unico control de seguridad vigente en la organizacion es el escaneo de secretos, asi que este gate no
 compite con nada: es el primer control real que se suma.
 
 LIMITE HONESTO DEL GATE: escanea el PAQUETE PROPIO, no lo que un servidor remoto devuelve en

@@ -15,7 +15,7 @@ VEREDICTO_CONFORME = {"conforme": True, "errores": [], "avisos": []}
 
 
 def _candidato(**cambios) -> Candidato:
-    base = {"repositorio": "Banca-Copilot-demo/agentes-sdlc", "etiqueta": "v0.2.0",
+    base = {"repositorio": "organizacion/agentes-sdlc", "etiqueta": "v0.2.0",
             "sha": "a" * 40, "digest": "b" * 64, "manifiesto": MANIFIESTO,
             "atestacion_verificada": True, "veredicto": VEREDICTO_CONFORME}
     return Candidato(**{**base, **cambios})

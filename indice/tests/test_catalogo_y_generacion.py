@@ -17,7 +17,7 @@ PROPIETARIO = {"name": "Plataforma Agentica (demo)", "email": "plataforma-agenti
 
 def _entrada(name: str, version: str = "0.2.0") -> Entrada:
     return Entrada(name=name, description="d", version=version,
-                   repositorio=f"Banca-Copilot-demo/agentes-{name}", etiqueta=f"v{version}",
+                   repositorio=f"organizacion/agentes-{name}", etiqueta=f"v{version}",
                    sha="c" * 40)
 
 

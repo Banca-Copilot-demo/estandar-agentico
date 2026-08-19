@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 SALIDA_OK = 0
 SALIDA_ERROR = 1
 TOPICO_POR_DEFECTO = "agent-skills"
+NOMBRE_CATALOGO_POR_DEFECTO = "agentico"
 FORMATO_CI = "%(levelname)-8s %(name)s - %(message)s"
 FORMATO_LOCAL = "%(asctime)s %(levelname)-8s %(name)s - %(message)s"
 FORMATO_HORA = "%H:%M:%S"
@@ -44,7 +45,7 @@ def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("organizacion", help="organizacion de GitHub donde viven los dominios")
     parser.add_argument("--topico", default=TOPICO_POR_DEFECTO,
                         help="topico que marca un repositorio de dominio")
-    parser.add_argument("--nombre", default="agentico", help="`name` del catalogo")
+    parser.add_argument("--nombre", default=NOMBRE_CATALOGO_POR_DEFECTO, help="`name` del catalogo")
     parser.add_argument("--equipo", default="Plataforma Agentica (demo)")
     parser.add_argument("--contacto", default="plataforma-agentica@ejemplo.dev")
     parser.add_argument("--version", default="0.1.0", help="version del catalogo")

@@ -1,4 +1,4 @@
-name: Validar artefactos agenticos del estandar
+name: Validar artefactos agenticos
 description: >
   Ejecuta los gates G1, G3 y G4 sobre el repositorio evaluado. Accion COMPUESTA a proposito:
   asi el workflow reutilizable NO tiene que clonar el repositorio del estandar, que con un
@@ -54,7 +54,7 @@ runs:
         GH_TOKEN: ${{ github.token }}
 
     - name: G1 G3 G4 | validador del estandar agentico
-      id: agentico
+      id: estandar
       shell: bash
       continue-on-error: true
       run: python -m validador_agentico.cli . --verbose
@@ -63,7 +63,7 @@ runs:
       shell: bash
       run: |
         ESPEC='${{ steps.espec.outcome }}'
-        el estandar='${{ steps.agentico.outcome }}'
+        ESTANDAR='${{ steps.estandar.outcome }}'
         [ "$ESPEC" = "skipped" ] && ESPEC="no aplica (sin skills)"
         {
           echo "## Veredicto de conformidad"
@@ -71,9 +71,9 @@ runs:
           echo "| Gate | Resultado |"
           echo "|---|---|"
           echo "| Especificacion Agent Skills | $ESPEC |"
-          echo "| Estandar del estandar (G1 G3 G4) | $el estandar |"
+          echo "| Estandar agentico (G1 G3 G4) | $ESTANDAR |"
         } >> "$GITHUB_STEP_SUMMARY"
-        if [ "$el estandar" = "success" ] && { [ "$ESPEC" = "success" ] || [ "$ESPEC" = "no aplica (sin skills)" ]; }; then
+        if [ "$ESTANDAR" = "success" ] && { [ "$ESPEC" = "success" ] || [ "$ESPEC" = "no aplica (sin skills)" ]; }; then
           echo "**CONFORME** | cero consumo de modelo" >> "$GITHUB_STEP_SUMMARY"
           exit 0
         fi

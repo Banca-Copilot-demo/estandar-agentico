@@ -39,7 +39,7 @@ def _configurar_logging(verboso: bool) -> None:
 def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="validar-artefactos",
-        description="Valida artefactos agenticos del estandar: gates G1, G3 y G4. Extiende "
+        description="Valida artefactos agenticos: gates G1, G3 y G4. Extiende "
                     "`gh skill publish --dry-run`, que solo cubre skills.")
     parser.add_argument("raiz", nargs="?", default=".", type=Path,
                         help="raiz del repositorio a validar (por defecto, el directorio actual)")
