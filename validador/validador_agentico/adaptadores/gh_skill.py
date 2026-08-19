@@ -52,7 +52,9 @@ def comprobar(raiz: Path) -> Comprobacion:
                             f"no se pudo ejecutar la herramienta oficial: {error}")
 
     if salida.returncode == 0:
-        return Comprobacion(NOMBRE_COMPROBACION_OFICIAL, Resultado.CONFORME, "los skills cumplen la especificacion")
+        return Comprobacion(NOMBRE_COMPROBACION_OFICIAL, Resultado.CONFORME,
+                            "los skills cumplen la especificacion")
 
     detalle = (salida.stderr or salida.stdout or "sin salida").strip()
-    return Comprobacion(NOMBRE_COMPROBACION_OFICIAL, Resultado.NO_CONFORME, detalle[:_MAX_CARACTERES_DETALLE])
+    return Comprobacion(NOMBRE_COMPROBACION_OFICIAL, Resultado.NO_CONFORME,
+                        detalle[:_MAX_CARACTERES_DETALLE])
