@@ -30,52 +30,20 @@ runs:
     # `ok` incluso con un .mcp.json que no es JSON valido -- y FALLA con "no skills found" si el
     # repositorio no tiene ninguno. Sin esta condicion, un dominio de solo prompts seria
     # rechazado por el motivo equivocado.
-    - name: ¿Hay skills en el repositorio?
-      id: hay
+    # UN SOLO PASO. Antes habia cuatro: deteccion de skills, comprobacion oficial, validador, y un
+    # `if` de bash que agregaba los tres resultados. Ese `if` era una REGLA DE NEGOCIO -- «conforme
+    # cuando ninguna comprobacion aplicable falla» -- viviendo en el unico sitio donde no se puede
+    # probar ni ejecutar en local.
+    #
+    # Ahora la regla es una funcion pura del dominio con sus casos cubiertos, y este paso invoca EL
+    # MISMO COMANDO que el autor corre en su maquina. Eso es lo que hace que un pull request nazca
+    # en verde en vez de rebotar: el gate no tiene una version de CI y otra local.
+    #
+    # La deteccion de skills tambien se fue: el validador ya recorre el repositorio y lleva el
+    # inventario, asi que el `compgen -G "skills/*/SKILL.md"` era una segunda implementacion de algo
+    # que el paquete ya sabia.
+    - name: Gate de conformidad · G1 G3 G4 + especificacion oficial
       shell: bash
-      run: |
-        if compgen -G "skills/*/SKILL.md" > /dev/null || [ -f SKILL.md ]; then
-          echo "skills=si" >> "$GITHUB_OUTPUT"
-        else
-          echo "skills=no" >> "$GITHUB_OUTPUT"
-          echo "Sin skills: se omite la validacion de la especificacion Agent Skills." >> "$GITHUB_STEP_SUMMARY"
-        fi
-
-    # AGREGA, NO FALLA RAPIDO. Medido: con los pasos en serie, el validador oficial encontro 3
-    # errores, aborto, y los gates del estandar -higiene e inventario- NUNCA CORRIERON. El desarrollador
-    # veia 3 de 5 defectos y no se enteraba del token literal que llevaba dentro.
-    - name: G1 | conformidad con la especificacion Agent Skills
-      id: espec
-      if: steps.hay.outputs.skills == 'si'
-      shell: bash
-      continue-on-error: true
-      run: gh skill publish --dry-run
+      run: python -m validador_agentico.cli . --verbose
       env:
         GH_TOKEN: ${{ github.token }}
-
-    - name: G1 G3 G4 | validador del estandar agentico
-      id: estandar
-      shell: bash
-      continue-on-error: true
-      run: python -m validador_agentico.cli . --verbose
-
-    - name: Veredicto agregado de los gates
-      shell: bash
-      run: |
-        ESPEC='${{ steps.espec.outcome }}'
-        ESTANDAR='${{ steps.estandar.outcome }}'
-        [ "$ESPEC" = "skipped" ] && ESPEC="no aplica (sin skills)"
-        {
-          echo "## Veredicto de conformidad"
-          echo
-          echo "| Gate | Resultado |"
-          echo "|---|---|"
-          echo "| Especificacion Agent Skills | $ESPEC |"
-          echo "| Estandar agentico (G1 G3 G4) | $ESTANDAR |"
-        } >> "$GITHUB_STEP_SUMMARY"
-        if [ "$ESTANDAR" = "success" ] && { [ "$ESPEC" = "success" ] || [ "$ESPEC" = "no aplica (sin skills)" ]; }; then
-          echo "**CONFORME** | cero consumo de modelo" >> "$GITHUB_STEP_SUMMARY"
-          exit 0
-        fi
-        echo "**NO CONFORME** | corrige TODO lo listado arriba antes de volver a empujar" >> "$GITHUB_STEP_SUMMARY"
-        exit 1

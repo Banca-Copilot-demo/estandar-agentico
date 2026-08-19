@@ -12,8 +12,8 @@ import os
 import sys
 from pathlib import Path
 
-from validador_agentico.adaptadores import informe
-from validador_agentico.aplicacion.validar_repositorio import validar
+from validador_agentico.adaptadores import gh_skill, informe
+from validador_agentico.aplicacion.ejecutar_gate import ejecutar
 
 log = logging.getLogger(__name__)
 
@@ -39,14 +39,18 @@ def _configurar_logging(verboso: bool) -> None:
 def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="validar-artefactos",
-        description="Valida artefactos agenticos: gates G1, G3 y G4. Extiende "
-                    "`gh skill publish --dry-run`, que solo cubre skills.")
+        description="Ejecuta el gate de conformidad: G1 estructura, G3 higiene y G4 gobierno, "
+                    "mas la comprobacion oficial de la especificacion cuando hay skills. Es el "
+                    "MISMO comando que corre CI, para que un pull request nazca en verde.")
     parser.add_argument("raiz", nargs="?", default=".", type=Path,
                         help="raiz del repositorio a validar (por defecto, el directorio actual)")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="logging de diagnostico en stderr")
     parser.add_argument("--formato", choices=informe.FORMATOS, default=informe.FORMATO_TEXTO,
                         help="`texto` para leerlo; `json` para firmarlo como predicado")
+    parser.add_argument("--sin-comprobacion-oficial", action="store_true",
+                        help="no invoca `gh skill publish --dry-run`. La comprobacion se declara "
+                             "`no aplica` con su motivo: nunca se da por buena en silencio")
     return parser.parse_args(argv)
 
 
@@ -57,9 +61,11 @@ def main(argv: list[str] | None = None) -> int:
     if not raiz.is_dir():
         log.error("la raiz no existe o no es un directorio: %s", raiz)
         return SALIDA_NO_CONFORME
-    veredicto = validar(raiz)
-    informe.imprimir(veredicto, raiz.name, argumentos.formato)
-    return SALIDA_CONFORME if veredicto.conforme else SALIDA_NO_CONFORME
+    # El composition root es el unico que conoce la implementacion concreta del puerto (G5).
+    resultado = ejecutar(raiz, comprobador_oficial=gh_skill,
+                         con_comprobacion_oficial=not argumentos.sin_comprobacion_oficial)
+    informe.imprimir_gate(resultado, raiz.name, argumentos.formato)
+    return SALIDA_CONFORME if resultado.conforme else SALIDA_NO_CONFORME
 
 
 if __name__ == "__main__":

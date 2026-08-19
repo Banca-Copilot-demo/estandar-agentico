@@ -1,0 +1,155 @@
+"""Pruebas del gate: la agregacion y su orquestacion.
+
+POR QUE ESTAS PRUEBAS EXISTEN. Esta regla vivia en un `if` de bash dentro de una accion compuesta,
+donde ninguna prueba la alcanzaba -- y es la regla que decide si un artefacto se publica. Al traerla
+al dominio, los tres resultados quedan cubiertos.
+
+La orquestacion se prueba con un DOBLE INYECTADO del comprobador oficial (T4): ni `gh` instalado, ni
+red, ni parchear modulos.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from validador_agentico.aplicacion.ejecutar_gate import NOMBRE_COMPROBACION_PROPIA, ejecutar
+from validador_agentico.dominio.comprobacion import (
+    Comprobacion,
+    Resultado,
+    ResultadoGate,
+    agrega_conforme,
+)
+from validador_agentico.dominio.hallazgo import Inventario, Veredicto, aviso, error
+
+# Se construye un repositorio MINIMO en disco en vez de apuntar a un repo hermano. Medido: la primera
+# version de estas pruebas apuntaba a `../agentes-sdlc`, que NO EXISTE cuando solo esta clonado el
+# repo del estandar -- como en CI --. Las tres pruebas pasaban contra un directorio inexistente, o
+# sea por el motivo equivocado. Es la misma clase de falso verde que el gate existe para evitar.
+_SKILL_CONFORME = """---
+name: validar-algo
+description: Comprueba algo concreto y se usa cuando alguien lo pide.
+metadata:
+  id: demo.sdlc.ejemplo
+  owner_team: squad-sdlc
+  owner_contact: squad-sdlc@ejemplo.dev
+  status: draft
+  version: 1.0.0
+  data_classification: internal
+  standard_version: 7.0.0
+---
+
+# Validar algo
+
+Cuerpo del skill.
+"""
+
+
+def _repositorio_minimo(raiz: Path) -> Path:
+    """Un repositorio con un unico skill conforme y sin plugin: el caso mas simple que el gate
+    considera CONFORME (la ausencia de plugin es solo un aviso)."""
+    directorio = raiz / "skills" / "validar-algo"
+    directorio.mkdir(parents=True)
+    (directorio / "SKILL.md").write_text(_SKILL_CONFORME, encoding="utf-8")
+    return raiz
+
+
+def _comprobacion(resultado: Resultado, nombre: str = "x") -> Comprobacion:
+    return Comprobacion(nombre, resultado, "detalle")
+
+
+# ── la agregacion, pura ────────────────────────────────────────────────────────────────────
+def test_todas_conformes_agrega_conforme():
+    assert agrega_conforme((_comprobacion(Resultado.CONFORME),
+                            _comprobacion(Resultado.CONFORME, "y")))
+
+
+def test_una_sola_no_conforme_tumba_el_gate():
+    assert not agrega_conforme((_comprobacion(Resultado.CONFORME),
+                                _comprobacion(Resultado.NO_CONFORME, "y")))
+
+
+def test_no_aplica_no_bloquea():
+    """El defecto que cubre: con dos estados en vez de tres, un dominio de SOLO PROMPTS quedaria
+    rechazado porque la herramienta oficial falla con «no skills found» -- el motivo equivocado."""
+    assert agrega_conforme((_comprobacion(Resultado.CONFORME),
+                            _comprobacion(Resultado.NO_APLICA, "y")))
+
+
+def test_no_aplica_sola_tambien_es_conforme():
+    assert agrega_conforme((_comprobacion(Resultado.NO_APLICA),))
+
+
+def test_sin_comprobaciones_no_hay_nada_que_bloquee():
+    # Documenta el caso limite a proposito: si algun dia el gate se queda sin comprobaciones, la
+    # funcion NO lo declara fallido -- quien construye la lista es responsable de que no este vacia.
+    assert agrega_conforme(())
+
+
+def test_solo_no_conforme_bloquea_y_los_otros_dos_no():
+    for resultado, esperado in ((Resultado.CONFORME, False),
+                                (Resultado.NO_APLICA, False),
+                                (Resultado.NO_CONFORME, True)):
+        assert _comprobacion(resultado).bloquea is esperado, resultado
+
+
+# ── el resultado del gate ──────────────────────────────────────────────────────────────────
+def test_el_gate_no_es_conforme_si_su_comprobacion_propia_falla():
+    veredicto = Veredicto(hallazgos=(error("x", "falta description"),), inventario=Inventario())
+    resultado = ResultadoGate(veredicto=veredicto,
+                              comprobaciones=(_comprobacion(Resultado.NO_CONFORME),))
+    assert not resultado.conforme
+
+
+def test_un_aviso_no_tumba_el_gate():
+    veredicto = Veredicto(hallazgos=(aviso("x", "el cuerpo es largo"),), inventario=Inventario())
+    resultado = ResultadoGate(veredicto=veredicto,
+                              comprobaciones=(_comprobacion(Resultado.CONFORME),))
+    assert resultado.conforme
+
+
+# ── la orquestacion, con doble inyectado ───────────────────────────────────────────────────
+class ComprobadorFalso:
+    """Doble del comprobador oficial. Registra si se le llamo, que es la mitad de lo que hay que
+    comprobar: el gate no debe invocar la herramienta cuando esta desactivada."""
+
+    def __init__(self, resultado: Resultado):
+        self._resultado = resultado
+        self.llamadas = 0
+
+    def comprobar(self, raiz: Path) -> Comprobacion:
+        self.llamadas += 1
+        return Comprobacion("oficial", self._resultado, "detalle del doble")
+
+
+def test_el_gate_lee_de_verdad_el_repositorio_que_recibe(tmp_path):
+    """Ancla las demas: si el inventario no refleja el skill del fixture, el gate no leyo nada y
+    cualquier otra asercion sobre el seria vacia."""
+    resultado = ejecutar(_repositorio_minimo(tmp_path),
+                         comprobador_oficial=ComprobadorFalso(Resultado.CONFORME))
+    assert resultado.veredicto.inventario.skills == 1
+
+
+def test_el_gate_agrega_las_dos_comprobaciones(tmp_path):
+    doble = ComprobadorFalso(Resultado.CONFORME)
+    resultado = ejecutar(_repositorio_minimo(tmp_path), comprobador_oficial=doble)
+    assert [c.nombre for c in resultado.comprobaciones] == [NOMBRE_COMPROBACION_PROPIA, "oficial"]
+    assert doble.llamadas == 1
+    assert resultado.conforme
+
+
+def test_si_la_oficial_falla_el_gate_falla_aunque_lo_nuestro_este_verde(tmp_path):
+    doble = ComprobadorFalso(Resultado.NO_CONFORME)
+    resultado = ejecutar(_repositorio_minimo(tmp_path), comprobador_oficial=doble)
+    assert resultado.veredicto.conforme
+    assert not resultado.conforme
+
+
+def test_desactivarla_no_la_invoca_y_deja_su_motivo_escrito(tmp_path):
+    """Desactivar no es dar por buena: queda como `no aplica` con el motivo, para que nadie lea el
+    informe y crea que la comprobacion oficial paso."""
+    doble = ComprobadorFalso(Resultado.NO_CONFORME)
+    resultado = ejecutar(_repositorio_minimo(tmp_path), comprobador_oficial=doble,
+                         con_comprobacion_oficial=False)
+    assert doble.llamadas == 0
+    oficial = resultado.comprobaciones[-1]
+    assert oficial.resultado is Resultado.NO_APLICA
+    assert "--sin-comprobacion-oficial" in oficial.detalle

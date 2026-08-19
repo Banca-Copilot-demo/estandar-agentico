@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 
+from validador_agentico.dominio.comprobacion import Comprobacion, ResultadoGate
 from validador_agentico.dominio.hallazgo import Hallazgo, Severidad, Veredicto
 
 _ANCHO_SEVERIDAD = 5
@@ -43,6 +44,12 @@ def _linea_de_veredicto(veredicto: Veredicto) -> str:
     estado = "CONFORME" if veredicto.conforme else "NO CONFORME"
     return (f"Veredicto: {estado} - {len(veredicto.errores)} error(es), "
             f"{len(veredicto.avisos)} aviso(s)")
+
+
+def _tabla_de_comprobaciones(comprobaciones: tuple[Comprobacion, ...]) -> list[str]:
+    """El RESUMEN del gate. Va antes del detalle porque responde la unica pregunta que el autor
+    tiene al abrir el registro: que comprobacion le bloquea."""
+    return [f"  {c.resultado.value:12}  {c.nombre} - {c.detalle}" for c in comprobaciones]
 
 
 def render(veredicto: Veredicto, nombre_repositorio: str) -> str:
@@ -80,6 +87,22 @@ def render_json(veredicto: Veredicto, nombre_repositorio: str) -> str:
     return json.dumps(predicado, indent=_SANGRIA_JSON, sort_keys=True, ensure_ascii=False)
 
 
-def imprimir(veredicto: Veredicto, nombre_repositorio: str, formato: str = FORMATO_TEXTO) -> None:
-    renderizar = render_json if formato == FORMATO_JSON else render
-    print(renderizar(veredicto, nombre_repositorio))
+def render_gate(resultado: ResultadoGate, nombre_repositorio: str) -> str:
+    """Informe del gate completo: primero que comprobaciones pasaron, luego el detalle de los
+    hallazgos, y al final el veredicto agregado."""
+    partes = [f"Gate de conformidad - {nombre_repositorio}", ""]
+    partes += _tabla_de_comprobaciones(resultado.comprobaciones)
+    partes += ["", render(resultado.veredicto, nombre_repositorio), ""]
+    estado = "CONFORME" if resultado.conforme else "NO CONFORME"
+    partes.append(f"Gate: {estado}")
+    if not resultado.conforme:
+        partes.append("Corrige TODO lo listado arriba antes de volver a empujar.")
+    return "\n".join(partes)
+
+
+def imprimir_gate(resultado: ResultadoGate, nombre_repositorio: str,
+                  formato: str = FORMATO_TEXTO) -> None:
+    if formato == FORMATO_JSON:
+        print(render_json(resultado.veredicto, nombre_repositorio))
+        return
+    print(render_gate(resultado, nombre_repositorio))
