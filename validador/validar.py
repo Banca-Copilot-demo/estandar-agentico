@@ -39,10 +39,6 @@ ENVELOPE = {
 ESTADOS = {"draft", "conformant", "certified", "deprecated", "retired"}
 CLASIFICACIONES = {"public", "internal", "confidential", "restricted"}
 
-# Un plugin es OPCIONAL salvo para estos casos, donde hace falta poder bloquearlo
-# centralmente con enabledPlugins: mcp, hooks, y datos sensibles.
-EXIGE_PLUGIN = {"confidential", "restricted"}
-
 TECHO_TIMEOUT_S = 10          # techo del `timeoutSec` de un hook
 EVENTO_SENSIBLE = "userPromptSubmitted"   # ve TODO lo que el desarrollador escribe
 
@@ -301,7 +297,7 @@ def main() -> int:
 
     man = manifiesto(raiz)
     gob = gobierno(raiz, man)
-    n_skills, clasifs = revisar_skills(raiz)
+    n_skills, _clasifs = revisar_skills(raiz)
     n_prompts = revisar_prompts(raiz)
     n_agents = len(list((raiz / "agents").glob("*.agent.md"))) if (raiz / "agents").is_dir() else 0
     n_hooks = revisar_hooks(raiz, (gob or {}).get("artifacts") or {})
@@ -311,23 +307,14 @@ def main() -> int:
         inventario(gob, {"skills": n_skills, "agents": n_agents, "prompts": n_prompts})
     higiene(raiz)
 
-    # El plugin es OPCIONAL, salvo cuando hace falta poder bloquearlo centralmente.
+    # EL PLUGIN ES OPCIONAL, SIEMPRE. Es una decision de EMPAQUETADO, no de riesgo: ningun tipo
+    # lo exige por ser peligroso, porque el riesgo de cada uno lo cubre otro control que funciona
+    # con plugin o sin el -- allowedMcpServers y los scopes de la credencial para `mcp`, el
+    # CODEOWNERS de seguridad para `hooks`, y G3 mas los permisos del repo para datos sensibles.
     if man is None:
-        motivos = []
-        if n_mcp:
-            motivos.append("contiene un `mcp`")
-        if n_hooks:
-            motivos.append("contiene `hooks`")
-        if clasifs & EXIGE_PLUGIN:
-            motivos.append(f"clasificacion {sorted(clasifs & EXIGE_PLUGIN)}")
-        if motivos:
-            anotar(ERROR, "plugin.json",
-                   "no existe, y aqui es obligatorio porque " + " y ".join(motivos) +
-                   ": hace falta poder bloquearlo con enabledPlugins")
-        else:
-            anotar(AVISO, "plugin.json",
-                   "sin plugin: los artefactos quedan gobernados por su propia metadata, pero "
-                   "NO entran al marketplace ni se pueden bloquear centralmente")
+        anotar(AVISO, "plugin.json",
+               "sin plugin: los artefactos quedan gobernados por su propia metadata, pero "
+               "NO entran al marketplace ni se instalan como conjunto")
 
     errores = [h for h in hallazgos if h[0] == ERROR]
     avisos = [h for h in hallazgos if h[0] == AVISO]

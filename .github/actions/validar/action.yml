@@ -7,13 +7,27 @@ description: >
 runs:
   using: composite
   steps:
-    # AGREGA, NO FALLA RAPIDO. Medido el 18-ago-2026: con los pasos en serie, el validador
-    # oficial encontro 3 errores, aborto, y los gates del estandar -higiene de contenido e
-    # inventario- NUNCA CORRIERON. El desarrollador veia 3 de 5 defectos y necesitaba dos
-    # rondas para enterarse del token literal que llevaba dentro. Por eso los dos pasos
-    # llevan continue-on-error y el veredicto se emite al final.
+    # `gh skill publish` es EXCLUSIVO DE SKILLS. Medido el 18-ago-2026: ignora prompts, mcp e
+    # instructions -- da `ok` incluso con un .mcp.json que no es JSON valido -- y FALLA con
+    # "no skills found" si el repositorio no tiene ninguno. Sin esta condicion, un dominio de
+    # solo prompts o solo mcp seria rechazado por el motivo equivocado.
+    - name: ¿Hay skills en el repositorio?
+      id: hay
+      shell: bash
+      run: |
+        if compgen -G "skills/*/SKILL.md" > /dev/null || [ -f SKILL.md ]; then
+          echo "skills=si" >> "$GITHUB_OUTPUT"
+        else
+          echo "skills=no" >> "$GITHUB_OUTPUT"
+          echo "Sin skills: se omite la validacion de la especificacion Agent Skills." >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    # AGREGA, NO FALLA RAPIDO. Medido: con los pasos en serie, el validador oficial encontro 3
+    # errores, aborto, y los gates del estandar -higiene e inventario- NUNCA CORRIERON. El desarrollador
+    # veia 3 de 5 defectos y no se enteraba del token literal que llevaba dentro.
     - name: G1 | conformidad con la especificacion Agent Skills
       id: espec
+      if: steps.hay.outputs.skills == 'si'
       shell: bash
       continue-on-error: true
       run: gh skill publish --dry-run
@@ -31,6 +45,7 @@ runs:
       run: |
         ESPEC='${{ steps.espec.outcome }}'
         el estandar='${{ steps.agentico.outcome }}'
+        [ "$ESPEC" = "skipped" ] && ESPEC="no aplica (sin skills)"
         {
           echo "## Veredicto de conformidad"
           echo
@@ -39,7 +54,7 @@ runs:
           echo "| Especificacion Agent Skills | $ESPEC |"
           echo "| Estandar del estandar (G1 G3 G4) | $el estandar |"
         } >> "$GITHUB_STEP_SUMMARY"
-        if [ "$ESPEC" = "success" ] && [ "$el estandar" = "success" ]; then
+        if [ "$el estandar" = "success" ] && { [ "$ESPEC" = "success" ] || [ "$ESPEC" = "no aplica (sin skills)" ]; }; then
           echo "**CONFORME** | cero consumo de modelo" >> "$GITHUB_STEP_SUMMARY"
           exit 0
         fi
