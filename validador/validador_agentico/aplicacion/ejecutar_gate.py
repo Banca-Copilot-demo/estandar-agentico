@@ -43,7 +43,9 @@ def _comprobacion_propia(veredicto: Veredicto) -> Comprobacion:
 
 
 def ejecutar(raiz: Path, *, comprobador_oficial=gh_skill,
-             con_comprobacion_oficial: bool = True) -> ResultadoGate:
+             con_comprobacion_oficial: bool = True,
+             equipos_conocidos: frozenset[str] | None = None,
+             archivos_cambiados: tuple[str, ...] | None = None) -> ResultadoGate:
     """Corre TODAS las comprobaciones y agrega al final.
 
     `con_comprobacion_oficial=False` existe para poder correr el gate sin salir a un proceso
@@ -51,7 +53,8 @@ def ejecutar(raiz: Path, *, comprobador_oficial=gh_skill,
     comprobacion que no se ejecuta se declara `NO_APLICA` con su motivo, nunca se da por buena en
     silencio.
     """
-    veredicto = validar(raiz)
+    veredicto = validar(raiz, equipos_conocidos=equipos_conocidos,
+                        archivos_cambiados=archivos_cambiados)
     comprobaciones = [_comprobacion_propia(veredicto)]
 
     if con_comprobacion_oficial:

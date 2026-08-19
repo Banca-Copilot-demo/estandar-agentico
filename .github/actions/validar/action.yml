@@ -46,9 +46,20 @@ runs:
     # SOBRE su linea en el diff del pull request, en vez de obligar al autor a leer el registro,
     # buscar la ruta y abrir el archivo. Son comandos de workflow por stdout, asi que NO necesitan
     # ningun permiso ni llamada a la API.
+    # `--organizacion` activa G4 de verdad: resuelve `owner_team` contra los equipos REALES. Sin
+    # esto el dueno declarado es texto libre y el gate solo comprueba que el campo exista.
+    #
+    # `--rama-base` activa la regla de que un pull request no mezcle artefactos con firmantes
+    # distintos. Solo se pasa cuando ESTO ES un pull request: en un push a main no hay base contra
+    # la que comparar, y la regla no aplica.
     - name: Gate de conformidad · G1 G3 G4 + especificacion oficial
       shell: bash
       run: |
-        python -m validador_agentico.cli .           --anotaciones           --escribir-resumen "$GITHUB_STEP_SUMMARY"           --verbose
+        base=""
+        if [ -n "${GITHUB_BASE_REF:-}" ]; then
+          git fetch --quiet --depth=1 origin "${GITHUB_BASE_REF}"
+          base="--rama-base origin/${GITHUB_BASE_REF}"
+        fi
+        python -m validador_agentico.cli .           --organizacion "${GITHUB_REPOSITORY_OWNER}"           $base           --anotaciones           --escribir-resumen "$GITHUB_STEP_SUMMARY"           --verbose
       env:
         GH_TOKEN: ${{ github.token }}

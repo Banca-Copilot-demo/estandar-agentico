@@ -15,15 +15,20 @@ from pathlib import Path
 from validador_agentico.adaptadores import frontmatter as adaptador_frontmatter
 from validador_agentico.adaptadores import repositorio as adaptador_repositorio
 from validador_agentico.adaptadores.repositorio import ArchivoJson, ContenidoRepositorio
-from validador_agentico.dominio import reglas_higiene, reglas_hooks, reglas_plugin
-from validador_agentico.dominio import reglas_artefacto
+from validador_agentico.dominio import reglas_aprobacion, reglas_higiene, reglas_hooks
+from validador_agentico.dominio import reglas_artefacto, reglas_plugin
 from validador_agentico.dominio.hallazgo import Hallazgo, Inventario, Veredicto, error
 
 log = logging.getLogger(__name__)
 
 
 def validar(raiz: Path, *, lector=adaptador_frontmatter,
-            repositorio=adaptador_repositorio) -> Veredicto:
+            repositorio=adaptador_repositorio,
+            equipos_conocidos: frozenset[str] | None = None,
+            archivos_cambiados: tuple[str, ...] | None = None) -> Veredicto:
+    """`equipos_conocidos` y `archivos_cambiados` llegan como DATOS y no como adaptadores: son
+    contexto que el composition root resuelve una sola vez. Los dos admiten `None`, que significa
+    «no se pudo averiguar» y produce un aviso -- nunca un pase silencioso."""
     contenido = repositorio.leer(raiz, lector)
     inventario = _construir_inventario(contenido)
     hallazgos = [
@@ -33,6 +38,8 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
         *_revisar_prompts(contenido),
         *_revisar_hooks(contenido),
         *_revisar_higiene(contenido),
+        *_revisar_duenos(contenido, equipos_conocidos),
+        *_revisar_mezcla(archivos_cambiados),
     ]
     log.info("%d hallazgo(s) en %s", len(hallazgos), raiz.name)
     return Veredicto(hallazgos=tuple(hallazgos), inventario=inventario)
@@ -113,3 +120,35 @@ def _revisar_higiene(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     for ruta_relativa, texto in contenido.archivos_escaneables:
         hallazgos += reglas_higiene.revisar_higiene(ruta_relativa, texto)
     return hallazgos
+
+
+def _equipos_declarados(contenido: ContenidoRepositorio) -> list[tuple[str, str]]:
+    """Todos los `owner_team` del repositorio, con donde se declaro cada uno."""
+    declarados: list[tuple[str, str]] = []
+    if contenido.gobierno is not None and contenido.gobierno.es_legible:
+        equipo = (contenido.gobierno.contenido.get("owner") or {}).get("team")
+        if equipo:
+            declarados.append((contenido.gobierno.ruta_relativa, equipo))
+    for artefacto in (*contenido.skills, *contenido.prompts):
+        metadata = (artefacto.frontmatter or {}).get("metadata") or {}
+        equipo = metadata.get("owner_team")
+        if equipo:
+            declarados.append((artefacto.ruta_relativa, equipo))
+    return declarados
+
+
+def _revisar_duenos(contenido: ContenidoRepositorio,
+                    equipos_conocidos: frozenset[str] | None) -> list[Hallazgo]:
+    hallazgos: list[Hallazgo] = []
+    for donde, equipo in _equipos_declarados(contenido):
+        hallazgos += reglas_aprobacion.revisar_equipo_resoluble(donde, equipo, equipos_conocidos)
+    return hallazgos
+
+
+def _revisar_mezcla(archivos_cambiados: tuple[str, ...] | None) -> list[Hallazgo]:
+    """Sin la lista de cambios no se puede comprobar la mezcla. No se avisa aqui: fuera de un pull
+    request -- una validacion local del arbol completo -- la regla NO APLICA, y un aviso en cada
+    ejecucion local ensenaria a ignorarlo."""
+    if archivos_cambiados is None:
+        return []
+    return reglas_aprobacion.revisar_mezcla_de_aprobadores(archivos_cambiados)

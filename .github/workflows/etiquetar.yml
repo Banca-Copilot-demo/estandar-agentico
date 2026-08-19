@@ -1,0 +1,97 @@
+name: Etiquetar la version
+
+# WORKFLOW REUTILIZABLE. Lo invocan los repositorios de dominio al mergear a main.
+#
+# QUE RESUELVE: la etiqueta era el unico numero que una persona teclea a mano, y ya estaba declarado
+# en el manifiesto y revisado en el pull request. Teclearlo dos veces solo anade un sitio donde
+# equivocarse -- y con releases inmutables, un release publicado con la etiqueta equivocada NO se
+# puede borrar.
+#
+# POR QUE NECESITA EL TOKEN DE LA APP Y NO LE BASTA EL GITHUB_TOKEN: esta MEDIDO en la documentacion
+# de GitHub -- «events triggered by the GITHUB_TOKEN will not create a new workflow run» --. Una
+# etiqueta empujada con el GITHUB_TOKEN NO dispararia `publicar.yml`, asi que el artefacto quedaria
+# etiquetado y sin publicar, en silencio. Con el token de la App el evento si propaga.
+
+on:
+  workflow_call:
+    secrets:
+      app-id:
+        description: App ID de la App del ciclo de vida.
+        required: true
+      app-key:
+        description: Clave privada de esa App.
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  etiquetar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Token de la App, para que la etiqueta SI dispare la publicacion
+        id: token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.app-id }}
+          private-key: ${{ secrets.app-key }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Descargar el repositorio con su historial de etiquetas
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.token.outputs.token }}
+
+      # LA VERSION DEL PAQUETE, no la de cada artefacto. El orden de las fuentes es deliberado: el
+      # manifiesto del plugin manda cuando existe, porque es lo que el marketplace resuelve; y un
+      # repositorio de artefactos SUELTOS la declara en su GOVERNANCE.json.
+      - name: Resolver la version del paquete
+        id: version
+        run: |
+          if [ -f .claude-plugin/plugin.json ]; then
+            version="$(jq -r '.version // empty' .claude-plugin/plugin.json)"
+            fuente=".claude-plugin/plugin.json"
+          elif [ -f GOVERNANCE.json ]; then
+            version="$(jq -r '.version // empty' GOVERNANCE.json)"
+            fuente="GOVERNANCE.json"
+          fi
+          if [ -z "${version:-}" ]; then
+            echo "::error::no hay version de paquete que etiquetar. Declarala en .claude-plugin/plugin.json o en GOVERNANCE.json"
+            exit 1
+          fi
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::la version de $fuente no es SemVer: $version"
+            exit 1
+          fi
+          echo "valor=$version"  >> "$GITHUB_OUTPUT"
+          echo "fuente=$fuente"  >> "$GITHUB_OUTPUT"
+
+      # NO SE REESCRIBE UNA ETIQUETA EXISTENTE. Si la version no subio, no hay nada que publicar:
+      # ese es el mecanismo por el que mergear no publica siempre. Y reescribirla romperia el
+      # contrato de que una etiqueta apunta para siempre al mismo commit.
+      - name: Etiquetar si la version es nueva
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          VERSION: ${{ steps.version.outputs.valor }}
+          FUENTE: ${{ steps.version.outputs.fuente }}
+        run: |
+          etiqueta="v${VERSION}"
+          if git rev-parse -q --verify "refs/tags/${etiqueta}" >/dev/null; then
+            echo "La etiqueta ${etiqueta} ya existe: la version no subio en este merge, no hay nada que publicar." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name  "agentico-ciclo-de-vida[bot]"
+          git config user.email "agentico-ciclo-de-vida[bot]@users.noreply.github.com"
+          git tag -a "${etiqueta}" -m "Version ${VERSION}, declarada en ${FUENTE}"
+          git push origin "${etiqueta}"
+          {
+            echo "## Etiquetado"
+            echo
+            echo "| Qué | Valor |"
+            echo "|---|---|"
+            echo "| Etiqueta | \`${etiqueta}\` |"
+            echo "| Declarada en | \`${FUENTE}\` |"
+            echo
+            echo "La publicación arranca ahora, disparada por esta etiqueta."
+          } >> "$GITHUB_STEP_SUMMARY"
