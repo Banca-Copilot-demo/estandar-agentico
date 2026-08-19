@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import tarfile
+from dataclasses import dataclass
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -26,15 +27,29 @@ def digest(ruta: Path) -> str:
     return resumen.hexdigest()
 
 
-def leer_manifiesto(ruta: Path) -> dict | None:
-    """Devuelve el manifiesto, o `None` si el paquete no lo trae o no es JSON valido."""
+@dataclass(frozen=True)
+class LecturaManifiesto:
+    """AUSENTE e ILEGIBLE son resultados distintos y el consumidor necesita separarlos: un paquete
+    sin plugin es correcto -- se omite del marketplace --, y uno con plugin roto es un defecto que
+    hay que rechazar. Devolver `None` para las dos cosas mezclaba un caso esperado con un fallo."""
+
+    presente: bool
+    contenido: dict | None = None
+
+
+def leer_manifiesto(ruta: Path) -> LecturaManifiesto:
     try:
         with tarfile.open(ruta, "r:gz") as paquete:
-            miembro = paquete.extractfile(RUTA_MANIFIESTO)
+            try:
+                miembro = paquete.extractfile(RUTA_MANIFIESTO)
+            except KeyError:
+                miembro = None
             if miembro is None:
-                log.warning("el paquete %s no contiene %s", ruta.name, RUTA_MANIFIESTO)
-                return None
-            return json.loads(miembro.read().decode("utf-8"))
-    except (KeyError, tarfile.TarError, json.JSONDecodeError, UnicodeDecodeError) as error:
-        log.warning("no se pudo leer %s de %s: %s", RUTA_MANIFIESTO, ruta.name, error)
-        return None
+                log.info("el paquete %s no lleva plugin (%s): no va al marketplace",
+                         ruta.name, RUTA_MANIFIESTO)
+                return LecturaManifiesto(presente=False)
+            return LecturaManifiesto(presente=True,
+                                     contenido=json.loads(miembro.read().decode("utf-8")))
+    except (tarfile.TarError, json.JSONDecodeError, UnicodeDecodeError) as error:
+        log.warning("%s lleva %s pero no se pudo leer: %s", ruta.name, RUTA_MANIFIESTO, error)
+        return LecturaManifiesto(presente=True)

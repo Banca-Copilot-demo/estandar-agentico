@@ -55,7 +55,13 @@ def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _informar_rechazos(indice) -> None:
+def _informar_descartes(indice: Indice) -> None:
+    """Las omisiones se informan como INFO y los rechazos como WARNING, y esa diferencia es el
+    punto: una omision es el estandar funcionando -- el plugin es opcional --, mientras que un
+    rechazo es algo publicado mal. Con el mismo nivel, el equipo del dominio buscaria un defecto
+    donde no hay ninguno."""
+    for omision in indice.omisiones:
+        log.info("no va al marketplace %s: %s", omision.repositorio, omision.motivo.value)
     for rechazo in indice.rechazos:
         log.warning("FUERA DEL INDICE %s: %s", rechazo.repositorio, rechazo.motivo.value)
 
@@ -78,7 +84,11 @@ def escribir(indice: Indice, salida: Path, contenido: str) -> int:
     # repositorio y no ve los dominios privados. Sin distinguir los dos casos, ese fallo de
     # credencial se leia como "nada paso las comprobaciones", y habria mandado a revisar los gates
     # de los dominios en vez de el token.
-    if indice.rechazos:
+    if indice.omisiones and not indice.rechazos:
+        log.error("los %d repositorio(s) descubiertos son artefactos SUELTOS, sin plugin: no hay "
+                  "nada que indexar. No es un fallo -- pero tampoco se sobreescribe un catalogo "
+                  "que si tenia entradas", len(indice.omisiones))
+    elif indice.rechazos:
         log.error("se descubrieron %d repositorio(s) y NINGUNO paso las comprobaciones: revisa los "
                   "motivos de arriba", len(indice.rechazos))
     else:
@@ -94,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
     _configurar_logging(argumentos.verbose)
 
     indice = generar(argumentos.organizacion, argumentos.topico)
-    _informar_rechazos(indice)
+    _informar_descartes(indice)
 
     propietario = {"name": argumentos.equipo, "email": argumentos.contacto}
     contenido = catalogo.render(indice, argumentos.nombre, propietario, argumentos.version)

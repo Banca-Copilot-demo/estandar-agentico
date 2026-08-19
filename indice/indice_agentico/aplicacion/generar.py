@@ -14,7 +14,14 @@ from tempfile import TemporaryDirectory
 
 from indice_agentico.adaptadores import github as adaptador_github
 from indice_agentico.adaptadores import paquete as adaptador_paquete
-from indice_agentico.dominio.candidato import Candidato, Entrada, Indice, Motivo, Rechazo
+from indice_agentico.dominio.candidato import (
+    Candidato,
+    Descarte,
+    Destino,
+    Entrada,
+    Indice,
+    Motivo,
+)
 from indice_agentico.dominio.reglas_indice import evaluar
 
 log = logging.getLogger(__name__)
@@ -32,12 +39,20 @@ def _reunir_evidencia(repositorio: str, trabajo: Path, github, lector) -> Candid
     if descargado is None:
         return Motivo.SIN_PAQUETE
 
+    lectura = lector.leer_manifiesto(descargado)
+    # Sin plugin no se consulta la atestacion: el candidato se va a omitir de todas formas, y cada
+    # verificacion es una llamada a `gh` que tarda.
+    if not lectura.presente:
+        return Candidato(repositorio=repositorio, etiqueta=etiqueta, sha=sha,
+                         digest=lector.digest(descargado), lleva_plugin=False)
+
     return Candidato(
         repositorio=repositorio,
         etiqueta=etiqueta,
         sha=sha,
         digest=lector.digest(descargado),
-        manifiesto=lector.leer_manifiesto(descargado),
+        lleva_plugin=True,
+        manifiesto=lectura.contenido,
         atestacion_verificada=github.verificar_atestacion(descargado, repositorio),
         veredicto=github.veredicto_atestado(descargado, repositorio),
     )
@@ -50,19 +65,24 @@ def generar(organizacion: str, topico: str, *, github=adaptador_github,
              len(repositorios), topico, organizacion)
 
     entradas: list[Entrada] = []
-    rechazos: list[Rechazo] = []
+    omisiones: list[Descarte] = []
+    rechazos: list[Descarte] = []
     with TemporaryDirectory() as temporal:
         trabajo = Path(temporal)
         for repositorio in repositorios:
             evidencia = _reunir_evidencia(repositorio, trabajo, github, lector)
             if isinstance(evidencia, Motivo):
-                rechazos.append(Rechazo(repositorio, evidencia))
+                rechazos.append(Descarte(repositorio, evidencia))
                 continue
-            entrada, motivo = evaluar(evidencia)
-            if entrada is None:
-                rechazos.append(Rechazo(repositorio, motivo))
-                continue
-            entradas.append(entrada)
+            decision = evaluar(evidencia)
+            if decision.destino is Destino.INDEXAR:
+                entradas.append(decision.entrada)
+            elif decision.destino is Destino.OMITIR:
+                omisiones.append(Descarte(repositorio, decision.motivo))
+            else:
+                rechazos.append(Descarte(repositorio, decision.motivo))
 
-    log.info("%d indexado(s), %d rechazado(s)", len(entradas), len(rechazos))
-    return Indice(entradas=tuple(entradas), rechazos=tuple(rechazos))
+    log.info("%d indexado(s), %d omitido(s) sin plugin, %d rechazado(s)",
+             len(entradas), len(omisiones), len(rechazos))
+    return Indice(entradas=tuple(entradas), omisiones=tuple(omisiones),
+                  rechazos=tuple(rechazos))

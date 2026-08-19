@@ -9,8 +9,9 @@ import json
 from pathlib import Path
 
 from indice_agentico.adaptadores import catalogo
+from indice_agentico.adaptadores.paquete import LecturaManifiesto
 from indice_agentico.aplicacion.generar import generar
-from indice_agentico.dominio.candidato import Entrada, Indice, Motivo, Rechazo
+from indice_agentico.dominio.candidato import Descarte, Entrada, Indice, Motivo
 
 PROPIETARIO = {"name": "Plataforma Agentica (demo)", "email": "plataforma-agentica@ejemplo.dev"}
 
@@ -80,11 +81,21 @@ class GithubFalso:
 
 
 class LectorFalso:
+    """Doble del lector del paquete. `lleva_plugin=False` simula un artefacto SUELTO, que es el caso
+    que el marketplace omite en vez de rechazar."""
+
+    def __init__(self, *, lleva_plugin: bool = True):
+        self._lleva_plugin = lleva_plugin
+
     def digest(self, ruta):
         return "e" * 64
 
     def leer_manifiesto(self, ruta):
-        return {"name": "migracion-cnf", "description": "d", "version": "0.2.0"}
+        if not self._lleva_plugin:
+            return LecturaManifiesto(presente=False)
+        return LecturaManifiesto(
+            presente=True,
+            contenido={"name": "migracion-cnf", "description": "d", "version": "0.2.0"})
 
 
 def test_un_dominio_sellado_entra_al_indice():
@@ -101,7 +112,7 @@ def test_un_dominio_sin_sellar_se_rechaza_sin_tumbar_la_generacion():
                      github=GithubFalso(["org/agentes-sdlc"], sellado=False),
                      lector=LectorFalso())
     assert indice.entradas == ()
-    assert indice.rechazos == (Rechazo("org/agentes-sdlc", Motivo.SIN_ATESTACION),)
+    assert indice.rechazos == (Descarte("org/agentes-sdlc", Motivo.SIN_ATESTACION),)
 
 
 def test_un_repositorio_sin_releases_se_rechaza_por_ese_motivo_y_no_por_otro():
@@ -120,9 +131,47 @@ def test_un_release_sin_paquete_no_se_confunde_con_no_tener_release():
     assert indice.rechazos[0].motivo is Motivo.SIN_PAQUETE
 
 
+def test_un_artefacto_suelto_se_omite_y_no_cuenta_como_rechazo(tmp_path):
+    """Lo que motivo la distincion: el plugin es opcional, asi que un artefacto suelto NO es un
+    error de publicacion. Si contara como rechazo, el resumen del indice reportaria defectos
+    inexistentes cada vez que un dominio publica un skill suelto."""
+    indice = generar("org", "agent-skills",
+                     github=GithubFalso(["org/skill-suelto"]),
+                     lector=LectorFalso(lleva_plugin=False))
+    assert indice.entradas == ()
+    assert indice.rechazos == ()
+    assert indice.omisiones == (Descarte("org/skill-suelto", Motivo.SIN_PLUGIN),)
+
+
+def test_un_suelto_y_un_plugin_conviven_en_la_misma_pasada():
+    """El caso realista: la organizacion tiene de los dos. El plugin entra al marketplace y el
+    suelto se omite, sin que ninguno afecte al otro."""
+    class LectorMixto:
+        def digest(self, ruta):
+            return "e" * 64
+
+        def leer_manifiesto(self, ruta):
+            lleva = "con-plugin" in str(ruta)
+            return LecturaManifiesto(
+                presente=lleva,
+                contenido={"name": "migracion-cnf", "description": "d",
+                           "version": "0.2.0"} if lleva else None)
+
+    class GithubMixto(GithubFalso):
+        def descargar_paquete(self, repositorio, etiqueta, paquete, destino):
+            return Path(destino) / f"{repositorio.split('/')[-1]}.tar.gz"
+
+    indice = generar("org", "agent-skills",
+                     github=GithubMixto(["org/con-plugin", "org/suelto"]),
+                     lector=LectorMixto())
+    assert [e.name for e in indice.entradas] == ["migracion-cnf"]
+    assert [o.repositorio for o in indice.omisiones] == ["org/suelto"]
+    assert indice.rechazos == ()
+
+
 def test_sin_repositorios_el_indice_sale_vacio_y_no_falla():
     indice = generar("org", "agent-skills", github=GithubFalso([]), lector=LectorFalso())
-    assert indice == Indice((), ())
+    assert indice == Indice((), (), ())
 
 
 # ── el guardarail de escritura ─────────────────────────────────────────────────────────────
