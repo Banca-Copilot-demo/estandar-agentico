@@ -15,6 +15,11 @@
 # La lista de archivos sale de `git ls-files`, no del directorio: asi solo entra lo versionado
 # —nunca un `.venv`, un `__pycache__` ni un archivo a medias— y el contenido del paquete es
 # exactamente el que se reviso en el pull request.
+# LIMITE CONOCIDO: el paquete se arma con el contenido del ARBOL DE TRABAJO, asi que los finales
+# de linea forman parte del digest. Por eso todo repositorio de dominio lleva `.gitattributes` con
+# `* text=auto eol=lf`: sin eso, empaquetar el mismo commit en Windows y en Linux daria digests
+# distintos. El empaquetado de verdad ocurre siempre en CI, donde el checkout es limpio.
+
 set -euo pipefail
 
 readonly RAIZ="${1:?falta la raiz del repositorio}"
