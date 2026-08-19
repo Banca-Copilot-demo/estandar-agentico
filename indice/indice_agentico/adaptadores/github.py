@@ -14,6 +14,17 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 TIPO_PREDICADO_VEREDICTO = "https://ejemplo.dev/atestaciones/veredicto-de-conformidad/v1"
+
+# QUIEN FIRMA NO ES DE QUIEN ES EL CONTENIDO, y esto se midio. El paquete sale del repositorio del
+# dominio, pero lo firma el workflow reutilizable del ESTANDAR, asi que el certificado lleva:
+#
+#   sourceRepositoryURI  ->  .../agentes-<dominio>
+#   buildSignerURI       ->  .../estandar-agentico/.github/workflows/publicar.yml@main
+#
+# Sin declarar el firmante, `gh attestation verify --repo <dominio>` falla con codigo 1 y el mensaje
+# solo dice «verifying with issuer sigstore.dev» -- no menciona el firmante, asi que el motivo real
+# es invisible. Un release perfectamente sellado quedaba FUERA DEL INDICE por esto.
+REPOSITORIO_FIRMANTE_POR_DEFECTO = "Banca-Copilot-demo/estandar-agentico"
 SUFIJO_PAQUETE = ".tar.gz"
 _TIEMPO_LIMITE_S = 120
 
@@ -61,12 +72,34 @@ def ultimo_release(repositorio: str) -> tuple[str, str, str | None] | None:
     if salida is None:
         return None
     release = json.loads(salida)
+    etiqueta = release["tagName"]
     paquetes = sorted(a["name"] for a in release.get("assets", [])
                       if a["name"].endswith(SUFIJO_PAQUETE))
     if not paquetes:
         log.warning("%s: el release %s no trae paquete %s",
-                    repositorio, release["tagName"], SUFIJO_PAQUETE)
-    return release["tagName"], release["targetCommitish"], paquetes[0] if paquetes else None
+                    repositorio, etiqueta, SUFIJO_PAQUETE)
+
+    sha = _sha_de_la_etiqueta(repositorio, etiqueta)
+    if sha is None:
+        return None
+    return etiqueta, sha, paquetes[0] if paquetes else None
+
+
+def _sha_de_la_etiqueta(repositorio: str, etiqueta: str) -> str | None:
+    """El commit al que apunta la etiqueta, resuelto.
+
+    NO se usa `targetCommitish` del release, y esto se midio: para un release creado desde una
+    etiqueta devuelve el NOMBRE DE LA RAMA -- literalmente `main` --, asi que la entrada del catalogo
+    quedaba con `sha: main`. Un puntero movil es exactamente lo que el `sha` existe para evitar: la
+    etiqueta se puede reescribir si el repositorio no tiene releases inmutables, y `main` avanza con
+    cada commit.
+    """
+    salida = _gh("api", f"repos/{repositorio}/commits/{etiqueta}", "--jq", ".sha")
+    if salida is None:
+        log.warning("%s: no se pudo resolver el commit de la etiqueta %s", repositorio, etiqueta)
+        return None
+    sha = salida.strip()
+    return sha or None
 
 
 def descargar_paquete(repositorio: str, etiqueta: str, paquete: str, destino: Path) -> Path | None:
@@ -77,19 +110,22 @@ def descargar_paquete(repositorio: str, etiqueta: str, paquete: str, destino: Pa
     return descargado if descargado.is_file() else None
 
 
-def verificar_atestacion(ruta: Path, repositorio: str) -> bool:
+def verificar_atestacion(ruta: Path, repositorio: str,
+                         repositorio_firmante: str = REPOSITORIO_FIRMANTE_POR_DEFECTO) -> bool:
     """Verifica la atestacion de PROCEDENCIA sobre los bytes del paquete descargado."""
     return _gh("attestation", "verify", str(ruta), "--repo", repositorio,
-               "--format", "json") is not None
+               "--signer-repo", repositorio_firmante, "--format", "json") is not None
 
 
-def veredicto_atestado(ruta: Path, repositorio: str) -> dict | None:
+def veredicto_atestado(ruta: Path, repositorio: str,
+                       repositorio_firmante: str = REPOSITORIO_FIRMANTE_POR_DEFECTO) -> dict | None:
     """Devuelve el predicado del veredicto tal como quedo FIRMADO.
 
     Se lee de la atestacion y no del repositorio a proposito: el objetivo es saber que gates paso
     el paquete, y cualquier archivo del repositorio se puede editar despues de publicar.
     """
     salida = _gh("attestation", "verify", str(ruta), "--repo", repositorio,
+                 "--signer-repo", repositorio_firmante,
                  "--predicate-type", TIPO_PREDICADO_VEREDICTO, "--format", "json")
     if salida is None:
         return None

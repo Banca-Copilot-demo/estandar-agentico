@@ -113,3 +113,12 @@ def test_un_plugin_ILEGIBLE_si_se_rechaza():
     decision = evaluar(_candidato(manifiesto=None))
     assert decision.destino is Destino.RECHAZAR
     assert decision.motivo is Motivo.SIN_MANIFIESTO
+
+
+def test_el_sha_de_la_entrada_es_un_commit_y_no_un_nombre_de_rama():
+    """Defecto medido al indexar un release real: el generador tomaba `targetCommitish`, que para un
+    release creado desde una etiqueta devuelve el NOMBRE DE LA RAMA. La entrada salia con
+    `sha: main`, un puntero movil -- justo lo que el sha existe para evitar."""
+    decision = evaluar(_candidato(sha="main"))
+    assert decision.destino is Destino.RECHAZAR
+    assert decision.motivo is Motivo.SHA_NO_RESUELTO

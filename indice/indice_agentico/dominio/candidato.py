@@ -34,6 +34,7 @@ class Motivo(str, Enum):
     SIN_VEREDICTO = "no hay atestacion del veredicto de conformidad del estandar"
     NO_CONFORME = "el veredicto atestado dice que no es conforme"
     VERSION_DISCREPANTE = "la version del manifiesto no coincide con la etiqueta"
+    SHA_NO_RESUELTO = "el sha no es un commit de 40 caracteres: seria un puntero movil"
 
 
 @dataclass(frozen=True)

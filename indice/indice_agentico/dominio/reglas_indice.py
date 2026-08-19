@@ -30,6 +30,7 @@ from indice_agentico.dominio.candidato import (
 )
 
 _SIN_DESCRIPCION = "(sin descripcion en el manifiesto)"
+LONGITUD_SHA_COMMIT = 40
 
 
 def _omitir(motivo: Motivo) -> Decision:
@@ -52,6 +53,10 @@ def evaluar(candidato: Candidato) -> Decision:
     """
     if candidato.digest is None:
         return _rechazar(Motivo.SIN_PAQUETE)
+    # El `sha` tiene que ser un commit resuelto. Un nombre de rama pasaria las demas comprobaciones y
+    # produciria una entrada instalable con puntero movil, que es peor que no publicar.
+    if len(candidato.sha) != LONGITUD_SHA_COMMIT:
+        return _rechazar(Motivo.SHA_NO_RESUELTO)
     if not candidato.atestacion_verificada:
         return _rechazar(Motivo.SIN_ATESTACION)
     if candidato.veredicto is None:
