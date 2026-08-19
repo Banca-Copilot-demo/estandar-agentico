@@ -12,7 +12,7 @@ import os
 import sys
 from pathlib import Path
 
-from validador_agentico.adaptadores import gh_skill, informe
+from validador_agentico.adaptadores import anotaciones_github, gh_skill, informe
 from validador_agentico.aplicacion.ejecutar_gate import ejecutar
 
 log = logging.getLogger(__name__)
@@ -48,6 +48,11 @@ def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
                         help="logging de diagnostico en stderr")
     parser.add_argument("--formato", choices=informe.FORMATOS, default=informe.FORMATO_TEXTO,
                         help="`texto` para leerlo; `json` para firmarlo como predicado")
+    parser.add_argument("--anotaciones", action="store_true",
+                        help="emite comandos de workflow para que cada hallazgo aparezca SOBRE su "
+                             "linea en el diff del pull request")
+    parser.add_argument("--escribir-resumen", type=Path, metavar="RUTA",
+                        help="escribe el resumen en Markdown en RUTA (en CI, $GITHUB_STEP_SUMMARY)")
     parser.add_argument("--sin-comprobacion-oficial", action="store_true",
                         help="no invoca `gh skill publish --dry-run`. La comprobacion se declara "
                              "`no aplica` con su motivo: nunca se da por buena en silencio")
@@ -64,7 +69,20 @@ def main(argv: list[str] | None = None) -> int:
     # El composition root es el unico que conoce la implementacion concreta del puerto (G5).
     resultado = ejecutar(raiz, comprobador_oficial=gh_skill,
                          con_comprobacion_oficial=not argumentos.sin_comprobacion_oficial)
+    if argumentos.anotaciones:
+        # Antes del informe: los comandos de workflow los recoge el runner de stdout, y asi quedan
+        # arriba en el registro, no sepultados bajo el detalle.
+        anotaciones = anotaciones_github.render_anotaciones(resultado)
+        if anotaciones:
+            print(anotaciones)
+
     informe.imprimir_gate(resultado, raiz.name, argumentos.formato)
+
+    if argumentos.escribir_resumen is not None:
+        argumentos.escribir_resumen.write_text(
+            anotaciones_github.render_resumen(resultado, raiz.name), encoding="utf-8")
+        log.info("resumen escrito en %s", argumentos.escribir_resumen)
+
     return SALIDA_CONFORME if resultado.conforme else SALIDA_NO_CONFORME
 
 

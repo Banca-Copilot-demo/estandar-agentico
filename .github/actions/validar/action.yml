@@ -42,8 +42,13 @@ runs:
     # La deteccion de skills tambien se fue: el validador ya recorre el repositorio y lleva el
     # inventario, asi que el `compgen -G "skills/*/SKILL.md"` era una segunda implementacion de algo
     # que el paquete ya sabia.
+    # `--anotaciones` es lo que convierte el veredicto en algo accionable: cada hallazgo aparece
+    # SOBRE su linea en el diff del pull request, en vez de obligar al autor a leer el registro,
+    # buscar la ruta y abrir el archivo. Son comandos de workflow por stdout, asi que NO necesitan
+    # ningun permiso ni llamada a la API.
     - name: Gate de conformidad · G1 G3 G4 + especificacion oficial
       shell: bash
-      run: python -m validador_agentico.cli . --verbose
+      run: |
+        python -m validador_agentico.cli .           --anotaciones           --escribir-resumen "$GITHUB_STEP_SUMMARY"           --verbose
       env:
         GH_TOKEN: ${{ github.token }}

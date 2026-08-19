@@ -30,13 +30,3 @@ jobs:
 
       - name: Ejecutar los gates
         uses: Banca-Copilot-demo/estandar-agentico/.github/actions/validar@main
-
-      - name: Veredicto en el resumen
-        if: always()
-        run: |
-          echo "## Veredicto de conformidad" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ job.status }}" = "success" ]; then
-            echo "**CONFORME** | G1 G3 G4 superados | cero consumo de modelo" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "**NO CONFORME** | revisa el detalle en los pasos anteriores" >> "$GITHUB_STEP_SUMMARY"
-          fi
