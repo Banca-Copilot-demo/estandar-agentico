@@ -9,10 +9,10 @@ name: Pruebas del estandar
 # solo hace que la atestacion no pruebe nada.
 on:
   pull_request:
-    paths: ["validador/**", "indice/**", ".github/actions/publicar/**"]
+    paths: ["validador/**", "indice/**", ".github/actions/publicar/**", "skills/**"]
   push:
     branches: [main]
-    paths: ["validador/**", "indice/**", ".github/actions/publicar/**"]
+    paths: ["validador/**", "indice/**", ".github/actions/publicar/**", "skills/**"]
 
 permissions:
   contents: read
@@ -59,3 +59,16 @@ jobs:
       - name: Comprobar que el empaquetado es determinista
         shell: bash
         run: bash .github/actions/publicar/probar-empaquetado.sh .
+
+  estados_de_instalacion:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repositorio del estandar
+        uses: actions/checkout@v4
+
+      # El skill de instalacion decide si algo se INSTALA, asi que sus codigos de salida se prueban.
+      # El defecto que fija esta prueba fue de MEDICION: `comprobar-estado.sh retired | head` devolvia
+      # 0 porque `$?` era el de `head`. Parecia que un artefacto retirado no bloqueaba.
+      - name: Comprobar los codigos de salida del estado
+        shell: bash
+        run: bash skills/instalar-artefacto-agentico/scripts/probar-estados.sh
