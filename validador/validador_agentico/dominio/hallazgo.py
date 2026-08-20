@@ -4,7 +4,7 @@ Puro: sin I/O y sin imports del proyecto fuera de `dominio/`.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -93,6 +93,9 @@ class Veredicto:
     hallazgos: tuple[Hallazgo, ...]
     inventario: Inventario
     artefactos: tuple[ArtefactoPublicado, ...] = ()
+    # Custodia de la credencial del `mcp`, tal como la declaro el repositorio. Vacio
+    # cuando no hay mcp o cuando su mecanismo no exige que alguien conceda nada.
+    credencial_ownership: dict = field(default_factory=dict)
 
     @property
     def errores(self) -> tuple[Hallazgo, ...]:

@@ -25,7 +25,7 @@ FORMATO_JSON = "json"
 FORMATOS = (FORMATO_TEXTO, FORMATO_JSON)
 
 # Version del PREDICADO, no del validador: solo cambia si cambia la forma del JSON firmado.
-_VERSION_PREDICADO = "1.3.0"
+_VERSION_PREDICADO = "1.4.0"
 _SANGRIA_JSON = 2
 
 
@@ -91,6 +91,9 @@ def render_json(veredicto: Veredicto, nombre_repositorio: str) -> str:
              "standard_version": a.standard_version, "sha256": a.sha256}
             for a in veredicto.artefactos
         ],
+        # Quien concede el acceso a la credencial del `mcp`, si el repositorio declara uno. Va
+        # FIRMADO para que la ficha no tenga que releer el repositorio.
+        "credencial_ownership": veredicto.credencial_ownership,
         "errores": [_hallazgo_como_dato(h) for h in veredicto.errores],
         "avisos": [_hallazgo_como_dato(h) for h in veredicto.avisos],
     }

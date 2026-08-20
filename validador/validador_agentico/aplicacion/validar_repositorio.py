@@ -16,7 +16,8 @@ from validador_agentico.adaptadores import digesto
 from validador_agentico.adaptadores import frontmatter as adaptador_frontmatter
 from validador_agentico.adaptadores import repositorio as adaptador_repositorio
 from validador_agentico.adaptadores.repositorio import ArchivoJson, ContenidoRepositorio
-from validador_agentico.dominio import reglas_aprobacion, reglas_higiene, reglas_hooks
+from validador_agentico.dominio import reglas_aprobacion, reglas_credenciales
+from validador_agentico.dominio import reglas_higiene, reglas_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
 from validador_agentico.dominio.hallazgo import (
     ArtefactoPublicado,
@@ -44,13 +45,15 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
         *_revisar_skills(contenido),
         *_revisar_prompts(contenido),
         *_revisar_hooks(contenido),
+        *_revisar_mcp(contenido),
         *_revisar_higiene(contenido),
         *_revisar_duenos(contenido, equipos_conocidos),
         *_revisar_mezcla(archivos_cambiados),
     ]
     log.info("%d hallazgo(s) en %s", len(hallazgos), raiz.name)
     return Veredicto(hallazgos=tuple(hallazgos), inventario=inventario,
-                     artefactos=_listar_artefactos(contenido, raiz))
+                     artefactos=_listar_artefactos(contenido, raiz),
+                     credencial_ownership=_custodia_declarada(contenido))
 
 
 def _construir_inventario(contenido: ContenidoRepositorio) -> Inventario:
@@ -205,3 +208,22 @@ def _listar_artefactos(contenido: ContenidoRepositorio,
             if publicado is not None:
                 publicados.append(publicado)
     return tuple(publicados)
+
+
+def _revisar_mcp(contenido: ContenidoRepositorio) -> list[Hallazgo]:
+    """El `.mcp.json` del repositorio, si lo hay. La custodia de la credencial se revisa aqui y no en
+    G3 porque no es higiene del contenido: es gobierno -- quien concede el acceso --."""
+    if contenido.mcp is None:
+        return []
+    if not contenido.mcp.es_legible:
+        return _hallazgo_de_formato(contenido.mcp)
+    return reglas_credenciales.revisar_credenciales(
+        contenido.mcp.ruta_relativa, contenido.mcp.contenido.get("credentials"))
+
+
+def _custodia_declarada(contenido: ContenidoRepositorio) -> dict:
+    """El bloque `ownership` del `.mcp.json`, si lo hay. Se propaga tal cual: la regla ya comprobo
+    que este completo, y aqui solo se transporta hacia el predicado firmado."""
+    if contenido.mcp is None or not contenido.mcp.es_legible:
+        return {}
+    return (contenido.mcp.contenido.get("credentials") or {}).get("ownership") or {}

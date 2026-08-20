@@ -114,6 +114,17 @@
         "type": "string",
         "title": "sha256 del archivo",
         "description": "Digesto del ARCHIVO, firmado dentro del predicado. Es lo que permite verificar un prompt o unas instructions que se copiaron fuera del paquete."
+      },
+      "credential_owner": {
+        "type": "string",
+        "title": "Quien custodia la credencial",
+        "description": "Equipo al que se le pide el acceso, SIEMPRE un grupo. No es el `owner_team` del artefacto: ese es quien lo publico. Son dos duenos distintos, y el consumidor necesita el segundo. Campo propio: no existe convencion en la industria -- el server.json del registro de MCP declara que la credencial es secreta, pero no quien la concede -- asi que ningun cliente lo muestra: lo muestra el catalogo y lo imprime el instalador antes del prompt."
+      },
+      "access_request_url": {
+        "type": "string",
+        "format": "url",
+        "title": "Donde se solicita el acceso",
+        "description": "El ticket de ITSM o la pagina de autoservicio."
       }
     },
     "required": [

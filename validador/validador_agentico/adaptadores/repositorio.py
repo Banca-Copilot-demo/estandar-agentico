@@ -64,6 +64,9 @@ class ContenidoRepositorio:
     manifiesto: ArchivoJson | None = None
     gobierno: ArchivoJson | None = None
     hooks: ArchivoJson | None = None
+    # El `.mcp.json` LEIDO, no solo contado: la custodia de su credencial es una regla
+    # de gobierno, y para revisarla hace falta su contenido.
+    mcp: ArchivoJson | None = None
     skills: tuple[Artefacto, ...] = ()
     prompts: tuple[Artefacto, ...] = ()
     agentes: int = 0
@@ -147,6 +150,7 @@ def leer(raiz: Path, lector) -> ContenidoRepositorio:
         manifiesto=_leer_json(raiz, manifiesto) if manifiesto else None,
         gobierno=_leer_json(raiz, gobierno) if gobierno.exists() else None,
         hooks=_leer_json(raiz, hooks) if hooks else None,
+        mcp=_leer_json(raiz, raiz / RUTA_MCP) if (raiz / RUTA_MCP).is_file() else None,
         skills=_leer_artefactos_por_directorio(raiz, lector),
         prompts=_leer_prompts(raiz, lector),
         agentes=len(list(directorio_agentes.glob(SUFIJO_AGENTE))) if directorio_agentes.is_dir() else 0,

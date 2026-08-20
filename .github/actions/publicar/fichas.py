@@ -100,9 +100,27 @@ def _entidad(artefacto: dict, veredicto: dict, argumentos: argparse.Namespace) -
             "verify_hint": _pista_de_verificacion(
                 artefacto, en_marketplace, argumentos.repositorio, artefacto["ruta"]),
             "sha256_archivo": artefacto.get("sha256", ""),
+            # Solo lo trae un `mcp`, y solo cuando su credencial exige que alguien la conceda. Va en
+            # la ficha porque ningun cliente lo muestra: es un campo propio sin convencion, y su
+            # consumidor es el catalogo y el instalador.
+            **_custodia_de_la_credencial(veredicto),
             "en_marketplace": en_marketplace,
         },
     }
+
+
+def _custodia_de_la_credencial(veredicto: dict) -> dict:
+    """Quien concede el acceso, si el artefacto declara una credencial que alguien tiene que dar.
+
+    El `owner_team` del artefacto es quien lo PUBLICO. El token del servicio lo da quien ADMINISTRA
+    ese servicio, y sin ese dato el consumidor acaba ante un prompt del cliente sin saber a quien
+    escribir. Con `oauth` no aplica: se autentica con su propia identidad.
+    """
+    propiedad = veredicto.get("credencial_ownership") or {}
+    if not propiedad:
+        return {}
+    return {"credential_owner": propiedad.get("credential_owner", ""),
+            "access_request_url": propiedad.get("access_request_url", "")}
 
 
 def _publicar(entidad: dict, token: str) -> str:

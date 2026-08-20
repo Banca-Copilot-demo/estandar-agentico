@@ -153,3 +153,27 @@ def test_desactivarla_no_la_invoca_y_deja_su_motivo_escrito(tmp_path):
     oficial = resultado.comprobaciones[-1]
     assert oficial.resultado is Resultado.NO_APLICA
     assert "--sin-comprobacion-oficial" in oficial.detalle
+
+
+def test_un_mcp_sin_custodia_declarada_bloquea_el_gate(tmp_path):
+    """Defecto medido: ninguna prueba del arnes tenia un `.mcp.json`, asi que el cableado del
+    adaptador no estaba cubierto y un fallo al leerlo pasaba las 84 pruebas en verde."""
+    raiz = _repositorio_minimo(tmp_path)
+    (raiz / ".mcp.json").write_text('{"credentials": {"mechanism": "secret-ref"}}',
+                                    encoding="utf-8")
+
+    resultado = ejecutar(raiz, comprobador_oficial=ComprobadorFalso(Resultado.CONFORME))
+
+    assert not resultado.conforme
+    motivos = " ".join(h.mensaje for h in resultado.veredicto.errores)
+    assert "credential_owner" in motivos
+    assert "access_request_url" in motivos
+
+
+def test_un_mcp_con_oauth_no_pide_custodia(tmp_path):
+    raiz = _repositorio_minimo(tmp_path)
+    (raiz / ".mcp.json").write_text('{"credentials": {"mechanism": "oauth"}}', encoding="utf-8")
+
+    resultado = ejecutar(raiz, comprobador_oficial=ComprobadorFalso(Resultado.CONFORME))
+
+    assert resultado.conforme
