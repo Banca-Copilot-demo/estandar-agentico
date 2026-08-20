@@ -9,13 +9,26 @@
         "type": "string",
         "title": "Tipo",
         "description": "Uno de los seis tipos que el estandar gobierna.",
-        "enum": ["skill", "agent", "prompt", "mcp", "instructions", "hooks"]
+        "enum": [
+          "skill",
+          "agent",
+          "prompt",
+          "mcp",
+          "instructions",
+          "hooks"
+        ]
       },
       "status": {
         "type": "string",
         "title": "Estado",
         "description": "Derivado de los gates y de los evals. Vive aqui, no en el repositorio.",
-        "enum": ["draft", "conformant", "certified", "deprecated", "retired"],
+        "enum": [
+          "draft",
+          "conformant",
+          "certified",
+          "deprecated",
+          "retired"
+        ],
         "enumColors": {
           "draft": "lightGray",
           "conformant": "green",
@@ -37,7 +50,12 @@
       "data_classification": {
         "type": "string",
         "title": "Clasificacion del dato",
-        "enum": ["public", "internal", "confidential", "restricted"]
+        "enum": [
+          "public",
+          "internal",
+          "confidential",
+          "restricted"
+        ]
       },
       "standard_version": {
         "type": "string",
@@ -70,9 +88,31 @@
         "type": "boolean",
         "title": "Esta en el marketplace",
         "description": "Falso no es un defecto: las entradas de un marketplace SON plugins, y el plugin es opcional."
+      },
+      "superseded_by": {
+        "type": "string",
+        "title": "Sucesor",
+        "description": "Id del artefacto que reemplaza a este. Puede ser la cadena 'none' CON la decision registrada: no tener sucesor es una decision valida, pero tiene que estar tomada y firmada, no omitida."
+      },
+      "sunset_date": {
+        "type": "string",
+        "format": "date",
+        "title": "Fecha de retiro",
+        "description": "Cuando deja de estar en circulacion. NO puede ser anterior a la fecha en que se declaro deprecated (RFC 9745 4)."
+      },
+      "decided_by": {
+        "type": "string",
+        "title": "Quien lo declaro",
+        "description": "La decision humana se persiste; lo derivable se recalcula."
       }
     },
-    "required": ["tipo", "status", "owner_team", "repo", "sha"]
+    "required": [
+      "tipo",
+      "status",
+      "owner_team",
+      "repo",
+      "sha"
+    ]
   },
   "mirrorProperties": {},
   "calculationProperties": {},
