@@ -17,10 +17,10 @@ on:
     secrets:
       app-id:
         description: App ID de la App del ciclo de vida.
-        required: true
+        required: false
       app-key:
         description: Clave privada de esa App.
-        required: true
+        required: false
 
 permissions:
   contents: read
@@ -29,7 +29,35 @@ jobs:
   etiquetar:
     runs-on: ubuntu-latest
     steps:
+      # SIN LA APP, ESTO NO SE PUEDE HACER, y el workflow lo dice y para en verde en vez de fallar.
+      # Un rojo en CADA merge -- cuando lo que falta es una credencial de la organizacion y no un
+      # defecto del cambio -- ensena al equipo a ignorar los fallos de CI, que es peor que no tener
+      # el paso. El aviso queda en el resumen del job y la publicacion sigue disponible etiquetando
+      # a mano.
+      - name: ¿Estan los secretos de la App?
+        id: app
+        env:
+          APP_ID: ${{ secrets.app-id }}
+        run: |
+          if [ -z "${APP_ID:-}" ]; then
+            {
+              echo "## Etiquetado automatico no disponible"
+              echo
+              echo "Faltan los secretos \`APP_ID_AGENTICO\` y \`APP_KEY_AGENTICO\`."
+              echo
+              echo "El GITHUB_TOKEN no sirve para esto: una etiqueta empujada con el no dispara"
+              echo "\`publicar.yml\`, asi que el artefacto quedaria etiquetado y SIN publicar."
+              echo
+              echo "Mientras no esten, etiqueta a mano con la version del manifiesto."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::etiquetado automatico omitido: faltan los secretos de la App"
+            echo "hay=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "hay=si" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Token de la App, para que la etiqueta SI dispare la publicacion
+        if: steps.app.outputs.hay == 'si'
         id: token
         uses: actions/create-github-app-token@v1
         with:
@@ -38,6 +66,7 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Descargar el repositorio con su historial de etiquetas
+        if: steps.app.outputs.hay == 'si'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -47,6 +76,7 @@ jobs:
       # manifiesto del plugin manda cuando existe, porque es lo que el marketplace resuelve; y un
       # repositorio de artefactos SUELTOS la declara en su GOVERNANCE.json.
       - name: Resolver la version del paquete
+        if: steps.app.outputs.hay == 'si'
         id: version
         run: |
           if [ -f .claude-plugin/plugin.json ]; then
@@ -71,6 +101,7 @@ jobs:
       # ese es el mecanismo por el que mergear no publica siempre. Y reescribirla romperia el
       # contrato de que una etiqueta apunta para siempre al mismo commit.
       - name: Etiquetar si la version es nueva
+        if: steps.app.outputs.hay == 'si'
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           VERSION: ${{ steps.version.outputs.valor }}
