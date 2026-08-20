@@ -16,7 +16,8 @@ from validador_agentico.adaptadores import digesto
 from validador_agentico.adaptadores import frontmatter as adaptador_frontmatter
 from validador_agentico.adaptadores import repositorio as adaptador_repositorio
 from validador_agentico.adaptadores.repositorio import ArchivoJson, ContenidoRepositorio
-from validador_agentico.dominio import reglas_aprobacion, reglas_credenciales
+from validador_agentico.dominio import reglas_agente_instructions, reglas_aprobacion
+from validador_agentico.dominio import reglas_credenciales
 from validador_agentico.dominio import reglas_higiene, reglas_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
 from validador_agentico.dominio.hallazgo import (
@@ -44,6 +45,8 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
         *_revisar_gobierno(contenido, inventario),
         *_revisar_skills(contenido),
         *_revisar_prompts(contenido),
+        *_revisar_agentes(contenido),
+        *_revisar_instructions(contenido),
         *_revisar_hooks(contenido),
         *_revisar_mcp(contenido),
         *_revisar_higiene(contenido),
@@ -227,3 +230,30 @@ def _custodia_declarada(contenido: ContenidoRepositorio) -> dict:
     if contenido.mcp is None or not contenido.mcp.es_legible:
         return {}
     return (contenido.mcp.contenido.get("credentials") or {}).get("ownership") or {}
+
+
+def _revisar_agentes(contenido: ContenidoRepositorio) -> list[Hallazgo]:
+    hallazgos: list[Hallazgo] = []
+    for agente in contenido.agentes_leidos:
+        if agente.frontmatter is None:
+            hallazgos.append(error(agente.ruta_relativa,
+                                   "sin frontmatter: el agente es indescubrible"))
+            continue
+        hallazgos += reglas_agente_instructions.revisar_agente(
+            agente.ruta_relativa, agente.nombre_directorio, agente.frontmatter)
+        hallazgos += reglas_artefacto.revisar_envelope(
+            agente.ruta_relativa, agente.frontmatter.get("metadata") or {})
+    return hallazgos
+
+
+def _revisar_instructions(contenido: ContenidoRepositorio) -> list[Hallazgo]:
+    hallazgos: list[Hallazgo] = []
+    for instruccion in contenido.instructions:
+        if instruccion.frontmatter is None:
+            hallazgos.append(error(instruccion.ruta_relativa, "sin frontmatter"))
+            continue
+        hallazgos += reglas_agente_instructions.revisar_instructions(
+            instruccion.ruta_relativa, instruccion.frontmatter, instruccion.lineas)
+        hallazgos += reglas_artefacto.revisar_envelope(
+            instruccion.ruta_relativa, instruccion.frontmatter.get("metadata") or {})
+    return hallazgos

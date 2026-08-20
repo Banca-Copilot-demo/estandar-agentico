@@ -20,7 +20,8 @@ from validador_agentico.dominio.comprobacion import (
 )
 from validador_agentico.dominio.hallazgo import Inventario, Veredicto, aviso, error
 
-# Se construye un repositorio MINIMO en disco en vez de apuntar a un repo hermano. Medido: la primera
+# Se construye un repositorio MINIMO en disco en vez de apuntar a un repo hermano. Medido: la
+# primera
 # version de estas pruebas apuntaba a `../agentes-sdlc`, que NO EXISTE cuando solo esta clonado el
 # repo del estandar -- como en CI --. Las tres pruebas pasaban contra un directorio inexistente, o
 # sea por el motivo equivocado. Es la misma clase de falso verde que el gate existe para evitar.

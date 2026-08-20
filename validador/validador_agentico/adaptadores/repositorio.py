@@ -29,6 +29,7 @@ DIRECTORIO_PROMPTS = "commands"
 ARCHIVO_SKILL = "SKILL.md"
 SUFIJO_AGENTE = "*.agent.md"
 SUFIJO_PROMPT = "*.prompt.md"
+SUFIJO_INSTRUCTIONS = "*.instructions.md"
 RUTA_MCP = ".mcp.json"
 DIRECTORIO_VALIDADOR = "validador"
 
@@ -69,6 +70,9 @@ class ContenidoRepositorio:
     mcp: ArchivoJson | None = None
     skills: tuple[Artefacto, ...] = ()
     prompts: tuple[Artefacto, ...] = ()
+    # Se LEEN, no solo se cuentan: sin frontmatter no hay gate que aplicarles.
+    agentes_leidos: tuple[Artefacto, ...] = ()
+    instructions: tuple[Artefacto, ...] = ()
     agentes: int = 0
     mcps: int = 0
     archivos_escaneables: tuple[tuple[str, str], ...] = field(default=())
@@ -120,6 +124,38 @@ def _leer_prompts(raiz: Path, lector) -> tuple[Artefacto, ...]:
     )
 
 
+def _leer_agentes(raiz: Path, lector) -> tuple[Artefacto, ...]:
+    directorio = raiz / DIRECTORIO_AGENTES
+    if not directorio.is_dir():
+        return ()
+    return tuple(
+        Artefacto(
+            ruta_relativa=f"{DIRECTORIO_AGENTES}/{archivo.name}",
+            # El nombre esperado es el del archivo sin `.agent.md`, no `Path.stem`, que solo quita
+            # la ultima extension y dejaria `migrador.agent`.
+            nombre_directorio=archivo.name.removesuffix(".agent.md"),
+            frontmatter=lector.leer(archivo),
+            lineas=lector.contar_lineas(archivo),
+        )
+        for archivo in sorted(directorio.glob(SUFIJO_AGENTE))
+    )
+
+
+def _leer_instructions(raiz: Path, lector) -> tuple[Artefacto, ...]:
+    """Las `instructions` no viven en un directorio fijo: se buscan en todo el arbol porque su
+    `applies_to` es lo que decide donde aplican, no donde estan guardadas."""
+    return tuple(
+        Artefacto(
+            ruta_relativa=archivo.relative_to(raiz).as_posix(),
+            nombre_directorio=archivo.name.removesuffix(".instructions.md"),
+            frontmatter=lector.leer(archivo),
+            lineas=lector.contar_lineas(archivo),
+        )
+        for archivo in sorted(raiz.rglob(SUFIJO_INSTRUCTIONS))
+        if ".git" not in archivo.parts
+    )
+
+
 def _leer_archivos_escaneables(raiz: Path) -> tuple[tuple[str, str], ...]:
     """Los archivos que el gate de higiene revisa. Excluye el propio validador: contiene los
     patrones a proposito y se delataria a si mismo."""
@@ -145,7 +181,7 @@ def leer(raiz: Path, lector) -> ContenidoRepositorio:
     manifiesto = _primera_existente(raiz, RUTAS_MANIFIESTO)
     gobierno = raiz / RUTA_GOBIERNO
     hooks = _primera_existente(raiz, RUTAS_HOOKS)
-    directorio_agentes = raiz / DIRECTORIO_AGENTES
+    agentes_leidos = _leer_agentes(raiz, lector)
     return ContenidoRepositorio(
         manifiesto=_leer_json(raiz, manifiesto) if manifiesto else None,
         gobierno=_leer_json(raiz, gobierno) if gobierno.exists() else None,
@@ -153,7 +189,9 @@ def leer(raiz: Path, lector) -> ContenidoRepositorio:
         mcp=_leer_json(raiz, raiz / RUTA_MCP) if (raiz / RUTA_MCP).is_file() else None,
         skills=_leer_artefactos_por_directorio(raiz, lector),
         prompts=_leer_prompts(raiz, lector),
-        agentes=len(list(directorio_agentes.glob(SUFIJO_AGENTE))) if directorio_agentes.is_dir() else 0,
+        agentes=len(agentes_leidos),
+        agentes_leidos=agentes_leidos,
+        instructions=_leer_instructions(raiz, lector),
         mcps=1 if (raiz / RUTA_MCP).exists() else 0,
         archivos_escaneables=_leer_archivos_escaneables(raiz),
     )
