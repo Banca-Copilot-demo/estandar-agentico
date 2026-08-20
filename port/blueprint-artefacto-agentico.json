@@ -104,6 +104,16 @@
         "type": "string",
         "title": "Quien lo declaro",
         "description": "La decision humana se persiste; lo derivable se recalcula."
+      },
+      "verify_hint": {
+        "type": "string",
+        "title": "Como se verifica el sello",
+        "description": "Ningun cliente verifica la atestacion al instalar -- ni copilot plugin install ni gh skill install la documentan --, asi que verificar es un paso EXPLICITO. Incluye el --signer-repo: sin el, la verificacion falla con un mensaje que no menciona al firmante."
+      },
+      "sha256_archivo": {
+        "type": "string",
+        "title": "sha256 del archivo",
+        "description": "Digesto del ARCHIVO, firmado dentro del predicado. Es lo que permite verificar un prompt o unas instructions que se copiaron fuera del paquete."
       }
     },
     "required": [

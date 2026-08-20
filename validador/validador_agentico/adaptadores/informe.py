@@ -25,7 +25,7 @@ FORMATO_JSON = "json"
 FORMATOS = (FORMATO_TEXTO, FORMATO_JSON)
 
 # Version del PREDICADO, no del validador: solo cambia si cambia la forma del JSON firmado.
-_VERSION_PREDICADO = "1.2.0"
+_VERSION_PREDICADO = "1.3.0"
 _SANGRIA_JSON = 2
 
 
@@ -88,7 +88,7 @@ def render_json(veredicto: Veredicto, nombre_repositorio: str) -> str:
             {"id": a.id, "tipo": a.tipo, "ruta": a.ruta, "owner_team": a.owner_team,
              "owner_contact": a.owner_contact, "version": a.version,
              "data_classification": a.data_classification,
-             "standard_version": a.standard_version}
+             "standard_version": a.standard_version, "sha256": a.sha256}
             for a in veredicto.artefactos
         ],
         "errores": [_hallazgo_como_dato(h) for h in veredicto.errores],

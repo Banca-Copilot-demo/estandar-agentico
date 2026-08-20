@@ -1,8 +1,8 @@
 """Publica en Port una ficha por artefacto, construida del PREDICADO FIRMADO.
 
-POR QUE ES UN SCRIPT Y NO BASH. Hay que leer un JSON, derivar un campo por artefacto y hacer una
-llamada por cada uno. En bash serian varias invocaciones a `python3 -c` con el JSON interpolado en la
-linea de comandos: el patron fragil que ya nos rompio dos veces.
+POR QUE ES UN SCRIPT Y NO BASH. Hay que leer un JSON, derivar campos por artefacto y hacer una
+llamada por cada uno. En bash serian varias invocaciones a `python3 -c` con el JSON interpolado en
+la linea de comandos: el patron fragil que ya nos rompio dos veces.
 
 POR QUE SE LEE DEL PREDICADO Y NO DEL REPOSITORIO. El predicado es lo que se firmo. Si la ficha se
 construyera releyendo los archivos, podria decir algo distinto de lo sellado y habria dos fuentes de
@@ -23,13 +23,17 @@ from pathlib import Path
 
 API_PORT = "https://api.port.io"
 BLUEPRINT = "artefacto_agentico"
+# Quien FIRMA las atestaciones: el workflow reutilizable del estandar, no el repo del dominio.
+SIGNER = "Banca-Copilot-demo/estandar-agentico"
 # `name` del catalogo del marketplace, el que resuelve `<plugin>@<catalogo>`.
 CATALOGO = "agentico"
+# Donde espera cada cliente un prompt. `commands/` en el origen; en el destino cambia por cliente.
+_DESTINO_PROMPT = ".github/prompts"
 _TIEMPO_LIMITE_S = 30
 # `upsert` actualiza si ya existe, y `merge` conserva las propiedades que este payload no trae.
 _RUTA_ENTIDADES = f"/v1/blueprints/{BLUEPRINT}/entities?upsert=true&merge=true"
 
-# Los tipos que un plugin TRANSPORTA de verdad. Agent Plugins v1 cubre skills y MCP; Copilot documenta
+# Los tipos que un plugin TRANSPORTA. Agent Plugins v1 cubre skills y MCP; Copilot documenta
 # cinco componentes -- agents, skills, hooks, .mcp.json, lsp.json --. NI `prompt` NI `instructions`
 # estan en ninguna de las dos listas, asi que viajan por otro canal aunque vivan en el mismo
 # repositorio y esten dentro del paquete sellado.
@@ -37,15 +41,39 @@ _TIPOS_EN_PLUGIN = frozenset({"skill", "agent", "mcp", "hooks"})
 
 
 def _pista_de_instalacion(artefacto: dict, en_marketplace: bool, repositorio: str,
-                          etiqueta: str, nombre_plugin: str) -> str:
-    """El comando exacto que el consumidor copia. Si el artefacto no va en un plugin, su canal."""
+                          sha: str, etiqueta: str, nombre_plugin: str) -> str:
+    """El COMANDO exacto que el consumidor ejecuta. Siempre un comando: una descripcion en prosa
+    obliga al consumidor a averiguar como se instala, que es justo lo que la ficha evita."""
     if en_marketplace:
         # Se instala el PLUGIN, no el artefacto: un plugin se instala completo. Poner aqui el id del
         # artefacto daba un comando que no resuelve contra ninguna entrada del marketplace.
         return f"copilot plugin install {nombre_plugin}@{CATALOGO}"
     if artefacto["tipo"] == "skill":
         return f"gh skill install {repositorio}/{artefacto['ruta']} --pin {etiqueta}"
-    return f"referencia directa: {repositorio}@{etiqueta} · {artefacto['ruta']}"
+
+    # Un `prompt` no lo instala ninguna herramienta oficial: no es componente de plugin y `gh skill`
+    # es exclusivo de skills. Se trae el archivo FIJADO AL SHA -- no a la etiqueta -- porque el sha
+    # es lo que quedo sellado, y el nombre del destino lo fija el cliente, no nosotros.
+    destino = f"{_DESTINO_PROMPT}/{artefacto['ruta'].rsplit('/', 1)[-1]}"
+    return (f"curl -fsSL https://raw.githubusercontent.com/{repositorio}/{sha}/"
+            f"{artefacto['ruta']} -o {destino}")
+
+
+def _pista_de_verificacion(artefacto: dict, en_marketplace: bool, repositorio: str,
+                           paquete_o_archivo: str) -> str:
+    """Como comprobar el sello ANTES de confiar en lo instalado.
+
+    MEDIDO: ni `copilot plugin install` ni `gh skill install` documentan verificacion de
+    atestaciones, y el `--help` de `gh skill install` no la menciona. Asi que verificar es un paso
+    EXPLICITO, y la ficha tiene que decir como -- incluido el `--signer-repo`, sin el cual la
+    verificacion falla con un mensaje que no menciona al firmante.
+    """
+    if en_marketplace or artefacto["tipo"] == "skill":
+        return (f"gh attestation verify <paquete>.tar.gz --repo {repositorio} "
+                f"--signer-repo {SIGNER}")
+    # Un archivo copiado fuera del paquete no se verifica contra la atestacion: se compara su sha256
+    # contra el que quedo firmado en el predicado.
+    return f"sha256sum {paquete_o_archivo}  # debe dar {artefacto.get('sha256', '')}"
 
 
 def _entidad(artefacto: dict, veredicto: dict, argumentos: argparse.Namespace) -> dict:
@@ -67,8 +95,11 @@ def _entidad(artefacto: dict, veredicto: dict, argumentos: argparse.Namespace) -
             "sha": argumentos.sha,
             "digest": argumentos.digest,
             "install_hint": _pista_de_instalacion(
-                artefacto, en_marketplace, argumentos.repositorio, argumentos.etiqueta,
-                veredicto["inventario"].get("nombre_plugin", "")),
+                artefacto, en_marketplace, argumentos.repositorio, argumentos.sha,
+                argumentos.etiqueta, veredicto["inventario"].get("nombre_plugin", "")),
+            "verify_hint": _pista_de_verificacion(
+                artefacto, en_marketplace, argumentos.repositorio, artefacto["ruta"]),
+            "sha256_archivo": artefacto.get("sha256", ""),
             "en_marketplace": en_marketplace,
         },
     }

@@ -76,6 +76,9 @@ class ArtefactoPublicado:
     version: str
     data_classification: str
     standard_version: str
+    # sha256 del ARCHIVO, no del paquete. Es lo que permite verificar un artefacto que se copio
+    # fuera del paquete -- un prompt, unas instructions -- contra lo que se firmo.
+    sha256: str = ""
 
 
 @dataclass(frozen=True)
