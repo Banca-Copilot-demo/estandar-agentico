@@ -1,0 +1,58 @@
+name: Humo del ciclo completo
+
+# Recorre el camino de INSTALACION contra lo que esta publicado de verdad: la ficha del catalogo, el
+# release, su atestacion, y los casos negativos.
+#
+# NO corre en cada push. Depende de que haya un release publicado y de credenciales de la
+# organizacion, asi que un fallo suyo no siempre significa que el cambio este mal -- y un rojo que no
+# implica culpa ensena a ignorar CI. Se dispara a mano y una vez al dia.
+on:
+  workflow_dispatch:
+    inputs:
+      id-skill:
+        description: Id del artefacto de tipo skill en el catalogo.
+        required: false
+        default: demo.sdlc.validar-contrato-openapi
+      id-prompt:
+        description: Id del artefacto de tipo prompt en el catalogo.
+        required: false
+        default: demo.sdlc.migrar
+      nombre-skill:
+        description: Nombre del skill tal como lo pide gh skill install.
+        required: false
+        default: validar-contrato-openapi
+  schedule:
+    - cron: "43 7 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  camino-de-instalacion:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ¿Estan las credenciales del catalogo?
+        id: port
+        env:
+          ID: ${{ secrets.PORT_CLIENT_ID }}
+        run: |
+          if [ -z "${ID:-}" ]; then
+            echo "::notice::sin credenciales de Port: el recorrido se omite"
+            echo "hay=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "hay=si" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Recorrer el camino de instalacion
+        if: steps.port.outputs.hay == 'si'
+        env:
+          PORT_CLIENT_ID: ${{ secrets.PORT_CLIENT_ID }}
+          PORT_CLIENT_SECRET: ${{ secrets.PORT_CLIENT_SECRET }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash pruebas-e2e/camino-instalacion.sh \
+            "${{ inputs.id-skill || 'demo.sdlc.validar-contrato-openapi' }}" \
+            "${{ inputs.id-prompt || 'demo.sdlc.migrar' }}" \
+            "${{ inputs.nombre-skill || 'validar-contrato-openapi' }}"
