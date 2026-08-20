@@ -38,7 +38,25 @@ jobs:
         id: app
         env:
           APP_ID: ${{ secrets.app-id }}
+          APP_KEY: ${{ secrets.app-key }}
         run: |
+          # LA CLAVE SE COMPRUEBA AQUI, y no se deja para la accion que la usa. MEDIDO en la primera
+          # ejecucion con los secretos puestos: una clave mal pegada no da un mensaje sobre la clave,
+          # da `ERR_OSSL_ASN1_TOO_LONG` y `Invalid keyData` dentro de un rastro de Node. Quien lo lee
+          # no tiene forma de saber que lo que hay que arreglar es un secreto de la organizacion.
+          if [ -n "${APP_KEY:-}" ] && ! printf '%s' "$APP_KEY" | grep -q 'BEGIN.*PRIVATE KEY'; then
+            {
+              echo "## La clave de la App no tiene la forma de una clave"
+              echo
+              echo "\`APP_KEY_AGENTICO\` existe pero no contiene la linea \`-----BEGIN ... PRIVATE KEY-----\`."
+              echo
+              echo "Tiene que ser el CONTENIDO COMPLETO del archivo \`.pem\` que GitHub descarga al"
+              echo "generar la clave privada -- las lineas \`BEGIN\`/\`END\` incluidas y los saltos de"
+              echo "linea tal cual --. No vale la huella digital, ni el archivo en base64."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::APP_KEY_AGENTICO no es una clave privada PEM"
+            exit 1
+          fi
           if [ -z "${APP_ID:-}" ]; then
             {
               echo "## Etiquetado automatico no disponible"
