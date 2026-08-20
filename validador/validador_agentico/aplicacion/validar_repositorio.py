@@ -17,7 +17,7 @@ from validador_agentico.adaptadores import frontmatter as adaptador_frontmatter
 from validador_agentico.adaptadores import repositorio as adaptador_repositorio
 from validador_agentico.adaptadores.repositorio import ArchivoJson, ContenidoRepositorio
 from validador_agentico.dominio import reglas_agente_instructions, reglas_aprobacion
-from validador_agentico.dominio import reglas_credenciales
+from validador_agentico.dominio import reglas_credenciales, reglas_recursos
 from validador_agentico.dominio import reglas_higiene, reglas_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
 from validador_agentico.dominio.hallazgo import (
@@ -51,6 +51,7 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
         *_revisar_mcp(contenido),
         *_revisar_higiene(contenido),
         *_revisar_yaml(contenido),
+        *_revisar_recursos(contenido),
         *_revisar_duenos(contenido, equipos_conocidos),
         *_revisar_mezcla(archivos_cambiados),
     ]
@@ -157,6 +158,17 @@ def _equipos_declarados(contenido: ContenidoRepositorio) -> list[tuple[str, str]
         if equipo:
             declarados.append((artefacto.ruta_relativa, equipo))
     return declarados
+
+
+def _revisar_recursos(contenido: ContenidoRepositorio) -> list[Hallazgo]:
+    """G2 — los archivos que cada artefacto referencia tienen que existir. Se aplica a los cuatro
+    tipos con cuerpo: un `.agent.md` que apunta a un script inexistente falla igual que un skill."""
+    hallazgos: list[Hallazgo] = []
+    for artefacto in (contenido.skills + contenido.prompts
+                      + contenido.agentes_leidos + contenido.instructions):
+        hallazgos += reglas_recursos.revisar_recursos_referenciados(
+            artefacto.ruta_relativa, artefacto.cuerpo, contenido.rutas)
+    return hallazgos
 
 
 def _revisar_duenos(contenido: ContenidoRepositorio,

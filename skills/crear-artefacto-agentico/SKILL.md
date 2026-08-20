@@ -30,12 +30,24 @@ Ejecuta `scripts/detectar-plugin.sh`.
 
 Averigua primero si el desarrollador esta en el repositorio equivocado. Solo si de verdad es un
 **dominio nuevo**, pregunta tres cosas —nombre del dominio, equipo dueno, descripcion en una
-linea— y ejecuta `scripts/crear-plugin.sh`.
+linea— y escribe con ellas `.claude-plugin/plugin.json` y `GOVERNANCE.json`. El manifiesto admite
+SOLO los diez campos de Agent Plugins 1.0: cualquier otro lo rechaza el gate.
 
 ## Paso 2 · Determina el tipo
 
-Aplica el arbol de `references/arbol-de-decision.md`. **La primera pregunta que de «si» decide.**
-No inventes tipos ni combines dos.
+**La primera pregunta que de «si» decide.** No inventes tipos ni combines dos. El orden va de lo
+mas especifico a lo mas general, y el criterio de cada pregunta es COMO SE ACTIVA el artefacto:
+
+1. ¿Configura un servidor MCP para exponer herramientas? -> **mcp**
+2. ¿Tiene que interceptar un evento del cliente? -> **hooks**
+3. ¿Tiene que estar SIEMPRE activo sobre unos archivos concretos? -> **instructions**
+4. ¿Lo teclea la persona por su nombre, como un comando? -> **prompt**
+5. ¿Delega una tarea completa con su propio contexto y sus handoffs? -> **agent**
+6. Si ninguna: **skill** — el modelo lo elige cuando su `description` encaja.
+
+REGLA DE DESISTIMIENTO: si dudas entre `prompt` y `skill`, elige **skill**. Un skill porta en los
+seis clientes y un prompt solo en dos, asi que un prompt es un skill con `user-invocable` que
+ademas pierde portabilidad. Expresa como skill todo lo que se pueda.
 
 ## Paso 3 · Genera el esqueleto
 
@@ -55,8 +67,9 @@ va a rechazarlo igual y el ciclo es mas lento.
 
 ## Paso 6 · Abre el pull request
 
-Ejecuta `scripts/abrir-pr.sh`. El PR se abre **con la identidad del desarrollador**, no con una
-cuenta de servicio: la trazabilidad importa.
+Abre el pull request con `gh pr create`, **con la identidad del desarrollador** y no con una
+cuenta de servicio: la trazabilidad importa. Un pull request por artefacto: el gate rechaza mezclar
+tipos que exigen firmantes distintos, porque la aprobacion dejaria de ser atribuible.
 
 ## Lo que no debes hacer
 

@@ -59,6 +59,8 @@ class Artefacto:
     # Motivo por el que el frontmatter NO es YAML valido, o None si lo es. Un artefacto con YAML
     # roto lo SALTAN los clientes sin avisar, asi que el gate tiene que verlo.
     yaml_invalido: str | None = None
+    # El texto tras el frontmatter. G2 revisa las rutas que referencia.
+    cuerpo: str = ""
 
 
 @dataclass(frozen=True)
@@ -80,6 +82,9 @@ class ContenidoRepositorio:
     mcps: int = 0
     archivos_escaneables: tuple[tuple[str, str], ...] = field(default=())
     """Pares (ruta relativa, contenido) para el gate de higiene."""
+    rutas: frozenset[str] = field(default=frozenset())
+    """TODAS las rutas del arbol, para resolver las referencias a recursos de G2. Son todas y no
+    solo las escaneables: un `.png` de `assets/` no se escanea y aun asi tiene que existir."""
 
 
 def _leer_json(raiz: Path, ruta: Path) -> ArchivoJson:
@@ -109,6 +114,7 @@ def _leer_artefactos_por_directorio(raiz: Path, lector) -> tuple[Artefacto, ...]
             frontmatter=lector.leer(definicion) if definicion.exists() else None,
             yaml_invalido=lector.es_yaml_valido(definicion) if definicion.exists() else None,
             lineas=lector.contar_lineas(definicion) if definicion.exists() else 0,
+            cuerpo=lector.leer_cuerpo(definicion) if definicion.exists() else "",
         ))
     return tuple(artefactos)
 
@@ -124,6 +130,7 @@ def _leer_prompts(raiz: Path, lector) -> tuple[Artefacto, ...]:
             frontmatter=lector.leer(archivo),
             yaml_invalido=lector.es_yaml_valido(archivo),
             lineas=lector.contar_lineas(archivo),
+            cuerpo=lector.leer_cuerpo(archivo),
         )
         for archivo in sorted(directorio.glob(SUFIJO_PROMPT))
     )
@@ -142,6 +149,7 @@ def _leer_agentes(raiz: Path, lector) -> tuple[Artefacto, ...]:
             frontmatter=lector.leer(archivo),
             yaml_invalido=lector.es_yaml_valido(archivo),
             lineas=lector.contar_lineas(archivo),
+            cuerpo=lector.leer_cuerpo(archivo),
         )
         for archivo in sorted(directorio.glob(SUFIJO_AGENTE))
     )
@@ -157,9 +165,19 @@ def _leer_instructions(raiz: Path, lector) -> tuple[Artefacto, ...]:
             frontmatter=lector.leer(archivo),
             yaml_invalido=lector.es_yaml_valido(archivo),
             lineas=lector.contar_lineas(archivo),
+            cuerpo=lector.leer_cuerpo(archivo),
         )
         for archivo in sorted(raiz.rglob(SUFIJO_INSTRUCTIONS))
         if ".git" not in archivo.parts
+    )
+
+
+def _leer_rutas(raiz: Path) -> frozenset[str]:
+    """Todas las rutas versionables del arbol, en POSIX y relativas a la raiz."""
+    return frozenset(
+        archivo.relative_to(raiz).as_posix()
+        for archivo in raiz.rglob("*")
+        if archivo.is_file() and ".git" not in archivo.parts
     )
 
 
@@ -201,4 +219,5 @@ def leer(raiz: Path, lector) -> ContenidoRepositorio:
         instructions=_leer_instructions(raiz, lector),
         mcps=1 if (raiz / RUTA_MCP).exists() else 0,
         archivos_escaneables=_leer_archivos_escaneables(raiz),
+        rutas=_leer_rutas(raiz),
     )

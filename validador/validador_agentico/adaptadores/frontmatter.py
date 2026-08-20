@@ -67,6 +67,18 @@ def leer(ruta: Path) -> dict | None:
     }
 
 
+def leer_cuerpo(ruta: Path) -> str:
+    """El texto DESPUES del frontmatter. Es donde el artefacto referencia sus recursos, y por eso
+    G2 lo necesita: el frontmatter no declara los archivos de apoyo -- ningun estandar tiene campo
+    para eso -- asi que la unica pista de que existen son las rutas del cuerpo."""
+    try:
+        contenido = ruta.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
+    delimitado = _DELIMITADO.match(contenido)
+    return contenido[delimitado.end():] if delimitado else contenido
+
+
 def contar_lineas(ruta: Path) -> int:
     return ruta.read_text(encoding="utf-8").count("\n")
 
