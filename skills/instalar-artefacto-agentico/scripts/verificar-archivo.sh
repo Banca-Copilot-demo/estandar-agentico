@@ -8,7 +8,7 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_comun.sh"
 
-readonly USO="verificar-archivo.sh <repo> <sha> <ruta-en-el-repo> <sha256-esperado> <destino>"
+readonly USO="verificar-archivo.sh <repo> <sha> <ruta-en-el-repo> <sha256> <destino>"
 readonly BASE_CRUDA="https://raw.githubusercontent.com"
 
 repo="${1:-}"
@@ -23,6 +23,14 @@ exigir_argumento "$sha256_esperado" "sha256-esperado" "$USO"
 exigir_argumento "$destino" "destino" "$USO"
 
 url="$BASE_CRUDA/$repo/$sha/$ruta"
+
+# `destino` admite un DIRECTORIO o un archivo, y no es indulgencia: su script hermano
+# `verificar-paquete.sh` recibe un directorio. Que este exigiera un archivo hacia que pasarle un
+# directorio fallara con `curl: (23) client returned ERROR on write` -- un error de ESCRITURA que
+# parece de red y manda a mirar la URL.
+if [ -d "$destino" ]; then
+  destino="$destino/$(basename "$ruta")"
+fi
 mkdir -p "$(dirname "$destino")"
 echo "Descargando $url"
 if ! salida="$(curl --fail --silent --show-error --location "$url" --output "$destino" 2>&1)"; then

@@ -2,9 +2,9 @@
 # Prueba de regresion de los codigos de salida (T6): este script decide si algo se INSTALA, asi que
 # tiene que estar probado y no comprobado a ojo.
 #
-# EL DEFECTO QUE FIJA es de medicion, no de codigo. Se comprobo el codigo de salida con
-# `bash comprobar-estado.sh retired | head -1; echo $?` y salio 0 -- porque `$?` era el de `head`, no
-# el del script --. Parecia que un artefacto retirado no bloqueaba. Aqui se mide sin tuberia.
+# EL DEFECTO QUE FIJA es de medicion, no de codigo. Se comprobo con
+# `bash comprobar-estado.sh retired | head -1; echo $?` y salio 0 -- porque `$?` era el de `head` y
+# no el del script --. Parecia que un retirado no bloqueaba. Aqui se mide sin tuberia.
 set -euo pipefail
 
 readonly AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

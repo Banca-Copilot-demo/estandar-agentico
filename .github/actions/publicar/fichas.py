@@ -49,7 +49,13 @@ def _pista_de_instalacion(artefacto: dict, en_marketplace: bool, repositorio: st
         # artefacto daba un comando que no resuelve contra ninguna entrada del marketplace.
         return f"copilot plugin install {nombre_plugin}@{CATALOGO}"
     if artefacto["tipo"] == "skill":
-        return f"gh skill install {repositorio}/{artefacto['ruta']} --pin {etiqueta}"
+        # La forma es `gh skill install <repo> <skill[@version]>`, MEDIDO ejecutandolo: el nombre del
+        # skill es un argumento aparte, no parte del repositorio. Concatenar la ruta al repositorio
+        # -- como hacia la primera version -- produce un comando que falla con «must specify a skill
+        # name». El nombre es el DIRECTORIO del skill, que la especificacion obliga a que coincida
+        # con su `name`.
+        nombre = artefacto["ruta"].rsplit("/", 2)[-2]
+        return f"gh skill install {repositorio} {nombre}@{etiqueta}"
 
     # Un `prompt` no lo instala ninguna herramienta oficial: no es componente de plugin y `gh skill`
     # es exclusivo de skills. Se trae el archivo FIJADO AL SHA -- no a la etiqueta -- porque el sha

@@ -32,8 +32,15 @@ if [ -z "$paquete" ]; then
   abortar "el release $ref no trae paquete (.tar.gz ni .zip) en $destino"
 fi
 
-echo "Verificando la atestacion de $(basename "$paquete") contra $REPO_FIRMANTE"
-if ! salida="$(gh attestation verify "$paquete" --signer-repo "$REPO_FIRMANTE" 2>&1)"; then
+echo "Verificando la atestacion de $(basename "$paquete")"
+echo "  firmante esperado: $REPO_FIRMANTE"
+# `--repo` es OBLIGATORIO: sin el, `gh` corta con «at least one of the flags in the group
+# [owner repo] is required» -- otro mensaje que no dice que falta --. Y `--signer-repo` tambien hace
+# falta, por un motivo distinto: el paquete sale del repositorio del DOMINIO pero lo firma el
+# workflow reutilizable del ESTANDAR, asi que sin declararlo la verificacion falla contra el
+# repositorio equivocado.
+verificacion=(gh attestation verify "$paquete" --repo "$repo" --signer-repo "$REPO_FIRMANTE")
+if ! salida="$("${verificacion[@]}" 2>&1)"; then
   traducir_fallo "$salida" >&2
   abortar "atestacion NO verificada: no instales este paquete"
 fi
