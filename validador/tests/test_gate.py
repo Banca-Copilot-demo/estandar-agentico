@@ -178,3 +178,34 @@ def test_un_mcp_con_oauth_no_pide_custodia(tmp_path):
     resultado = ejecutar(raiz, comprobador_oficial=ComprobadorFalso(Resultado.CONFORME))
 
     assert resultado.conforme
+
+
+_SKILL_CON_YAML_ROTO = """---
+name: roto
+description: Hace algo: y estos dos puntos rompen el YAML
+---
+
+Cuerpo.
+"""
+
+
+def test_un_frontmatter_que_no_es_yaml_valido_bloquea_el_gate(tmp_path):
+    """Defecto MEDIDO en nuestro propio repositorio: un `description` con dos puntos sin entrecomillar
+    dejaba el frontmatter ilegible. Los clientes SALTAN un skill con YAML invalido sin avisar, y
+    nuestro gate lo daba por CONFORME -- porque la extraccion es por expresiones regulares y una
+    expresion regular no ve un error de sintaxis. Un artefacto que ningun cliente puede cargar es
+    justo lo que G1 existe para atrapar."""
+    directorio = tmp_path / "skills" / "roto"
+    directorio.mkdir(parents=True)
+    (directorio / "SKILL.md").write_text(_SKILL_CON_YAML_ROTO, encoding="utf-8")
+
+    resultado = ejecutar(tmp_path, comprobador_oficial=ComprobadorFalso(Resultado.CONFORME))
+
+    assert not resultado.conforme
+    assert any("no es YAML valido" in h.mensaje for h in resultado.veredicto.errores)
+
+
+def test_un_frontmatter_valido_no_produce_ese_error(tmp_path):
+    resultado = ejecutar(_repositorio_minimo(tmp_path),
+                         comprobador_oficial=ComprobadorFalso(Resultado.CONFORME))
+    assert not any("YAML" in h.mensaje for h in resultado.veredicto.errores)

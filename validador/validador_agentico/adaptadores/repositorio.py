@@ -56,6 +56,9 @@ class Artefacto:
     nombre_directorio: str
     frontmatter: dict | None
     lineas: int = 0
+    # Motivo por el que el frontmatter NO es YAML valido, o None si lo es. Un artefacto con YAML
+    # roto lo SALTAN los clientes sin avisar, asi que el gate tiene que verlo.
+    yaml_invalido: str | None = None
 
 
 @dataclass(frozen=True)
@@ -104,6 +107,7 @@ def _leer_artefactos_por_directorio(raiz: Path, lector) -> tuple[Artefacto, ...]
             ruta_relativa=f"{DIRECTORIO_SKILLS}/{hijo.name}/{ARCHIVO_SKILL}",
             nombre_directorio=hijo.name,
             frontmatter=lector.leer(definicion) if definicion.exists() else None,
+            yaml_invalido=lector.es_yaml_valido(definicion) if definicion.exists() else None,
             lineas=lector.contar_lineas(definicion) if definicion.exists() else 0,
         ))
     return tuple(artefactos)
@@ -118,6 +122,7 @@ def _leer_prompts(raiz: Path, lector) -> tuple[Artefacto, ...]:
             ruta_relativa=f"{DIRECTORIO_PROMPTS}/{archivo.name}",
             nombre_directorio=archivo.stem,
             frontmatter=lector.leer(archivo),
+            yaml_invalido=lector.es_yaml_valido(archivo),
             lineas=lector.contar_lineas(archivo),
         )
         for archivo in sorted(directorio.glob(SUFIJO_PROMPT))
@@ -135,6 +140,7 @@ def _leer_agentes(raiz: Path, lector) -> tuple[Artefacto, ...]:
             # la ultima extension y dejaria `migrador.agent`.
             nombre_directorio=archivo.name.removesuffix(".agent.md"),
             frontmatter=lector.leer(archivo),
+            yaml_invalido=lector.es_yaml_valido(archivo),
             lineas=lector.contar_lineas(archivo),
         )
         for archivo in sorted(directorio.glob(SUFIJO_AGENTE))
@@ -149,6 +155,7 @@ def _leer_instructions(raiz: Path, lector) -> tuple[Artefacto, ...]:
             ruta_relativa=archivo.relative_to(raiz).as_posix(),
             nombre_directorio=archivo.name.removesuffix(".instructions.md"),
             frontmatter=lector.leer(archivo),
+            yaml_invalido=lector.es_yaml_valido(archivo),
             lineas=lector.contar_lineas(archivo),
         )
         for archivo in sorted(raiz.rglob(SUFIJO_INSTRUCTIONS))

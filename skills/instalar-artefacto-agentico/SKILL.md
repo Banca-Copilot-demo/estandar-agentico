@@ -1,6 +1,6 @@
 ---
 name: instalar-artefacto-agentico
-description: Instala un artefacto agentico publicado -skill, agente, prompt, mcp o instructions- invirtiendo el orden del cliente: descarga el release del sha, verifica la atestacion y solo entonces instala, con el alcance elegido de forma explicita. Usalo cuando alguien quiera instalar, anadir, consumir o traerse a su repositorio un artefacto del catalogo, cuando quiera comprobar la firma o el sha256 de un artefacto ya publicado, o cuando una instalacion haya fallado con un mensaje que no explica su causa.
+description: "Instala un artefacto agentico publicado -skill, agente, prompt, mcp o instructions- invirtiendo el orden del cliente. Descarga el release del sha, verifica la atestacion y solo entonces instala, con el alcance elegido de forma explicita. Usalo cuando alguien quiera instalar, anadir, consumir o traerse a su repositorio un artefacto del catalogo, cuando quiera comprobar la firma o el sha256 de un artefacto ya publicado, o cuando una instalacion haya fallado con un mensaje que no explica su causa."
 license: Proprietary
 compatibility: Requiere gh (GitHub CLI), copilot, curl y sha256sum en el PATH
 allowed-tools: Bash(gh:*) Bash(copilot:*) Bash(sha256sum:*) Read

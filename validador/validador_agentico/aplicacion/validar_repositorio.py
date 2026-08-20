@@ -50,6 +50,7 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
         *_revisar_hooks(contenido),
         *_revisar_mcp(contenido),
         *_revisar_higiene(contenido),
+        *_revisar_yaml(contenido),
         *_revisar_duenos(contenido, equipos_conocidos),
         *_revisar_mezcla(archivos_cambiados),
     ]
@@ -257,3 +258,19 @@ def _revisar_instructions(contenido: ContenidoRepositorio) -> list[Hallazgo]:
         hallazgos += reglas_artefacto.revisar_envelope(
             instruccion.ruta_relativa, instruccion.frontmatter.get("metadata") or {})
     return hallazgos
+
+
+def _revisar_yaml(contenido: ContenidoRepositorio) -> list[Hallazgo]:
+    """Un frontmatter que no es YAML valido hace que el cliente SALTE el artefacto sin avisar.
+
+    Es error y no aviso: el artefacto existe, pasa todas las demas reglas y no se carga nunca. Es
+    exactamente el caso que G1 -- que el artefacto exista de forma comprobable -- tiene que atrapar.
+    """
+    todos = (*contenido.skills, *contenido.prompts, *contenido.agentes_leidos,
+             *contenido.instructions)
+    return [
+        error(artefacto.ruta_relativa,
+              f"el frontmatter no es YAML valido ({artefacto.yaml_invalido}): el cliente se salta "
+              "el artefacto sin avisar. Suele ser un `:` o un `#` sin entrecomillar")
+        for artefacto in todos if artefacto.yaml_invalido
+    ]
