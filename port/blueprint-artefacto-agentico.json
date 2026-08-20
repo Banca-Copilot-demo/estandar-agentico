@@ -96,9 +96,9 @@
       },
       "sunset_date": {
         "type": "string",
-        "format": "date",
+        "format": "date-time",
         "title": "Fecha de retiro",
-        "description": "Cuando deja de estar en circulacion. NO puede ser anterior a la fecha en que se declaro deprecated (RFC 9745 4)."
+        "description": "Cuando deja de estar en circulacion. NO puede ser anterior a la fecha en que se declaro deprecated (RFC 9745 4). Port no admite el formato `date`, solo `date-time`. Su formato `timer` caducaria solo y disparia una automatizacion: es la mejora natural cuando se cablee el flujo de retiro."
       },
       "decided_by": {
         "type": "string",
