@@ -197,3 +197,17 @@ def test_las_etiquetas_de_la_raiz_cuentan_como_UN_plugin():
 
 def test_sin_etiquetas_no_se_inventa_ninguna():
     assert etiquetas_vigentes(()) == ()
+
+
+# ── el predicado tiene DOS formatos y los dos hay que leerlos ────────────────────────────────
+def test_se_leen_los_DOS_formatos_de_predicado():
+    """El formato 2.0.0 dejo de emitir `errores` y paso `avisos` a un recuento. Las atestaciones ya
+    publicadas llevan el 1.x y NO se pueden reescribir -- una atestacion no se revoca --, asi que el
+    indice tiene que seguir entendiendolas. Solo mira `conforme`, `inventario` y `plugins`, y ninguno
+    cambio; esta prueba lo FIJA para que nadie ate el indice a un campo que ya no viene."""
+    viejo = {"formato_version": "1.4.0", "conforme": True,
+             "errores": [], "avisos": [{"donde": "x", "mensaje": "y", "severidad": "aviso"}]}
+    nuevo = {"formato_version": "2.0.0", "conforme": True, "avisos": 1}
+    for veredicto in (viejo, nuevo):
+        version = veredicto["formato_version"]
+        assert evaluar(_candidato(veredicto=veredicto)).destino is Destino.INDEXAR, version

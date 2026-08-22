@@ -25,7 +25,10 @@ FORMATO_JSON = "json"
 FORMATOS = (FORMATO_TEXTO, FORMATO_JSON)
 
 # Version del PREDICADO, no del validador: solo cambia si cambia la forma del JSON firmado.
-_VERSION_PREDICADO = "1.4.0"
+# MAYOR y no MENOR: quitar `errores` del predicado es un cambio INCOMPATIBLE del contrato firmado.
+# Las atestaciones ya publicadas conservan el formato anterior y no se pueden reescribir, asi que
+# todo consumidor tiene que seguir leyendo las dos -- hay una prueba que lo fija.
+_VERSION_PREDICADO = "2.0.0"
 _SANGRIA_JSON = 2
 
 
@@ -59,11 +62,6 @@ def render(veredicto: Veredicto, nombre_repositorio: str) -> str:
     partes += [_linea(h) for h in (*veredicto.errores, *veredicto.avisos)]
     partes += ["", _resumen_inventario(veredicto), "", _linea_de_veredicto(veredicto)]
     return "\n".join(partes)
-
-
-def _hallazgo_como_dato(hallazgo: Hallazgo) -> dict[str, str]:
-    return {"severidad": hallazgo.severidad.value, "donde": hallazgo.donde,
-            "mensaje": hallazgo.mensaje}
 
 
 def render_json(veredicto: Veredicto, nombre_repositorio: str) -> str:
@@ -102,8 +100,16 @@ def render_json(veredicto: Veredicto, nombre_repositorio: str) -> str:
         # Quien concede el acceso a la credencial del `mcp`, si el repositorio declara uno. Va
         # FIRMADO para que la ficha no tenga que releer el repositorio.
         "credencial_ownership": veredicto.credencial_ownership,
-        "errores": [_hallazgo_como_dato(h) for h in veredicto.errores],
-        "avisos": [_hallazgo_como_dato(h) for h in veredicto.avisos],
+        # UN RECUENTO, NO LOS MENSAJES. Lo que aporta es «paso con N reservas», y eso cabe en un
+        # entero; el detalle son rutas internas y un inventario de por donde flojea el repositorio,
+        # y aqui quedaria FIRMADO Y PERMANENTE -- una atestacion no se revoca. El detalle completo
+        # sigue en el informe del run y en las anotaciones del pull request, que si son borrables.
+        # Nadie lo consume: se comprobo en toda la cadena, el indice solo mira `conforme`.
+        "avisos": len(veredicto.avisos),
+        # `errores` NO se emite: el CLI devuelve codigo distinto de cero cuando hay alguno, asi que
+        # la publicacion aborta antes de firmar nada y en una atestacion publicada la lista era
+        # SIEMPRE vacia. Un campo que no puede tener contenido pero esta en el contrato firmado
+        # induce a pensar que un veredicto sellado podria traer errores, y no puede.
     }
     return json.dumps(predicado, indent=_SANGRIA_JSON, sort_keys=True, ensure_ascii=False)
 

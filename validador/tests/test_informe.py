@@ -47,11 +47,29 @@ def test_el_predicado_es_estable_entre_ejecuciones():
     assert informe.render_json(veredicto, "repo") == informe.render_json(veredicto, "repo")
 
 
-def test_el_predicado_separa_errores_de_avisos():
+def test_el_predicado_NO_lleva_los_mensajes_de_los_hallazgos():
+    """El predicado se FIRMA y no se puede revocar, asi que lo que entra ahi es permanente. Los
+    mensajes llevan rutas internas y describen por donde flojea el repositorio: es lo unico del
+    predicado que nadie consume -- se comprobo en toda la cadena -- y lo mas sensible que contenia.
+    El detalle sigue en el informe del run y en las anotaciones del PR, que si son borrables."""
     predicado = json.loads(informe.render_json(_veredicto(UN_ERROR, UN_AVISO), "repo"))
-    assert len(predicado["errores"]) == 1
-    assert len(predicado["avisos"]) == 1
+    for prohibido in ("mensaje", "donde", "severidad"):
+        assert prohibido not in json.dumps(predicado), f"el predicado filtra `{prohibido}`"
+
+
+def test_los_avisos_van_como_RECUENTO_y_no_como_lista():
+    # Se conserva la senal «paso con N reservas», que es lo unico que aportaban.
+    predicado = json.loads(informe.render_json(_veredicto(UN_ERROR, UN_AVISO), "repo"))
+    assert predicado["avisos"] == 1
     assert predicado["conforme"] is False
+
+
+def test_el_predicado_NO_emite_errores():
+    """En una atestacion publicada la lista era SIEMPRE vacia: el CLI devuelve codigo distinto de
+    cero cuando hay errores, asi que la publicacion aborta antes de firmar. Un campo que no puede
+    tener contenido induce a pensar que un veredicto sellado podria traer errores."""
+    predicado = json.loads(informe.render_json(_veredicto(UN_ERROR, UN_AVISO), "repo"))
+    assert "errores" not in predicado
 
 
 def test_el_predicado_lleva_el_inventario_real_para_poder_auditarlo_despues():
