@@ -15,12 +15,9 @@ from __future__ import annotations
 
 import copy
 import json
-import logging
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
-
-log = logging.getLogger(__name__)
 
 # El esquema vive en el repositorio del estandar, no dentro del paquete del indice: es el contrato
 # publicado, y tener una copia aqui la dejaria derivar del original (G2).

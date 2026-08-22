@@ -8,10 +8,14 @@ queda en el historial del shell y en la tabla de procesos.
 """
 from __future__ import annotations
 
+import argparse
 import json
+import logging
 import os
 import sys
 import urllib.request
+
+log = logging.getLogger(__name__)
 
 API_POR_DEFECTO = "https://api.port.io"
 BLUEPRINT = "artefacto_agentico"
@@ -36,13 +40,30 @@ def _ruta_del_prompt(pista: str) -> str:
     return pista.split("/", 6)[-1].split(" -o ")[0]
 
 
+def _configurar_logging(verboso: bool) -> None:
+    manejador = logging.StreamHandler(sys.stderr)
+    manejador.setFormatter(logging.Formatter("%(levelname)-8s %(message)s"))
+    logging.getLogger().setLevel(logging.DEBUG if verboso else logging.INFO)
+    logging.getLogger().addHandler(manejador)
+
+
+def _parsear_argumentos() -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("identificador", help="`id` del artefacto cuya ficha se lee")
+    ap.add_argument("--verbose", "-v", action="store_true",
+                    help="Activa logging DEBUG (detalles internos de ejecucion).")
+    return ap.parse_args()
+
+
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("uso: leer_ficha.py <id-del-artefacto>", file=sys.stderr)
-        return 2
+    argumentos = _parsear_argumentos()
+    _configurar_logging(verboso=argumentos.verbose)
+
     api = os.environ.get("PORT_API", API_POR_DEFECTO)
+    log.debug("consultando %s para el artefacto %s", api, argumentos.identificador)
     peticion = urllib.request.Request(
-        f"{api}/v1/blueprints/{BLUEPRINT}/entities/{sys.argv[1]}",
+        f"{api}/v1/blueprints/{BLUEPRINT}/entities/{argumentos.identificador}",
         headers={"Authorization": f"Bearer {_token(api)}"})
     with urllib.request.urlopen(peticion, timeout=_TIEMPO_LIMITE_S) as respuesta:
         propiedades = json.load(respuesta)["entity"]["properties"]

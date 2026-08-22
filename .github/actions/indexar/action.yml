@@ -58,9 +58,15 @@ runs:
           --raiz "${{ inputs.raiz }}" \
           --esquemas "${{ github.action_path }}/../../../schemas" \
           --verbose
-        # Se cuenta sobre la proyeccion de Claude Code; las dos llevan las mismas entradas por
-        # construccion, y hay una prueba que lo fija.
-        indexados="$(python -c "import json,sys; print(len(json.load(open(sys.argv[1], encoding='utf-8'))['plugins']))" "${{ inputs.raiz }}/.claude-plugin/marketplace.json")"
+        # LAS RUTAS SE PREGUNTAN AL CODIGO. Estan declaradas en el enum `Proyeccion`, que es lo que
+        # el generador usa para escribirlas: repetirlas aqui crearia un segundo sitio que actualizar
+        # al anadir una proyeccion, y el olvido no daria error -- solo dejaria una sin commitear.
+        proyecciones="$(python -c "from indice_agentico.adaptadores.catalogo import Proyeccion; print(' '.join(p.ruta for p in Proyeccion))")"
+        echo "proyecciones=$proyecciones" >> "$GITHUB_OUTPUT"
+        # Se cuenta sobre la primera; las dos llevan las mismas entradas por construccion, y hay una
+        # prueba que lo fija.
+        primera="${proyecciones%% *}"
+        indexados="$(python -c "import json,sys; print(len(json.load(open(sys.argv[1], encoding='utf-8'))['plugins']))" "${{ inputs.raiz }}/$primera")"
         echo "indexados=$indexados" >> "$GITHUB_OUTPUT"
       env:
         GH_TOKEN: ${{ inputs.token }}
@@ -72,7 +78,7 @@ runs:
       run: |
         # LAS DOS PROYECCIONES VAN EN EL MISMO COMMIT: si una pudiera avanzar sin la otra, los
         # usuarios de un cliente verian un catalogo mas viejo sin que nada lo indicara.
-        proyecciones=(".claude-plugin/marketplace.json" ".github/plugin/marketplace.json")
+        read -r -a proyecciones <<< "${{ steps.generar.outputs.proyecciones }}"
         if git diff --quiet -- "${proyecciones[@]}"; then
           echo "El indice no cambio: no se commitea."
           exit 0
