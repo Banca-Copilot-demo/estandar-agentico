@@ -19,6 +19,7 @@ from validador_agentico.adaptadores.repositorio import ArchivoJson, ContenidoRep
 from validador_agentico.aplicacion import proyeccion
 from validador_agentico.dominio import reglas_agente_instructions, reglas_aprobacion
 from validador_agentico.dominio import reglas_credenciales, reglas_layout, reglas_recursos
+from validador_agentico.dominio import reglas_solapamiento
 from validador_agentico.dominio import reglas_higiene, reglas_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
 from validador_agentico.dominio.especificacion import RUTAS_MANIFIESTO
@@ -72,11 +73,14 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
         artefactos += proyeccion.listar_artefactos(contenido, raiz_plugin)
         custodia = {**custodia, **proyeccion.custodia_declarada(contenido)}
 
-    # Estas dos son del REPOSITORIO, no de cada plugin: la higiene se revisa sobre el arbol
-    # completo -- un secreto no deja de serlo por estar fuera de un plugin -- y la mezcla de
-    # firmantes se juzga sobre el pull request entero.
+    # Estas TRES son del REPOSITORIO, no de cada plugin: la higiene se revisa sobre el arbol
+    # completo -- un secreto no deja de serlo por estar fuera de un plugin --, la mezcla de
+    # firmantes se juzga sobre el pull request entero, y el solapamiento de instructions se mide
+    # entre TODAS las del repositorio: dos plugins vecinos se instalan juntos en el repositorio
+    # destino, asi que comprobar cada plugin por separado dejaria pasar el caso mas probable.
     del_repositorio = repositorio.leer(raiz, lector)
-    hallazgos += [*_revisar_higiene(del_repositorio), *_revisar_mezcla(archivos_cambiados)]
+    hallazgos += [*_revisar_higiene(del_repositorio), *_revisar_mezcla(archivos_cambiados),
+                  *_revisar_solapamiento_de_instructions(del_repositorio)]
 
     log.info("%d hallazgo(s) en %s", len(hallazgos), raiz.name)
     return Veredicto(hallazgos=tuple(hallazgos), inventario=inventario,
@@ -223,6 +227,18 @@ def _revisar_instructions(contenido: ContenidoRepositorio) -> list[Hallazgo]:
         hallazgos += reglas_artefacto.revisar_envelope(
             instruccion.ruta_relativa, instruccion.frontmatter.get("metadata") or {})
     return hallazgos
+
+
+def _revisar_solapamiento_de_instructions(contenido: ContenidoRepositorio) -> list[Hallazgo]:
+    """Se pasan las que TIENEN ambito: la falta de `applies_to` ya la senala la regla por artefacto,
+    y volver a nombrarla aqui daria dos hallazgos por el mismo defecto."""
+    declaradas = [
+        (instruccion.ruta_relativa,
+         instruccion.frontmatter.get("applies_to") or instruccion.frontmatter.get("applyTo"))
+        for instruccion in contenido.instructions
+        if instruccion.frontmatter is not None
+    ]
+    return reglas_solapamiento.revisar_solapamiento(declaradas)
 
 
 def _revisar_yaml(contenido: ContenidoRepositorio) -> list[Hallazgo]:
