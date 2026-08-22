@@ -10,6 +10,7 @@ pueda inyectar dobles sin tocar disco.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 from validador_agentico.adaptadores import digesto
@@ -17,9 +18,10 @@ from validador_agentico.adaptadores import frontmatter as adaptador_frontmatter
 from validador_agentico.adaptadores import repositorio as adaptador_repositorio
 from validador_agentico.adaptadores.repositorio import ArchivoJson, ContenidoRepositorio
 from validador_agentico.dominio import reglas_agente_instructions, reglas_aprobacion
-from validador_agentico.dominio import reglas_credenciales, reglas_recursos
+from validador_agentico.dominio import reglas_credenciales, reglas_layout, reglas_recursos
 from validador_agentico.dominio import reglas_higiene, reglas_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
+from validador_agentico.dominio.especificacion import RUTAS_MANIFIESTO
 from validador_agentico.dominio.hallazgo import (
     ArtefactoPublicado,
     Hallazgo,
@@ -38,27 +40,66 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
     """`equipos_conocidos` y `archivos_cambiados` llegan como DATOS y no como adaptadores: son
     contexto que el composition root resuelve una sola vez. Los dos admiten `None`, que significa
     «no se pudo averiguar» y produce un aviso -- nunca un pase silencioso."""
-    contenido = repositorio.leer(raiz, lector)
-    inventario = _construir_inventario(contenido)
-    hallazgos = [
-        *_revisar_plugin(contenido),
-        *_revisar_gobierno(contenido, inventario),
-        *_revisar_skills(contenido),
-        *_revisar_prompts(contenido),
-        *_revisar_agentes(contenido),
-        *_revisar_instructions(contenido),
-        *_revisar_hooks(contenido),
-        *_revisar_mcp(contenido),
-        *_revisar_higiene(contenido),
-        *_revisar_yaml(contenido),
-        *_revisar_recursos(contenido),
-        *_revisar_duenos(contenido, equipos_conocidos),
-        *_revisar_mezcla(archivos_cambiados),
-    ]
+    raices = reglas_layout.raices_de_plugin(raiz, RUTAS_MANIFIESTO)
+    varios = reglas_layout.es_multiplugin(raices, raiz)
+    if varios:
+        log.info("el repositorio aloja %d plugins: %s", len(raices),
+                 ", ".join(r.name for r in raices))
+
+    # UN veredicto para todo el repositorio, aunque se revise plugin a plugin: la regla de un solo
+    # gate y un solo veredicto no cambia porque el layout tenga niveles.
+    hallazgos: list[Hallazgo] = []
+    inventario = Inventario()
+    artefactos: list = []
+    custodia: dict = {}
+    for raiz_plugin in raices:
+        contenido = repositorio.leer(raiz_plugin, lector)
+        prefijo = f"{raiz_plugin.relative_to(raiz).as_posix()}/" if varios else ""
+        parcial = _construir_inventario(contenido)
+        inventario = _sumar_inventarios(inventario, parcial)
+        hallazgos += _prefijar(prefijo, [
+            *_revisar_plugin(contenido),
+            *_revisar_gobierno(contenido, parcial),
+            *_revisar_skills(contenido),
+            *_revisar_prompts(contenido),
+            *_revisar_agentes(contenido),
+            *_revisar_instructions(contenido),
+            *_revisar_hooks(contenido),
+            *_revisar_mcp(contenido),
+            *_revisar_yaml(contenido),
+            *_revisar_recursos(contenido),
+            *_revisar_duenos(contenido, equipos_conocidos),
+        ])
+        artefactos += _listar_artefactos(contenido, raiz_plugin)
+        custodia = {**custodia, **_custodia_declarada(contenido)}
+
+    # Estas dos son del REPOSITORIO, no de cada plugin: la higiene se revisa sobre el arbol
+    # completo -- un secreto no deja de serlo por estar fuera de un plugin -- y la mezcla de
+    # firmantes se juzga sobre el pull request entero.
+    del_repositorio = repositorio.leer(raiz, lector)
+    hallazgos += [*_revisar_higiene(del_repositorio), *_revisar_mezcla(archivos_cambiados)]
+
     log.info("%d hallazgo(s) en %s", len(hallazgos), raiz.name)
     return Veredicto(hallazgos=tuple(hallazgos), inventario=inventario,
-                     artefactos=_listar_artefactos(contenido, raiz),
-                     credencial_ownership=_custodia_declarada(contenido))
+                     artefactos=tuple(artefactos), credencial_ownership=custodia)
+
+
+def _prefijar(prefijo: str, hallazgos: list[Hallazgo]) -> list[Hallazgo]:
+    """Anade la ruta del plugin al `donde` de cada hallazgo. Sin esto, dos plugins con el mismo
+    defecto en el mismo archivo producirian dos mensajes identicos y nadie sabria cual arreglar."""
+    if not prefijo:
+        return hallazgos
+    return [replace(h, donde=f"{prefijo}{h.donde}") for h in hallazgos]
+
+
+def _sumar_inventarios(a: Inventario, b: Inventario) -> Inventario:
+    """El inventario del repositorio es la suma del de sus plugins. `tiene_plugin` es un O: basta
+    que uno lo tenga para que el repositorio publique al marketplace."""
+    return Inventario(
+        skills=a.skills + b.skills, agentes=a.agentes + b.agentes,
+        prompts=a.prompts + b.prompts, mcps=a.mcps + b.mcps, hooks=a.hooks + b.hooks,
+        tiene_plugin=a.tiene_plugin or b.tiene_plugin,
+        nombre_plugin=a.nombre_plugin or b.nombre_plugin)
 
 
 def _construir_inventario(contenido: ContenidoRepositorio) -> Inventario:
@@ -167,6 +208,8 @@ def _revisar_recursos(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     for artefacto in (contenido.skills + contenido.prompts
                       + contenido.agentes_leidos + contenido.instructions):
         hallazgos += reglas_recursos.revisar_recursos_referenciados(
+            artefacto.ruta_relativa, artefacto.cuerpo, contenido.rutas)
+        hallazgos += reglas_recursos.revisar_recursos_no_referenciados(
             artefacto.ruta_relativa, artefacto.cuerpo, contenido.rutas)
     return hallazgos
 

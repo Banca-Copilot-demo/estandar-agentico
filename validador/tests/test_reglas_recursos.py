@@ -118,3 +118,65 @@ def test_un_directorio_vacio_o_inexistente_SI_es_error():
     errores = _errores(revisar_recursos_referenciados(DONDE, "ver `templates/`", ARBOL))
     assert errores
     assert "directorio" in _mensajes(errores)
+
+
+# ── la otra mitad: archivos sin referencia ──────────────────────────────────────────────────
+from validador_agentico.dominio.reglas_recursos import revisar_recursos_no_referenciados  # noqa: E402
+
+ARBOL_CON_HUERFANA = ARBOL | {
+    "skills/crear/library-source/Lib.java",
+    "skills/crear/library-source/otro/Mas.java",
+}
+
+
+def _avisos(hallazgos):
+    return [h for h in hallazgos if h.severidad is Severidad.AVISO]
+
+
+def test_una_carpeta_que_nadie_referencia_es_AVISO():
+    # Medido en 33 skills reales: `library-source` existe en diez y no la menciona nadie. Viaja en
+    # el paquete y nunca se usa, y el coste de un artefacto es el contexto.
+    cuerpo = "Ejecuta `scripts/generar.sh`."
+    avisos = _avisos(revisar_recursos_no_referenciados(DONDE, cuerpo, ARBOL_CON_HUERFANA))
+    assert avisos
+    assert "library-source" in _mensajes(avisos)
+
+
+def test_no_es_error_sino_aviso():
+    # Una carpeta puede ser material del autor deliberadamente no referenciado: bloquearlo
+    # rechazaria algo legitimo.
+    hallazgos = revisar_recursos_no_referenciados(DONDE, "", ARBOL_CON_HUERFANA)
+    assert hallazgos
+    assert all(h.severidad is Severidad.AVISO for h in hallazgos)
+
+
+def test_una_carpeta_referenciada_no_avisa():
+    cuerpo = "Ejecuta `scripts/generar.sh` y aplica [la plantilla](assets/skill/SKILL.md)."
+    nombres = _mensajes(revisar_recursos_no_referenciados(DONDE, cuerpo, ARBOL))
+    assert "scripts" not in nombres
+    assert "assets" not in nombres
+
+
+def test_referenciar_la_carpeta_cubre_lo_que_hay_DENTRO():
+    """Solo se mira el primer nivel: bajar mas daria un aviso por cada subcarpeta de algo ya usado.
+    `library-source/` tiene dos niveles y una sola mencion la cubre entera."""
+    # Primer intento de esta prueba: exigia CERO avisos, y fallaba porque el cuerpo no referenciaba
+    # scripts/, assets/ ni references/ -- que avisaban con razon. La prueba estaba mal, no el codigo.
+    cuerpo = "El codigo esta en `library-source/`."
+    assert "library-source" not in _mensajes(
+        revisar_recursos_no_referenciados(DONDE, cuerpo, ARBOL_CON_HUERFANA))
+
+
+def test_un_nombre_de_carpeta_FUERA_de_la_lista_conocida_cuenta_como_referencia():
+    """Al no mantener lista de carpetas permitidas, el detector de menciones tiene que ser
+    permisivo: con el estricto, `library-source/` no contaba y el aviso saltaba sobre una carpeta
+    que si se usa. Estricto donde se bloquea, permisivo donde se avisa."""
+    for cuerpo in ("ver `project_base/pom.xml`", "ver [el codigo](library-source/Lib.java)"):
+        carpeta = cuerpo.split("`")[1].split("/")[0] if "`" in cuerpo else "library-source"
+        assert carpeta not in _mensajes(
+            revisar_recursos_no_referenciados(
+                DONDE, cuerpo, ARBOL_CON_HUERFANA | {"skills/crear/project_base/pom.xml"})), cuerpo
+
+
+def test_un_artefacto_sin_carpetas_no_avisa():
+    assert revisar_recursos_no_referenciados("skills/x/SKILL.md", "", frozenset({"skills/x/SKILL.md"})) == []
