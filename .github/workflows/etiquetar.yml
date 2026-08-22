@@ -93,54 +93,76 @@ jobs:
       # LA VERSION DEL PAQUETE, no la de cada artefacto. El orden de las fuentes es deliberado: el
       # manifiesto del plugin manda cuando existe, porque es lo que el marketplace resuelve; y un
       # repositorio de artefactos SUELTOS la declara en su GOVERNANCE.json.
-      - name: Resolver la version del paquete
+      # PYTHON PORQUE EL DESCUBRIMIENTO DE PLUGINS ES UNA REGLA DEL ESTANDAR, no de CI. La
+      # ejecuta `validador_agentico.listar_plugins`, que reutiliza la MISMA regla que el gate: si
+      # el etiquetado y el gate discreparan sobre que es un plugin, se crearia una etiqueta para
+      # algo que la publicacion no encuentra -- y con releases inmutables esa etiqueta no se borra.
+      - name: Preparar Python
         if: steps.app.outputs.hay == 'si'
-        id: version
-        run: |
-          if [ -f .claude-plugin/plugin.json ]; then
-            version="$(jq -r '.version // empty' .claude-plugin/plugin.json)"
-            fuente=".claude-plugin/plugin.json"
-          elif [ -f GOVERNANCE.json ]; then
-            version="$(jq -r '.version // empty' GOVERNANCE.json)"
-            fuente="GOVERNANCE.json"
-          fi
-          if [ -z "${version:-}" ]; then
-            echo "::error::no hay version de paquete que etiquetar. Declarala en .claude-plugin/plugin.json o en GOVERNANCE.json"
-            exit 1
-          fi
-          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::la version de $fuente no es SemVer: $version"
-            exit 1
-          fi
-          echo "valor=$version"  >> "$GITHUB_OUTPUT"
-          echo "fuente=$fuente"  >> "$GITHUB_OUTPUT"
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
+      - name: Instalar el validador del estandar
+        if: steps.app.outputs.hay == 'si'
+        shell: bash
+        run: pip install --quiet "git+https://github.com/${{ github.repository_owner }}/estandar-agentico.git@main#subdirectory=validador"
+
+      # UNA ETIQUETA POR PLUGIN. Un repositorio de dominio puede alojar varios, y entonces `vX.Y.Z`
+      # seria ambiguo: no diria de cual. La forma `<nombre>--vX.Y.Z` es la convencion del cliente
+      # -- la misma que crea `claude plugin tag` --. Un repositorio de un solo plugin en la raiz
+      # conserva `vX.Y.Z`, porque sus etiquetas ya publicadas no se pueden reescribir.
+      #
       # NO SE REESCRIBE UNA ETIQUETA EXISTENTE. Si la version no subio, no hay nada que publicar:
-      # ese es el mecanismo por el que mergear no publica siempre. Y reescribirla romperia el
-      # contrato de que una etiqueta apunta para siempre al mismo commit.
-      - name: Etiquetar si la version es nueva
+      # ese es el mecanismo por el que mergear no publica siempre.
+      - name: Etiquetar los plugins cuya version sea nueva
         if: steps.app.outputs.hay == 'si'
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
-          VERSION: ${{ steps.version.outputs.valor }}
-          FUENTE: ${{ steps.version.outputs.fuente }}
+        shell: bash
         run: |
-          etiqueta="v${VERSION}"
-          if git rev-parse -q --verify "refs/tags/${etiqueta}" >/dev/null; then
-            echo "La etiqueta ${etiqueta} ya existe: la version no subio en este merge, no hay nada que publicar." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
           git config user.name  "agentico-ciclo-de-vida[bot]"
           git config user.email "agentico-ciclo-de-vida[bot]@users.noreply.github.com"
-          git tag -a "${etiqueta}" -m "Version ${VERSION}, declarada en ${FUENTE}"
-          git push origin "${etiqueta}"
-          {
-            echo "## Etiquetado"
-            echo
-            echo "| Qué | Valor |"
-            echo "|---|---|"
-            echo "| Etiqueta | \`${etiqueta}\` |"
-            echo "| Declarada en | \`${FUENTE}\` |"
-            echo
-            echo "La publicación arranca ahora, disparada por esta etiqueta."
-          } >> "$GITHUB_STEP_SUMMARY"
+
+          plugins="$(python -m validador_agentico.listar_plugins .)"
+          if [ -z "$plugins" ]; then
+            echo "Sin plugin que etiquetar: los artefactos sueltos se instalan por su propio canal." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          nuevas=0
+          echo "## Etiquetado"      >> "$GITHUB_STEP_SUMMARY"
+          echo ""                   >> "$GITHUB_STEP_SUMMARY"
+          echo "| Plugin | Version | Etiqueta | Resultado |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|---|"  >> "$GITHUB_STEP_SUMMARY"
+
+          # El separador se construye con printf: un tabulador literal dentro del YAML es
+          # fragil, porque los editores y los formateadores lo convierten en espacios.
+          TAB="$(printf '\t')"
+          while IFS="$TAB" read -r ruta nombre version; do
+            [ -n "$nombre" ] || continue
+            if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::la version de $ruta no es SemVer: $version"
+              exit 1
+            fi
+            if [ "$ruta" = "." ]; then
+              etiqueta="v${version}"
+            else
+              etiqueta="${nombre}--v${version}"
+            fi
+            if git rev-parse -q --verify "refs/tags/${etiqueta}" >/dev/null; then
+              echo "| \`$nombre\` | $version | \`$etiqueta\` | ya existia, la version no subio |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            git tag -a "$etiqueta" -m "Plugin $nombre, version $version"
+            git push origin "$etiqueta"
+            nuevas=$((nuevas+1))
+            echo "| \`$nombre\` | $version | \`$etiqueta\` | **etiquetado** |" >> "$GITHUB_STEP_SUMMARY"
+          done <<< "$plugins"
+
+          echo ""                   >> "$GITHUB_STEP_SUMMARY"
+          if [ "$nuevas" -gt 0 ]; then
+            echo "La publicacion arranca ahora, disparada por $nuevas etiqueta(s)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Ninguna version subio: no hay nada que publicar." >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -77,12 +77,41 @@ runs:
         python -m validador_agentico.cli . --formato json > veredicto.json
         cat veredicto.json
 
+    # DE QUE PLUGIN ES ESTA ETIQUETA. Un repositorio de dominio puede alojar varios, y entonces la
+    # etiqueta lleva la forma `<nombre>--vX.Y.Z`: el nombre identifica el plugin y hay que traducirlo
+    # a su subruta. La traduccion la hace `listar_plugins`, que usa la MISMA regla que el gate --
+    # si discreparan, se publicaria un paquete distinto del que se valido.
+    - name: Resolver a que plugin corresponde la etiqueta
+      id: plugin
+      shell: bash
+      run: |
+        if [[ "$GITHUB_REF_NAME" == *--v* ]]; then
+          buscado="${GITHUB_REF_NAME%%--v*}"
+        else
+          buscado=""
+        fi
+
+        subruta="."
+        if [ -n "$buscado" ]; then
+          # Sin `-F`: el separador por defecto de awk ya parte por tabuladores, y un tabulador
+          # literal dentro del YAML es fragil. Ni las rutas ni los nombres de plugin llevan
+          # espacios -- el patron de `name` los prohibe --, asi que no hay ambiguedad.
+          subruta="$(python -m validador_agentico.listar_plugins . | awk -v n="$buscado" '$2 == n { print $1 }' | head -1)"
+          if [ -z "$subruta" ]; then
+            echo "::error::la etiqueta $GITHUB_REF_NAME nombra el plugin '$buscado', que no existe en este commit"
+            exit 1
+          fi
+        fi
+        echo "subruta=$subruta" >> "$GITHUB_OUTPUT"
+        echo "etiquetado=${buscado:-$GITHUB_REPOSITORY}" >> "$GITHUB_OUTPUT"
+        echo "plugin '$buscado' -> subruta '$subruta'"
+
     - name: Empaquetar de forma determinista
       id: empaquetar
       shell: bash
       run: |
         nombre="${GITHUB_REPOSITORY##*/}-${GITHUB_REF_NAME}.tar.gz"
-        digest="$(bash "${{ github.action_path }}/empaquetar.sh" . "$nombre")"
+        digest="$(bash "${{ github.action_path }}/empaquetar.sh" . "$nombre" "${{ steps.plugin.outputs.subruta }}")"
         echo "paquete=$nombre" >> "$GITHUB_OUTPUT"
         echo "digest=$digest"  >> "$GITHUB_OUTPUT"
         echo "$nombre  sha256:$digest"

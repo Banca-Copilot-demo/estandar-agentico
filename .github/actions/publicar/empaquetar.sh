@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Empaqueta un repositorio de dominio de forma DETERMINISTA: los mismos archivos producen
-# siempre el mismo digest, en cualquier maquina y en cualquier momento.
+# Empaqueta UN PLUGIN de forma DETERMINISTA: los mismos archivos producen siempre el mismo digest,
+# en cualquier maquina y en cualquier momento.
 #
 # Importa porque el digest es lo que se sella en la atestacion. Si el empaquetado no fuera
 # determinista, dos publicaciones del mismo contenido darian digests distintos y la atestacion
@@ -15,6 +15,12 @@
 # La lista de archivos sale de `git ls-files`, no del directorio: asi solo entra lo versionado
 # —nunca un `.venv`, un `__pycache__` ni un archivo a medias— y el contenido del paquete es
 # exactamente el que se reviso en el pull request.
+#
+# UN PLUGIN POR PAQUETE, no el repositorio. Cuando un repositorio de dominio aloja varios plugins
+# bajo `plugins/<nombre>/`, empaquetar el arbol completo meteria en el paquete de cada plugin el
+# contenido de sus vecinos: el digest dejaria de significar «este plugin» y la atestacion probaria
+# algo distinto de lo que se instala. De ahi el tercer argumento.
+#
 # LIMITE CONOCIDO: el paquete se arma con el contenido del ARBOL DE TRABAJO, asi que los finales
 # de linea forman parte del digest. Por eso todo repositorio de dominio lleva `.gitattributes` con
 # `* text=auto eol=lf`: sin eso, empaquetar el mismo commit en Windows y en Linux daria digests
@@ -24,21 +30,36 @@ set -euo pipefail
 
 readonly RAIZ="${1:?falta la raiz del repositorio}"
 readonly DESTINO="${2:?falta la ruta del paquete de salida}"
+# Subdirectorio del plugin, relativo a la raiz. `.` = el repositorio ES el plugin.
+readonly SUBRUTA="${3:-.}"
 
 # Lo que NO se distribuye: la mecanica del repositorio no es parte del artefacto.
 readonly EXCLUIDOS='^(\.github/|\.gitattributes$|\.gitignore$|validador/)'
 
 cd "$RAIZ"
 
+# El ambito acota `git ls-files` a un subdirectorio, y la transformacion quita ese prefijo del
+# paquete: un cliente busca el manifiesto en la RAIZ de lo que extrae, no bajo `plugins/<nombre>/`.
+ambito=()
+transformacion=()
+if [ "$SUBRUTA" != "." ]; then
+  if [ ! -d "$SUBRUTA" ]; then
+    echo "empaquetar: la subruta $SUBRUTA no existe en $RAIZ" >&2
+    exit 1
+  fi
+  ambito=("$SUBRUTA")
+  transformacion=(--transform "s|^${SUBRUTA}/||")
+fi
+
 lista="$(mktemp)"
 trap 'rm -f "$lista"' EXIT
-git ls-files -z \
+git ls-files -z -- "${ambito[@]}" \
   | tr '\0' '\n' \
   | grep -Ev "$EXCLUIDOS" \
   | LC_ALL=C sort > "$lista"
 
 if [ ! -s "$lista" ]; then
-  echo "empaquetar: no hay archivos que empaquetar en $RAIZ" >&2
+  echo "empaquetar: no hay archivos que empaquetar en $RAIZ/$SUBRUTA" >&2
   exit 1
 fi
 
@@ -46,6 +67,7 @@ tar --create \
     --format=ustar \
     --owner=0 --group=0 --numeric-owner \
     --mtime='@0' \
+    "${transformacion[@]}" \
     --files-from="$lista" \
   | gzip -n -9 > "$DESTINO"
 

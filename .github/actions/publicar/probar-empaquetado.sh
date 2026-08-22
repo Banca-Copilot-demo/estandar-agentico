@@ -51,9 +51,58 @@ else
   echo "  ok    editar el contenido cambia el digest"
 fi
 
+# ── UN PLUGIN POR PAQUETE ────────────────────────────────────────────────────────────────────
+# MEDIDO: la primera version de esta funcionalidad no acotaba nada y los dos plugins de un
+# repositorio producian paquetes IDENTICOS. El digest dejaba de significar «este plugin».
+multi="$TRABAJO/multi"
+mkdir -p "$multi/plugins/uno/skills/a" "$multi/plugins/dos/skills/b"
+printf '{"name":"uno","version":"1.0.0"}' > "$multi/plugins/uno/plugin.json"
+printf '{"name":"dos","version":"1.0.0"}' > "$multi/plugins/dos/plugin.json"
+printf -- '---
+name: a
+---
+' > "$multi/plugins/uno/skills/a/SKILL.md"
+printf -- '---
+name: b
+---
+' > "$multi/plugins/dos/skills/b/SKILL.md"
+git -C "$multi" init --quiet
+git -C "$multi" add -A
+git -C "$multi" -c user.email=p@p -c user.name=p commit --quiet -m x
+
+d_uno="$(bash "$AQUI/empaquetar.sh" "$multi" "$TRABAJO/uno.tar.gz" plugins/uno)"
+d_dos="$(bash "$AQUI/empaquetar.sh" "$multi" "$TRABAJO/dos.tar.gz" plugins/dos)"
+if [ "$d_uno" = "$d_dos" ]; then
+  echo "  FALLO dos plugins del mismo repo deben dar digests distintos (dieron el mismo)"
+  fallos=$((fallos + 1))
+else
+  echo "  ok    dos plugins del mismo repo dan digests distintos"
+fi
+
+if tar -tzf "$TRABAJO/uno.tar.gz" | grep -q '^plugins/'; then
+  echo "  FALLO el paquete debe extraerse con el manifiesto en su RAIZ, sin el prefijo plugins/"
+  fallos=$((fallos + 1))
+else
+  echo "  ok    el paquete se extrae con el manifiesto en su raiz"
+fi
+
+if tar -tzf "$TRABAJO/uno.tar.gz" | grep -q 'skills/b'; then
+  echo "  FALLO el paquete de un plugin no debe contener artefactos de su vecino"
+  fallos=$((fallos + 1))
+else
+  echo "  ok    el paquete de un plugin no arrastra a su vecino"
+fi
+
+if bash "$AQUI/empaquetar.sh" "$multi" "$TRABAJO/no.tar.gz" plugins/inexistente >/dev/null 2>&1; then
+  echo "  FALLO una subruta inexistente debe abortar, no producir un paquete vacio"
+  fallos=$((fallos + 1))
+else
+  echo "  ok    una subruta inexistente aborta"
+fi
+
 echo
 if [ "$fallos" -ne 0 ]; then
   echo "empaquetado: $fallos propiedad(es) rota(s)" >&2
   exit 1
 fi
-echo "empaquetado determinista: 3 propiedades comprobadas | digest $primero"
+echo "empaquetado determinista: 7 propiedades comprobadas | digest $primero"
