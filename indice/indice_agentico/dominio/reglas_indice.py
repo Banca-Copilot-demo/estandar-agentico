@@ -56,6 +56,59 @@ def es_etiqueta_por_plugin(etiqueta: str) -> bool:
     return _SEPARADOR_DE_ETIQUETA_POR_PLUGIN in etiqueta
 
 
+def plugin_de_la_etiqueta(etiqueta: str) -> str:
+    """Que plugin nombra la etiqueta. Cadena vacia = el plugin de la RAIZ del repositorio.
+
+    Es el nombre que el equipo puso en la etiqueta, no el del manifiesto: sirve para AGRUPAR
+    releases sin descargar ninguno, que es lo que evita bajar y verificar el historial completo.
+    """
+    if not es_etiqueta_por_plugin(etiqueta):
+        return ""
+    return etiqueta.rsplit(_SEPARADOR_DE_ETIQUETA_POR_PLUGIN, 1)[0]
+
+
+def etiquetas_vigentes(etiquetas_de_mas_nueva_a_mas_vieja: tuple[str, ...]) -> tuple[str, ...]:
+    """Una etiqueta por plugin: la mas nueva de cada uno, en el orden recibido.
+
+    POR QUE HACE FALTA. El indice preguntaba por EL ultimo release, en singular, y eso bastaba
+    cuando un repositorio era un plugin. Con una etiqueta por plugin, el repositorio tiene varios
+    releases y «el ultimo» es solo uno: los demas no se rechazaban ni se omitian -- no se MIRABAN,
+    sin dejar rastro en ningun log. Medido en la organizacion real: cinco releases publicados y el
+    indice evaluaba uno.
+
+    Y no se devuelven TODAS: de un mismo plugin hay varias versiones publicadas -- las etiquetas no
+    se reescriben -- y el catalogo lista la version vigente de cada plugin, no su historial.
+    """
+    vigentes: list[str] = []
+    vistos: set[str] = set()
+    for etiqueta in etiquetas_de_mas_nueva_a_mas_vieja:
+        plugin = plugin_de_la_etiqueta(etiqueta)
+        if plugin in vistos:
+            continue
+        vistos.add(plugin)
+        vigentes.append(etiqueta)
+    return tuple(vigentes)
+
+
+_SUBRUTA_DEL_REPOSITORIO = "."
+
+
+def _subruta_declarada(candidato: Candidato) -> str | None:
+    """La subruta del plugin de esta etiqueta, o `None` si el plugin es anidado y no se declara.
+
+    Se busca por el NOMBRE del manifiesto y no por el de la etiqueta: el manifiesto es la identidad
+    del plugin, y la etiqueta es un texto que una persona pudo escribir de otra forma.
+    """
+    if not es_etiqueta_por_plugin(candidato.etiqueta):
+        return _SUBRUTA_DEL_REPOSITORIO
+    declarados = (candidato.veredicto or {}).get("plugins") or []
+    nombre = (candidato.manifiesto or {}).get("name")
+    for plugin in declarados:
+        if plugin.get("nombre") == nombre and plugin.get("subruta"):
+            return str(plugin["subruta"])
+    return None
+
+
 def _omitir(motivo: Motivo) -> Decision:
     return Decision(destino=Destino.OMITIR, motivo=motivo)
 
@@ -97,13 +150,13 @@ def evaluar(candidato: Candidato) -> Decision:
     if candidato.manifiesto.get("version") != version_etiqueta:
         return _rechazar(Motivo.VERSION_DISCREPANTE)
 
-    # UN PLUGIN ANIDADO NO SE INDEXA TODAVIA, y se rechaza en voz alta en vez de indexarse mal. Para
-    # instalarlo, el cliente necesita la SUBRUTA dentro del repositorio, y aqui no hay de donde
-    # sacarla: el paquete trae el manifiesto en su raiz -- a proposito, es lo que el cliente espera
-    # al extraerlo -- asi que los bytes sellados no dicen de que subdirectorio salieron. Emitir la
-    # fuente del repositorio COMPLETO seria un puntero valido en forma y equivocado en contenido:
-    # Claude Code instalaria el repositorio entero creyendo instalar este plugin, sin dar error.
-    if es_etiqueta_por_plugin(candidato.etiqueta):
+    # LA SUBRUTA SALE DEL VEREDICTO FIRMADO, no del paquete: el paquete trae el manifiesto en su
+    # raiz -- a proposito, es lo que el cliente espera al extraerlo -- asi que los bytes sellados no
+    # dicen de que subdirectorio salieron. Si el plugin es anidado y el veredicto no la declara, se
+    # RECHAZA: emitir la fuente del repositorio completo seria un puntero valido en forma y
+    # equivocado en contenido, y Claude Code instalaria el repositorio entero sin dar error.
+    subruta = _subruta_declarada(candidato)
+    if subruta is None:
         return _rechazar(Motivo.SUBRUTA_NO_RESUELTA)
 
     return Decision(destino=Destino.INDEXAR, entrada=Entrada(
@@ -113,4 +166,5 @@ def evaluar(candidato: Candidato) -> Decision:
         repositorio=candidato.repositorio,
         etiqueta=candidato.etiqueta,
         sha=candidato.sha,
+        subruta=subruta,
     ))

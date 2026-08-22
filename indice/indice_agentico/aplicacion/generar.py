@@ -22,13 +22,14 @@ from indice_agentico.dominio.candidato import (
     Indice,
     Motivo,
 )
-from indice_agentico.dominio.reglas_indice import evaluar
+from indice_agentico.dominio.reglas_indice import etiquetas_vigentes, evaluar
 
 log = logging.getLogger(__name__)
 
 
-def _reunir_evidencia(repositorio: str, trabajo: Path, github, lector) -> Candidato | Motivo:
-    release = github.ultimo_release(repositorio)
+def _reunir_evidencia(repositorio: str, etiqueta_pedida: str, trabajo: Path,
+                      github, lector) -> Candidato | Motivo:
+    release = github.release(repositorio, etiqueta_pedida)
     if release is None:
         return Motivo.SIN_RELEASE
     etiqueta, sha, nombre_paquete = release
@@ -67,17 +68,27 @@ def generar(organizacion: str, topico: str, *, github=adaptador_github,
     with TemporaryDirectory() as temporal:
         trabajo = Path(temporal)
         for repositorio in repositorios:
-            evidencia = _reunir_evidencia(repositorio, trabajo, github, lector)
-            if isinstance(evidencia, Motivo):
-                rechazos.append(Descarte(repositorio, evidencia))
+            # UNA ETIQUETA POR PLUGIN, no «la ultima» del repositorio: con varios plugins por repo
+            # hay varios releases, y mirar solo el mas reciente dejaba a los demas sin evaluar --
+            # sin rechazo, sin omision y sin rastro en el log.
+            vigentes = etiquetas_vigentes(github.etiquetas_publicadas(repositorio))
+            if not vigentes:
+                rechazos.append(Descarte(repositorio, Motivo.SIN_RELEASE))
                 continue
-            decision = evaluar(evidencia)
-            if decision.destino is Destino.INDEXAR:
-                entradas.append(decision.entrada)
-            elif decision.destino is Destino.OMITIR:
-                omisiones.append(Descarte(repositorio, decision.motivo))
-            else:
-                rechazos.append(Descarte(repositorio, decision.motivo))
+            log.info("%s: %d etiqueta(s) vigente(s): %s",
+                     repositorio, len(vigentes), ", ".join(vigentes))
+            for etiqueta in vigentes:
+                evidencia = _reunir_evidencia(repositorio, etiqueta, trabajo, github, lector)
+                if isinstance(evidencia, Motivo):
+                    rechazos.append(Descarte(repositorio, evidencia))
+                    continue
+                decision = evaluar(evidencia)
+                if decision.destino is Destino.INDEXAR:
+                    entradas.append(decision.entrada)
+                elif decision.destino is Destino.OMITIR:
+                    omisiones.append(Descarte(repositorio, decision.motivo))
+                else:
+                    rechazos.append(Descarte(repositorio, decision.motivo))
 
     log.info("%d indexado(s), %d omitido(s) sin plugin, %d rechazado(s)",
              len(entradas), len(omisiones), len(rechazos))

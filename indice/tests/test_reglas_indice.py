@@ -7,7 +7,11 @@ lo demas siga en verde.
 from __future__ import annotations
 
 from indice_agentico.dominio.candidato import Candidato, Destino, Motivo
-from indice_agentico.dominio.reglas_indice import evaluar, version_de_la_etiqueta
+from indice_agentico.dominio.reglas_indice import (
+    etiquetas_vigentes,
+    evaluar,
+    version_de_la_etiqueta,
+)
 
 MANIFIESTO = {"name": "migracion-cnf", "description": "Skills del dominio SDLC.",
               "version": "0.2.0"}
@@ -144,4 +148,55 @@ def test_un_plugin_anidado_se_rechaza_por_la_SUBRUTA_y_no_por_la_version():
 
 def test_un_plugin_en_la_raiz_sigue_indexandose():
     # Lo que NO debe cambiar: el caso normal, un plugin por repositorio.
-    assert evaluar(_candidato(etiqueta="v0.2.0")).destino is Destino.INDEXAR
+    decision = evaluar(_candidato(etiqueta="v0.2.0"))
+    assert decision.destino is Destino.INDEXAR
+    assert decision.entrada.subruta == ".", "un plugin en la raiz no lleva subruta"
+
+
+def test_la_subruta_sale_del_VEREDICTO_FIRMADO():
+    """Es el unico sitio donde el dato sobrevive: al paquete se le quita el prefijo para que el
+    manifiesto quede en su raiz, asi que los bytes publicados no dicen de donde salieron."""
+    veredicto = {**VEREDICTO_CONFORME,
+                 "plugins": [{"nombre": "migracion-cnf", "version": "0.2.0",
+                              "subruta": "plugins/migracion"}]}
+    decision = evaluar(_candidato(etiqueta="migracion-cnf--v0.2.0", veredicto=veredicto))
+    assert decision.destino is Destino.INDEXAR
+    assert decision.entrada.subruta == "plugins/migracion"
+
+
+def test_la_subruta_se_busca_por_el_NOMBRE_DEL_MANIFIESTO_y_no_por_la_etiqueta():
+    # La etiqueta la escribe una persona y puede no coincidir con el manifiesto; el manifiesto es la
+    # identidad del plugin. Aqui la etiqueta dice `otro-nombre` y el manifiesto `migracion-cnf`.
+    veredicto = {**VEREDICTO_CONFORME,
+                 "plugins": [{"nombre": "otro-plugin", "subruta": "plugins/otro"},
+                             {"nombre": "migracion-cnf", "subruta": "plugins/migracion"}]}
+    decision = evaluar(_candidato(etiqueta="otro-nombre--v0.2.0", veredicto=veredicto))
+    assert decision.entrada.subruta == "plugins/migracion"
+
+
+def test_un_anidado_cuyo_veredicto_no_lo_declara_se_rechaza():
+    # Falla en voz alta en vez de listarse como el repositorio completo, que instalaria los vecinos.
+    veredicto = {**VEREDICTO_CONFORME,
+                 "plugins": [{"nombre": "otro", "subruta": "plugins/otro"}]}
+    decision = evaluar(_candidato(etiqueta="migracion-cnf--v0.2.0", veredicto=veredicto))
+    assert decision.motivo is Motivo.SUBRUTA_NO_RESUELTA
+
+
+# ── una etiqueta por plugin: cual queda vigente ─────────────────────────────────────────────
+def test_de_cada_plugin_queda_solo_la_etiqueta_MAS_NUEVA():
+    """Defecto MEDIDO contra la organizacion real: el indice pedia EL ultimo release, en singular,
+    y de cinco publicados evaluaba uno. Los otros no se rechazaban ni se omitian -- no se miraban,
+    sin dejar rastro en ningun log."""
+    publicadas = ("demo.sdlc.migracion--v0.2.0", "demo.sdlc.contratos--v0.1.0",
+                  "demo.sdlc.migracion--v0.1.0", "v0.3.0", "v0.2.1")
+    assert etiquetas_vigentes(publicadas) == (
+        "demo.sdlc.migracion--v0.2.0", "demo.sdlc.contratos--v0.1.0", "v0.3.0")
+
+
+def test_las_etiquetas_de_la_raiz_cuentan_como_UN_plugin():
+    # `vX.Y.Z` no nombra plugin: todas son versiones del plugin de la raiz, y solo vale la ultima.
+    assert etiquetas_vigentes(("v0.3.0", "v0.2.1", "v0.1.0")) == ("v0.3.0",)
+
+
+def test_sin_etiquetas_no_se_inventa_ninguna():
+    assert etiquetas_vigentes(()) == ()

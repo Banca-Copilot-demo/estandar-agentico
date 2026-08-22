@@ -91,6 +91,14 @@ def render_json(veredicto: Veredicto, nombre_repositorio: str) -> str:
              "standard_version": a.standard_version, "sha256": a.sha256}
             for a in veredicto.artefactos
         ],
+        # LOS PLUGINS Y SU SUBRUTA. Es el unico sitio donde la subruta sobrevive firmada: el paquete
+        # publicado no la lleva -- se le quita el prefijo para que el manifiesto quede en su raiz --,
+        # asi que sin esto el indice no puede escribir el `path` de un plugin anidado, y listarlo
+        # como el repositorio completo instalaria los plugins vecinos.
+        "plugins": [
+            {"nombre": p.nombre, "version": p.version, "subruta": p.subruta}
+            for p in veredicto.plugins
+        ],
         # Quien concede el acceso a la credencial del `mcp`, si el repositorio declara uno. Va
         # FIRMADO para que la ficha no tenga que releer el repositorio.
         "credencial_ownership": veredicto.credencial_ownership,

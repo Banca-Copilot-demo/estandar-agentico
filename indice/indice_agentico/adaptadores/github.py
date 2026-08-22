@@ -27,6 +27,9 @@ TIPO_PREDICADO_VEREDICTO = "https://ejemplo.dev/atestaciones/veredicto-de-confor
 REPOSITORIO_FIRMANTE_POR_DEFECTO = "Banca-Copilot-demo/estandar-agentico"
 SUFIJO_PAQUETE = ".tar.gz"
 _TIEMPO_LIMITE_S = 120
+# Tope de releases que se listan por repositorio. Acota el coste sin recortar nada real: solo se
+# evalua la etiqueta VIGENTE de cada plugin, y ningun repositorio de dominio aloja tantos plugins.
+_MAX_RELEASES_POR_REPOSITORIO = 100
 
 
 def _gh(*argumentos: str) -> str | None:
@@ -58,22 +61,38 @@ def repositorios_del_dominio(organizacion: str, topico: str) -> list[str]:
     return sorted(repo["nameWithOwner"] for repo in json.loads(salida))
 
 
-def ultimo_release(repositorio: str) -> tuple[str, str, str | None] | None:
-    """Devuelve (etiqueta, sha, nombre del paquete) del ultimo release; el paquete es `None` si el
-    release no trae ninguno, y el valor entero es `None` si no hay release.
+def etiquetas_publicadas(repositorio: str) -> tuple[str, ...]:
+    """Las etiquetas de TODOS los releases, de la mas nueva a la mas vieja.
 
-    LA DISTINCION IMPORTA y no es cosmetica: se midio al ejecutarlo contra la organizacion real. Con
-    un solo `None` para los dos casos, un release que existia pero no traia paquete se reportaba
-    como "no tiene ningun release publicado", y el equipo del dominio se habria puesto a buscar por
-    que no se creo su release -- que si se creo --.
+    Solo las etiquetas y no los releases completos: agrupar por plugin se hace con el nombre de la
+    etiqueta, asi que basta esta llamada barata para saber cuales merece la pena descargar. Bajar y
+    verificar la atestacion de cada release del historial costaria unos diez segundos por release.
     """
-    salida = _gh("release", "view", "--repo", repositorio,
+    salida = _gh("release", "list", "--repo", repositorio,
+                 "--limit", str(_MAX_RELEASES_POR_REPOSITORIO), "--json", "tagName,publishedAt")
+    if salida is None:
+        return ()
+    releases = json.loads(salida)
+    # `gh` ya los devuelve de mas nuevo a mas viejo, pero se ordena explicitamente: el orden decide
+    # cual version de cada plugin queda vigente, y no conviene que dependa de un detalle del CLI.
+    ordenados = sorted(releases, key=lambda r: r.get("publishedAt") or "", reverse=True)
+    return tuple(r["tagName"] for r in ordenados)
+
+
+def release(repositorio: str, etiqueta: str) -> tuple[str, str, str | None] | None:
+    """El release de UNA etiqueta: (etiqueta, sha, nombre del paquete). `None` si no existe.
+
+    El paquete es `None` cuando el release existe pero no trae ninguno, y esa DISTINCION importa --
+    se midio contra la organizacion real --: con un solo `None` para los dos casos, un release que
+    existia pero no traia paquete se reportaba como «no tiene ningun release publicado», y el equipo
+    del dominio se habria puesto a buscar por que no se creo su release, que si se creo.
+    """
+    salida = _gh("release", "view", etiqueta, "--repo", repositorio,
                  "--json", "tagName,targetCommitish,assets")
     if salida is None:
         return None
-    release = json.loads(salida)
-    etiqueta = release["tagName"]
-    paquetes = sorted(a["name"] for a in release.get("assets", [])
+    datos = json.loads(salida)
+    paquetes = sorted(a["name"] for a in datos.get("assets", [])
                       if a["name"].endswith(SUFIJO_PAQUETE))
     if not paquetes:
         log.warning("%s: el release %s no trae paquete %s",

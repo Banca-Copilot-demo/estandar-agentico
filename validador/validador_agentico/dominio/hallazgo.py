@@ -82,6 +82,24 @@ class ArtefactoPublicado:
 
 
 @dataclass(frozen=True)
+class PluginPublicado:
+    """Un plugin del repositorio, con DONDE vive dentro de el.
+
+    POR QUE LA SUBRUTA VIAJA EN EL VEREDICTO. Es el unico sitio donde el dato sobrevive firmado. El
+    paquete no la lleva -- se le quita el prefijo a proposito, porque el cliente espera el manifiesto
+    en la raiz de lo que descomprime --, asi que quien lee los bytes publicados no puede saber de que
+    subdirectorio salieron. Sin esto, el indice no puede escribir la entrada de un plugin anidado:
+    le falta el `path`, y listarlo como el repositorio completo instalaria los plugins vecinos.
+
+    `subruta` es `.` cuando el plugin ES el repositorio, que es el caso normal.
+    """
+
+    nombre: str
+    version: str
+    subruta: str
+
+
+@dataclass(frozen=True)
 class Veredicto:
     """Resultado de validar un repositorio. Inmutable: se construye una vez, al final.
 
@@ -93,6 +111,9 @@ class Veredicto:
     hallazgos: tuple[Hallazgo, ...]
     inventario: Inventario
     artefactos: tuple[ArtefactoPublicado, ...] = ()
+    # Los plugins del repositorio y su subruta. Uno con `subruta = "."` en el caso normal; varios
+    # cuando es un repositorio de dominio que aloja mas de uno.
+    plugins: tuple[PluginPublicado, ...] = ()
     # Custodia de la credencial del `mcp`, tal como la declaro el repositorio. Vacio
     # cuando no hay mcp o cuando su mecanismo no exige que alguien conceda nada.
     credencial_ownership: dict = field(default_factory=dict)

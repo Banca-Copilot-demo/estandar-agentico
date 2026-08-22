@@ -18,6 +18,7 @@ PROPIETARIO = {"name": "Plataforma Agentica (demo)", "email": "plataforma-agenti
 # Ruta explicita y no la de por defecto: una prueba que dependa del directorio de trabajo pasa o
 # falla segun desde donde se invoque a pytest.
 ESQUEMAS = Path(__file__).resolve().parents[2] / "schemas"
+CLAUDE = catalogo.Proyeccion.CLAUDE_CODE
 
 
 def _entrada(name: str, version: str = "0.2.0") -> Entrada:
@@ -31,7 +32,7 @@ def test_toda_entrada_del_catalogo_lleva_sha():
     """Sin `sha` el puntero es movil: la etiqueta se puede reescribir si el repositorio no tiene
     releases inmutables, y entonces `ref` no fija nada."""
     generado = json.loads(catalogo.render(Indice((_entrada("a"), _entrada("b")), ()),
-                                          "agentico", PROPIETARIO, "0.1.0"))
+                                          "agentico", PROPIETARIO, "0.1.0", CLAUDE))
     assert generado["plugins"]
     for plugin in generado["plugins"]:
         assert len(plugin["source"]["sha"]) == 40, plugin["name"]
@@ -39,19 +40,19 @@ def test_toda_entrada_del_catalogo_lleva_sha():
 
 def test_source_se_emite_como_objeto_y_no_como_cadena():
     # La forma abreviada de `source` es una cadena y NO admite `sha`.
-    generado = json.loads(catalogo.render(Indice((_entrada("a"),), ()), "agentico", PROPIETARIO, "0.1"))
+    generado = json.loads(catalogo.render(Indice((_entrada("a"),), ()), "agentico", PROPIETARIO, "0.1", CLAUDE))
     assert isinstance(generado["plugins"][0]["source"], dict)
 
 
 def test_los_plugins_salen_ordenados_por_nombre():
     # Sin orden fijo, cada regeneracion produce un diff distinto sin que nada haya cambiado.
     generado = json.loads(catalogo.render(Indice((_entrada("z"), _entrada("a")), ()),
-                                          "agentico", PROPIETARIO, "0.1"))
+                                          "agentico", PROPIETARIO, "0.1", CLAUDE))
     assert [p["name"] for p in generado["plugins"]] == ["a", "z"]
 
 
 def test_el_catalogo_avisa_de_que_esta_generado():
-    generado = json.loads(catalogo.render(Indice((), ()), "agentico", PROPIETARIO, "0.1"))
+    generado = json.loads(catalogo.render(Indice((), ()), "agentico", PROPIETARIO, "0.1", CLAUDE))
     assert "no editar a mano" in generado["metadata"]["description"]
 
 
@@ -60,19 +61,23 @@ class GithubFalso:
     """Doble del adaptador de GitHub. `sellado` decide si la atestacion verifica."""
 
     def __init__(self, repositorios: list[str], *, sellado: bool = True, con_release: bool = True,
-                 con_paquete: bool = True):
+                 con_paquete: bool = True, etiquetas: tuple[str, ...] = ("v0.2.0",)):
         self._repositorios = repositorios
         self._sellado = sellado
         self._con_release = con_release
         self._con_paquete = con_paquete
+        self._etiquetas = etiquetas
 
     def repositorios_del_dominio(self, organizacion, topico):
         return self._repositorios
 
-    def ultimo_release(self, repositorio):
+    def etiquetas_publicadas(self, repositorio):
+        return () if not self._con_release else self._etiquetas
+
+    def release(self, repositorio, etiqueta):
         if not self._con_release:
             return None
-        return "v0.2.0", "d" * 40, "paquete.tar.gz" if self._con_paquete else None
+        return etiqueta, "d" * 40, "paquete.tar.gz" if self._con_paquete else None
 
     def descargar_paquete(self, repositorio, etiqueta, paquete, destino):
         return Path(destino) / paquete
@@ -186,7 +191,7 @@ def test_un_indice_vacio_no_sobreescribe_el_catalogo_existente(tmp_path):
     previo.parent.mkdir(parents=True)
     previo.write_text('{"plugins": ["algo"]}', encoding="utf-8")
 
-    codigo = cli.escribir(Indice((), ()), tmp_path, "{}")
+    codigo = cli.escribir(Indice((), ()), tmp_path, {CLAUDE: "{}"})
 
     assert codigo == cli.SALIDA_ERROR
     assert "algo" in previo.read_text(encoding="utf-8")
@@ -194,9 +199,9 @@ def test_un_indice_vacio_no_sobreescribe_el_catalogo_existente(tmp_path):
 
 def test_un_indice_con_entradas_si_se_escribe(tmp_path):
     indice = Indice((_entrada("a"),), ())
-    contenido = catalogo.render(indice, "agentico", PROPIETARIO, "0.1.0")
+    contenido = catalogo.render(indice, "agentico", PROPIETARIO, "0.1.0", CLAUDE)
 
-    codigo = cli.escribir(indice, tmp_path, contenido, ESQUEMAS)
+    codigo = cli.escribir(indice, tmp_path, {CLAUDE: contenido}, ESQUEMAS)
 
     assert codigo == cli.SALIDA_OK
     escrito = tmp_path / catalogo.Proyeccion.CLAUDE_CODE.ruta
@@ -213,14 +218,59 @@ def test_se_escriben_LAS_DOS_proyecciones_en_la_misma_llamada():
     }
 
 
-def test_las_dos_proyecciones_se_escriben_con_el_mismo_contenido(tmp_path):
+def test_las_dos_proyecciones_se_escriben_en_una_sola_llamada(tmp_path):
     indice = Indice((_entrada("a"),), ())
-    contenido = catalogo.render(indice, "agentico", PROPIETARIO, "0.1.0")
+    contenidos = {p: catalogo.render(indice, "agentico", PROPIETARIO, "0.1.0", p)
+                  for p in catalogo.Proyeccion}
 
-    cli.escribir(indice, tmp_path, contenido, ESQUEMAS)
+    cli.escribir(indice, tmp_path, contenidos, ESQUEMAS)
 
-    escritos = {(tmp_path / p.ruta).read_text(encoding="utf-8") for p in catalogo.Proyeccion}
-    assert escritos == {contenido}
+    for proyeccion in catalogo.Proyeccion:
+        assert (tmp_path / proyeccion.ruta).exists(), proyeccion.ruta
+
+
+# ── un plugin ANIDADO se direcciona distinto en cada cliente ────────────────────────────────
+def _anidado(subruta: str = "plugins/contratos") -> Entrada:
+    return Entrada(name="demo.sdlc.contratos", description="d", version="0.1.0",
+                   repositorio="organizacion/agentes-sdlc",
+                   etiqueta="demo.sdlc.contratos--v0.1.0", sha="c" * 40, subruta=subruta)
+
+
+def test_un_plugin_anidado_usa_git_subdir_en_claude_code():
+    """Claude Code acepta `github` con `path` y despues IGNORA el `path`: instalaria el repositorio
+    entero sin dar error. `git-subdir` es su unica fuente que honra un subdirectorio."""
+    generado = json.loads(catalogo.render(Indice((_anidado(),), ()), "agentico", PROPIETARIO,
+                                          "0.1.0", catalogo.Proyeccion.CLAUDE_CODE))
+    fuente = generado["plugins"][0]["source"]
+    assert fuente["source"] == "git-subdir"
+    assert fuente["path"] == "plugins/contratos"
+
+
+def test_un_plugin_anidado_usa_github_mas_path_en_copilot():
+    # Copilot RECHAZA `git-subdir`, y una entrada asi rompe el indice entero para ese cliente.
+    generado = json.loads(catalogo.render(Indice((_anidado(),), ()), "agentico", PROPIETARIO,
+                                          "0.1.0", catalogo.Proyeccion.COPILOT))
+    fuente = generado["plugins"][0]["source"]
+    assert fuente["source"] == "github"
+    assert fuente["path"] == "plugins/contratos"
+
+
+def test_un_plugin_que_ocupa_su_repositorio_se_direcciona_IGUAL_en_los_dos():
+    fuentes = [json.loads(catalogo.render(Indice((_entrada("a"),), ()), "agentico", PROPIETARIO,
+                                          "0.1.0", p))["plugins"][0]["source"]
+               for p in catalogo.Proyeccion]
+    assert fuentes[0] == fuentes[1]
+    assert "path" not in fuentes[0]
+
+
+def test_las_dos_proyecciones_de_un_anidado_CUMPLEN_cada_una_su_esquema(tmp_path):
+    """Es la prueba que cierra el circulo: cada cliente recibe una fuente que el OTRO rechazaria,
+    y las dos pasan su propia validacion."""
+    indice = Indice((_anidado(),), ())
+    contenidos = {p: catalogo.render(indice, "agentico", PROPIETARIO, "0.1.0", p)
+                  for p in catalogo.Proyeccion}
+
+    assert cli.escribir(indice, tmp_path, contenidos, ESQUEMAS) == cli.SALIDA_OK
 
 
 # ── el catalogo se valida ANTES de escribirse ───────────────────────────────────────────────
@@ -231,7 +281,7 @@ def test_un_catalogo_que_no_cumple_el_esquema_no_se_escribe(tmp_path):
     invalido = json.dumps({"name": "agentico", "owner": PROPIETARIO,
                            "plugins": [{"name": "x"}]})
 
-    codigo = cli.escribir(indice, tmp_path, invalido, ESQUEMAS)
+    codigo = cli.escribir(indice, tmp_path, {CLAUDE: invalido}, ESQUEMAS)
 
     assert codigo == cli.SALIDA_ERROR
     assert not list(tmp_path.rglob("marketplace.json")), "no debe escribirse ninguna proyeccion"
@@ -247,4 +297,4 @@ def test_la_combinacion_QUE_FALLA_EN_SILENCIO_se_rechaza(tmp_path):
                      "source": {"source": "github", "repo": "org/repo",
                                 "path": "plugins/a", "ref": "main"}}]})
 
-    assert cli.escribir(indice, tmp_path, letal, ESQUEMAS) == cli.SALIDA_ERROR
+    assert cli.escribir(indice, tmp_path, {CLAUDE: letal}, ESQUEMAS) == cli.SALIDA_ERROR

@@ -45,33 +45,44 @@ class Proyeccion(Enum):
         return self.value[1]
 
 
-def _fuente(entrada: Entrada) -> dict:
-    """El puntero de instalacion. Hoy solo hay plugins en la raiz de su repositorio: los anidados
-    los RECHAZA `reglas_indice` porque falta su subruta, asi que aqui no puede llegar ninguno."""
-    return {
-        "source": "github",
-        "repo": entrada.repositorio,
-        "ref": entrada.etiqueta,
-        "sha": entrada.sha,
-    }
+SUBRUTA_DEL_REPOSITORIO = "."
+_SUFIJO_DE_CLONADO = ".git"
+_HOST = "https://github.com"
 
 
-def _como_plugin(entrada: Entrada) -> dict:
+def _fuente(entrada: Entrada, proyeccion: Proyeccion) -> dict:
+    """El puntero de instalacion, en la forma que ESTE cliente honra.
+
+    Un plugin que ocupa su repositorio se direcciona igual en los dos. Uno ANIDADO no: Copilot lo
+    entiende como `github` mas `path`, y Claude Code IGNORA ese `path` -- instala el repositorio
+    entero sin dar error -- asi que ahi hay que usar `git-subdir`. Es la unica diferencia entre las
+    dos proyecciones, y esta medida contra los dos clientes.
+    """
+    comun = {"ref": entrada.etiqueta, "sha": entrada.sha}
+    if entrada.subruta == SUBRUTA_DEL_REPOSITORIO:
+        return {"source": "github", "repo": entrada.repositorio, **comun}
+    if proyeccion is Proyeccion.CLAUDE_CODE:
+        return {"source": "git-subdir",
+                "url": f"{_HOST}/{entrada.repositorio}{_SUFIJO_DE_CLONADO}",
+                "path": entrada.subruta, **comun}
+    return {"source": "github", "repo": entrada.repositorio, "path": entrada.subruta, **comun}
+
+
+def _como_plugin(entrada: Entrada, proyeccion: Proyeccion) -> dict:
     return {
         "name": entrada.name,
         "description": entrada.description,
         "version": entrada.version,
-        "source": _fuente(entrada),
+        "source": _fuente(entrada, proyeccion),
     }
 
 
-def render(indice: Indice, nombre: str, propietario: dict[str, str], version: str) -> str:
-    """El contenido del indice, IGUAL para las dos proyecciones.
+def render(indice: Indice, nombre: str, propietario: dict[str, str], version: str,
+           proyeccion: Proyeccion) -> str:
+    """El contenido del indice para UN cliente.
 
-    No lleva parametro de proyeccion a proposito: hoy no habria nada que hacer con el, porque los
-    plugins anidados -- lo unico que se direcciona distinto en cada cliente -- se rechazan antes de
-    llegar aqui. Un parametro que no cambia nada insinuaria una diferencia inexistente. Cuando el
-    indice sepa resolver la subruta, la diferencia entra por `_fuente` y ahi si hara falta.
+    La proyeccion es obligatoria y no tiene valor por defecto a proposito: un default elegiria un
+    cliente en silencio, y quien olvidara pasarla generaria el catalogo del otro sin enterarse.
 
     Ordenado por `name` para que el diff del commit muestre solo lo que cambio de verdad.
     """
@@ -79,6 +90,7 @@ def render(indice: Indice, nombre: str, propietario: dict[str, str], version: st
         "name": nombre,
         "owner": propietario,
         "metadata": {"description": _AVISO, "version": version},
-        "plugins": [_como_plugin(e) for e in sorted(indice.entradas, key=lambda e: e.name)],
+        "plugins": [_como_plugin(e, proyeccion)
+                    for e in sorted(indice.entradas, key=lambda e: e.name)],
     }
     return json.dumps(catalogo, indent=_SANGRIA, ensure_ascii=False) + "\n"

@@ -18,7 +18,11 @@ from pathlib import Path
 
 from validador_agentico.adaptadores import digesto
 from validador_agentico.adaptadores.repositorio import ContenidoRepositorio
-from validador_agentico.dominio.hallazgo import ArtefactoPublicado, Inventario
+from validador_agentico.dominio.hallazgo import (
+    ArtefactoPublicado,
+    Inventario,
+    PluginPublicado,
+)
 
 # Que colecciones del contenido se publican como ficha, y con que `tipo` en el predicado firmado.
 TIPO_POR_COLECCION = (("skills", "skill"), ("prompts", "prompt"))
@@ -44,6 +48,27 @@ def construir_inventario(contenido: ContenidoRepositorio) -> Inventario:
         hooks=1 if contenido.hooks else 0,
         tiene_plugin=contenido.manifiesto is not None and contenido.manifiesto.es_legible,
         nombre_plugin=nombre_del_plugin(contenido),
+    )
+
+
+def plugin_publicado(contenido: ContenidoRepositorio, raiz_plugin: Path,
+                     raiz_repositorio: Path) -> PluginPublicado | None:
+    """El plugin de esta raiz con SU SUBRUTA, o `None` si aqui no hay manifiesto legible.
+
+    La subruta se calcula respecto a la raiz del repositorio porque es lo que un cliente necesita
+    para instalarlo, y es el unico sitio donde el dato sobrevive: el paquete publicado no lo lleva.
+    `.` cuando el plugin es el repositorio entero.
+    """
+    if contenido.manifiesto is None or not contenido.manifiesto.es_legible:
+        return None
+    manifiesto = contenido.manifiesto.contenido
+    nombre = manifiesto.get("name")
+    if not nombre:
+        return None
+    return PluginPublicado(
+        nombre=str(nombre),
+        version=str(manifiesto.get("version", "")),
+        subruta=raiz_plugin.relative_to(raiz_repositorio).as_posix() or ".",
     )
 
 

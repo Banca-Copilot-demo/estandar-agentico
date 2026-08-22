@@ -51,6 +51,7 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
     hallazgos: list[Hallazgo] = []
     inventario = Inventario()
     artefactos: list = []
+    plugins: list = []
     custodia: dict = {}
     for raiz_plugin in raices:
         contenido = repositorio.leer(raiz_plugin, lector)
@@ -71,6 +72,9 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
             *_revisar_duenos(contenido, equipos_conocidos),
         ])
         artefactos += proyeccion.listar_artefactos(contenido, raiz_plugin)
+        publicado = proyeccion.plugin_publicado(contenido, raiz_plugin, raiz)
+        if publicado is not None:
+            plugins.append(publicado)
         custodia = {**custodia, **proyeccion.custodia_declarada(contenido)}
 
     # Estas TRES son del REPOSITORIO, no de cada plugin: la higiene se revisa sobre el arbol
@@ -84,7 +88,8 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
 
     log.info("%d hallazgo(s) en %s", len(hallazgos), raiz.name)
     return Veredicto(hallazgos=tuple(hallazgos), inventario=inventario,
-                     artefactos=tuple(artefactos), credencial_ownership=custodia)
+                     artefactos=tuple(artefactos), plugins=tuple(plugins),
+                     credencial_ownership=custodia)
 
 
 def _prefijar(prefijo: str, hallazgos: list[Hallazgo]) -> list[Hallazgo]:

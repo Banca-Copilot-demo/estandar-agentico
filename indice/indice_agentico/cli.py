@@ -74,7 +74,7 @@ def _informar_descartes(indice: Indice) -> None:
         log.warning("FUERA DEL INDICE %s: %s", rechazo.repositorio, rechazo.motivo.value)
 
 
-def escribir(indice: Indice, raiz: Path, contenido: str,
+def escribir(indice: Indice, raiz: Path, contenidos: dict,
              directorio_de_esquemas: Path = DIRECTORIO_DE_ESQUEMAS_POR_DEFECTO) -> int:
     """Escribe LAS DOS proyecciones, o explica por que ninguna. Separado de `main` para poder probar
     el guardarail sin parchear nada: recibe el indice y la raiz, y devuelve el codigo de salida.
@@ -86,9 +86,9 @@ def escribir(indice: Indice, raiz: Path, contenido: str,
         # SE VALIDAN LAS DOS ANTES DE ESCRIBIR NINGUNA. Validar despues solo documentaria que se
         # publico algo malo, y escribir una y abortar en la otra dejaria el catalogo a medias.
         defectos = {
-            proyeccion: esquema.incumplimientos(contenido, proyeccion.subesquema,
+            proyeccion: esquema.incumplimientos(texto, proyeccion.subesquema,
                                                 directorio_de_esquemas)
-            for proyeccion in catalogo.Proyeccion
+            for proyeccion, texto in contenidos.items()
         }
         if any(defectos.values()):
             for proyeccion, incumplimientos in defectos.items():
@@ -99,10 +99,10 @@ def escribir(indice: Indice, raiz: Path, contenido: str,
                       "catalogo que algun cliente no sabra instalar")
             return SALIDA_ERROR
 
-        for proyeccion in catalogo.Proyeccion:
+        for proyeccion, texto in contenidos.items():
             salida = raiz / proyeccion.ruta
             salida.parent.mkdir(parents=True, exist_ok=True)
-            salida.write_text(contenido, encoding="utf-8")
+            salida.write_text(texto, encoding="utf-8")
             log.info("escrito %s con %d plugin(s)", salida, len(indice.entradas))
         return SALIDA_OK
 
@@ -138,12 +138,20 @@ def main(argv: list[str] | None = None) -> int:
     _informar_descartes(indice)
 
     propietario = {"name": argumentos.equipo, "email": argumentos.contacto}
-    contenido = catalogo.render(indice, argumentos.nombre, propietario, argumentos.version)
+    contenidos = {
+        proyeccion: catalogo.render(indice, argumentos.nombre, propietario, argumentos.version,
+                                    proyeccion)
+        for proyeccion in catalogo.Proyeccion
+    }
 
     if argumentos.raiz is None:
-        print(contenido, end="")
+        # A stdout va UNA, porque stdout es un solo flujo que otro proceso consume. Se dice cual por
+        # el log (stderr) para que nadie asuma que es la del cliente que le interesa.
+        proyeccion = catalogo.Proyeccion.CLAUDE_CODE
+        log.info("sin --raiz: se emite la proyeccion de %s por stdout", proyeccion.ruta)
+        print(contenidos[proyeccion], end="")
         return SALIDA_OK
-    return escribir(indice, argumentos.raiz, contenido, argumentos.esquemas)
+    return escribir(indice, argumentos.raiz, contenidos, argumentos.esquemas)
 
 
 if __name__ == "__main__":
