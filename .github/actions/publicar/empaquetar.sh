@@ -34,7 +34,17 @@ readonly DESTINO="${2:?falta la ruta del paquete de salida}"
 readonly SUBRUTA="${3:-.}"
 
 # Lo que NO se distribuye: la mecanica del repositorio no es parte del artefacto.
-readonly EXCLUIDOS='^(\.github/|\.gitattributes$|\.gitignore$|validador/)'
+#
+# `GOVERNANCE.json` SE EXCLUYE, y no es un descuido. Ningun cliente lo lee: quien lo lee es el gate,
+# y lo lee del REPOSITORIO en el pull request, nunca del paquete -- se comprobo en toda la cadena, y
+# el lector del paquete solo busca `.claude-plugin/plugin.json` --. Dentro de algo que una persona
+# instala en su maquina, un archivo de nuestra maquinaria es ruido: aparece en su carpeta, no le
+# dice nada y no hace nada. La procedencia no se pierde: viaja en la ATESTACION del veredicto, que
+# esta firmada y fuera del artefacto, que es donde una prueba de origen tiene valor -- un archivo
+# dentro del paquete lo podria editar cualquiera con permiso de escritura.
+# El `GOVERNANCE.json` se excluye a CUALQUIER profundidad: `git ls-files` da la ruta completa desde
+# la raiz del repositorio, asi que en un plugin anidado llega como `plugins/<nombre>/GOVERNANCE.json`.
+readonly EXCLUIDOS='^(\.github/|\.gitattributes$|\.gitignore$|validador/)|(^|/)GOVERNANCE\.json$'
 
 cd "$RAIZ"
 

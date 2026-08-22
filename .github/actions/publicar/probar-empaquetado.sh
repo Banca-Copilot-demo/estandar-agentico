@@ -5,7 +5,7 @@
 # lectura del sistema de archivos. Se medio en la fase 4: sin `--mtime`, el mismo contenido daba
 # un digest distinto en cada ejecucion, y la atestacion no habria sido verificable por nadie.
 #
-# Comprueba siete propiedades, cada una con su mensaje: si falla, el mensaje dice cual se rompio.
+# Comprueba diez propiedades, cada una con su mensaje: si falla, el mensaje dice cual se rompio.
 # Las cuatro ultimas cubren los repositorios que alojan VARIOS plugins: sin acotar el empaquetado a
 # la subruta, los paquetes de dos plugins vecinos salian con el MISMO digest.
 set -euo pipefail
@@ -110,9 +110,41 @@ else
   echo "  ok    una subruta inexistente aborta"
 fi
 
+# EL GOBIERNO NO SE DISTRIBUYE. Ningun cliente lee `GOVERNANCE.json`: lo lee el gate, y lo lee del
+# repositorio en el pull request. Dentro de lo que una persona instala es ruido -- aparece en su
+# carpeta, no le dice nada y no hace nada --. La procedencia sigue viajando en la atestacion, que
+# esta firmada y FUERA del artefacto, que es donde una prueba de origen vale algo.
+bash "$AQUI/empaquetar.sh" "$multi" "$TRABAJO/gob.tar.gz" plugins/uno >/dev/null
+if tar -tzf "$TRABAJO/gob.tar.gz" | grep -q "GOVERNANCE.json"; then
+  echo "  FALLO el paquete de un plugin ANIDADO no debe llevar GOVERNANCE.json"
+  fallos=$((fallos + 1))
+else
+  echo "  ok    el paquete de un plugin anidado no lleva el gobierno"
+fi
+
+bash "$AQUI/empaquetar.sh" "$RAIZ" "$TRABAJO/gob-raiz.tar.gz" >/dev/null
+if tar -tzf "$TRABAJO/gob-raiz.tar.gz" | grep -q "GOVERNANCE.json"; then
+  echo "  FALLO el paquete de un plugin en la RAIZ tampoco debe llevar GOVERNANCE.json"
+  fallos=$((fallos + 1))
+else
+  echo "  ok    el paquete de un plugin en la raiz tampoco lleva el gobierno"
+fi
+
+# Y lo que NO debe desaparecer con el: el manifiesto es lo que hace que el cliente lo reconozca.
+# Se aceptan sus DOS ubicaciones -- `plugin.json` en la raiz del plugin y `.claude-plugin/plugin.json`
+# --, porque las dos son validas y este fixture usa la primera; exigir una sola hacia que la prueba
+# fallara por la forma del fixture y no por el defecto que busca.
+if tar -tzf "$TRABAJO/gob.tar.gz" | grep -Eq '^(\.claude-plugin/)?plugin\.json$'; then
+  echo "  ok    el manifiesto sigue en la raiz del paquete"
+else
+  echo "  FALLO excluir el gobierno se llevo por delante el manifiesto"
+  tar -tzf "$TRABAJO/gob.tar.gz" | sed 's|^|        contiene: |'
+  fallos=$((fallos + 1))
+fi
+
 echo
 if [ "$fallos" -ne 0 ]; then
   echo "empaquetado: $fallos propiedad(es) rota(s)" >&2
   exit 1
 fi
-echo "empaquetado determinista: 7 propiedades comprobadas | digest $primero"
+echo "empaquetado determinista: 10 propiedades comprobadas | digest $primero"
