@@ -43,9 +43,15 @@ jobs:
       # a mano.
       - name: ¿Estan los secretos de la App?
         id: app
+        # DOS FUENTES PARA EL MISMO SECRETO, porque este workflow tiene dos disparadores. Invocado
+        # con `workflow_call` desde un repositorio de dominio, llega como PARAMETRO
+        # (`secrets.app-id`). Disparado por un `push` de este repositorio, ese parametro no existe y
+        # hay que leerlo del propio repositorio u organizacion (`secrets.APP_ID_AGENTICO`).
+        # MEDIDO: sin este `||`, la primera ejecucion por `push` dijo «faltan los secretos de la
+        # App» con los secretos puestos -- leia el parametro vacio y culpaba a la credencial.
         env:
-          APP_ID: ${{ secrets.app-id }}
-          APP_KEY: ${{ secrets.app-key }}
+          APP_ID: ${{ secrets.app-id || secrets.APP_ID_AGENTICO }}
+          APP_KEY: ${{ secrets.app-key || secrets.APP_KEY_AGENTICO }}
         run: |
           # LA CLAVE SE COMPRUEBA AQUI, y no se deja para la accion que la usa. MEDIDO en la primera
           # ejecucion con los secretos puestos: una clave mal pegada no da un mensaje sobre la clave,
@@ -86,8 +92,8 @@ jobs:
         id: token
         uses: actions/create-github-app-token@v1
         with:
-          app-id: ${{ secrets.app-id }}
-          private-key: ${{ secrets.app-key }}
+          app-id: ${{ secrets.app-id || secrets.APP_ID_AGENTICO }}
+          private-key: ${{ secrets.app-key || secrets.APP_KEY_AGENTICO }}
           owner: ${{ github.repository_owner }}
 
       - name: Descargar el repositorio con su historial de etiquetas

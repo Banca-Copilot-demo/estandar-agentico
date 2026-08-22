@@ -66,6 +66,10 @@ jobs:
         uses: Banca-Copilot-demo/estandar-agentico/.github/actions/publicar@main
         with:
           repositorio-indice: ${{ inputs.repositorio-indice }}
-          port-client-id: ${{ secrets.port-client-id }}
-          port-client-secret: ${{ secrets.port-client-secret }}
-          token-indice: ${{ secrets.token-indice }}
+          # DOS FUENTES, por los dos disparadores: como PARAMETRO cuando lo invoca un repositorio de
+          # dominio, y del repositorio u organizacion cuando lo dispara un `push` de aqui. Las tres
+          # son opcionales, asi que sin ellas la publicacion se completa igual -- la ficha y el aviso
+          # al indice son aceleradores, la garantia la da el sello --.
+          port-client-id: ${{ secrets.port-client-id || secrets.PORT_CLIENT_ID }}
+          port-client-secret: ${{ secrets.port-client-secret || secrets.PORT_CLIENT_SECRET }}
+          token-indice: ${{ secrets.token-indice || secrets.TOKEN_INDICE }}
