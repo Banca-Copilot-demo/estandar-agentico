@@ -13,17 +13,16 @@ import logging
 from dataclasses import replace
 from pathlib import Path
 
-from validador_agentico.adaptadores import digesto
 from validador_agentico.adaptadores import frontmatter as adaptador_frontmatter
 from validador_agentico.adaptadores import repositorio as adaptador_repositorio
 from validador_agentico.adaptadores.repositorio import ArchivoJson, ContenidoRepositorio
+from validador_agentico.aplicacion import proyeccion
 from validador_agentico.dominio import reglas_agente_instructions, reglas_aprobacion
 from validador_agentico.dominio import reglas_credenciales, reglas_layout, reglas_recursos
 from validador_agentico.dominio import reglas_higiene, reglas_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
 from validador_agentico.dominio.especificacion import RUTAS_MANIFIESTO
 from validador_agentico.dominio.hallazgo import (
-    ArtefactoPublicado,
     Hallazgo,
     Inventario,
     Veredicto,
@@ -55,8 +54,8 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
     for raiz_plugin in raices:
         contenido = repositorio.leer(raiz_plugin, lector)
         prefijo = f"{raiz_plugin.relative_to(raiz).as_posix()}/" if varios else ""
-        parcial = _construir_inventario(contenido)
-        inventario = _sumar_inventarios(inventario, parcial)
+        parcial = proyeccion.construir_inventario(contenido)
+        inventario = proyeccion.sumar_inventarios(inventario, parcial)
         hallazgos += _prefijar(prefijo, [
             *_revisar_plugin(contenido),
             *_revisar_gobierno(contenido, parcial),
@@ -70,8 +69,8 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
             *_revisar_recursos(contenido),
             *_revisar_duenos(contenido, equipos_conocidos),
         ])
-        artefactos += _listar_artefactos(contenido, raiz_plugin)
-        custodia = {**custodia, **_custodia_declarada(contenido)}
+        artefactos += proyeccion.listar_artefactos(contenido, raiz_plugin)
+        custodia = {**custodia, **proyeccion.custodia_declarada(contenido)}
 
     # Estas dos son del REPOSITORIO, no de cada plugin: la higiene se revisa sobre el arbol
     # completo -- un secreto no deja de serlo por estar fuera de un plugin -- y la mezcla de
@@ -90,34 +89,6 @@ def _prefijar(prefijo: str, hallazgos: list[Hallazgo]) -> list[Hallazgo]:
     if not prefijo:
         return hallazgos
     return [replace(h, donde=f"{prefijo}{h.donde}") for h in hallazgos]
-
-
-def _sumar_inventarios(a: Inventario, b: Inventario) -> Inventario:
-    """El inventario del repositorio es la suma del de sus plugins. `tiene_plugin` es un O: basta
-    que uno lo tenga para que el repositorio publique al marketplace."""
-    return Inventario(
-        skills=a.skills + b.skills, agentes=a.agentes + b.agentes,
-        prompts=a.prompts + b.prompts, mcps=a.mcps + b.mcps, hooks=a.hooks + b.hooks,
-        tiene_plugin=a.tiene_plugin or b.tiene_plugin,
-        nombre_plugin=a.nombre_plugin or b.nombre_plugin)
-
-
-def _construir_inventario(contenido: ContenidoRepositorio) -> Inventario:
-    return Inventario(
-        skills=len(contenido.skills),
-        agentes=contenido.agentes,
-        prompts=len(contenido.prompts),
-        mcps=contenido.mcps,
-        hooks=1 if contenido.hooks else 0,
-        tiene_plugin=contenido.manifiesto is not None and contenido.manifiesto.es_legible,
-        nombre_plugin=_nombre_del_plugin(contenido),
-    )
-
-
-def _nombre_del_plugin(contenido: ContenidoRepositorio) -> str:
-    if contenido.manifiesto is None or not contenido.manifiesto.es_legible:
-        return ""
-    return contenido.manifiesto.contenido.get("name", "")
 
 
 def _hallazgo_de_formato(archivo: ArchivoJson) -> list[Hallazgo]:
@@ -186,21 +157,6 @@ def _revisar_higiene(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     return hallazgos
 
 
-def _equipos_declarados(contenido: ContenidoRepositorio) -> list[tuple[str, str]]:
-    """Todos los `owner_team` del repositorio, con donde se declaro cada uno."""
-    declarados: list[tuple[str, str]] = []
-    if contenido.gobierno is not None and contenido.gobierno.es_legible:
-        equipo = (contenido.gobierno.contenido.get("owner") or {}).get("team")
-        if equipo:
-            declarados.append((contenido.gobierno.ruta_relativa, equipo))
-    for artefacto in (*contenido.skills, *contenido.prompts):
-        metadata = (artefacto.frontmatter or {}).get("metadata") or {}
-        equipo = metadata.get("owner_team")
-        if equipo:
-            declarados.append((artefacto.ruta_relativa, equipo))
-    return declarados
-
-
 def _revisar_recursos(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     """G2 — los archivos que cada artefacto referencia tienen que existir. Se aplica a los cuatro
     tipos con cuerpo: un `.agent.md` que apunta a un script inexistente falla igual que un skill."""
@@ -217,7 +173,7 @@ def _revisar_recursos(contenido: ContenidoRepositorio) -> list[Hallazgo]:
 def _revisar_duenos(contenido: ContenidoRepositorio,
                     equipos_conocidos: frozenset[str] | None) -> list[Hallazgo]:
     hallazgos: list[Hallazgo] = []
-    for donde, equipo in _equipos_declarados(contenido):
+    for donde, equipo in proyeccion.equipos_declarados(contenido):
         hallazgos += reglas_aprobacion.revisar_equipo_resoluble(donde, equipo, equipos_conocidos)
     return hallazgos
 
@@ -231,44 +187,6 @@ def _revisar_mezcla(archivos_cambiados: tuple[str, ...] | None) -> list[Hallazgo
     return reglas_aprobacion.revisar_mezcla_de_aprobadores(archivos_cambiados)
 
 
-_TIPO_POR_COLECCION = (("skills", "skill"), ("prompts", "prompt"))
-
-
-def _artefacto_publicado(tipo: str, ruta: str, frontmatter: dict,
-                         raiz: Path) -> ArtefactoPublicado | None:
-    """`None` cuando el envelope no esta completo: un artefacto sin gobierno no tiene ficha que
-    publicar, y el gate ya lo habra marcado como error."""
-    metadata = frontmatter.get("metadata") or {}
-    identificador = metadata.get("id")
-    if not identificador:
-        return None
-    return ArtefactoPublicado(
-        id=identificador,
-        tipo=tipo,
-        ruta=ruta,
-        owner_team=metadata.get("owner_team", ""),
-        owner_contact=metadata.get("owner_contact", ""),
-        version=str(metadata.get("version", "")),
-        data_classification=metadata.get("data_classification", ""),
-        standard_version=str(metadata.get("standard_version", "")),
-        sha256=digesto.sha256_de(raiz / ruta),
-    )
-
-
-def _listar_artefactos(contenido: ContenidoRepositorio,
-                       raiz: Path) -> tuple[ArtefactoPublicado, ...]:
-    publicados: list[ArtefactoPublicado] = []
-    for coleccion, tipo in _TIPO_POR_COLECCION:
-        for artefacto in getattr(contenido, coleccion):
-            if artefacto.frontmatter is None:
-                continue
-            publicado = _artefacto_publicado(tipo, artefacto.ruta_relativa,
-                                             artefacto.frontmatter, raiz)
-            if publicado is not None:
-                publicados.append(publicado)
-    return tuple(publicados)
-
-
 def _revisar_mcp(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     """El `.mcp.json` del repositorio, si lo hay. La custodia de la credencial se revisa aqui y no en
     G3 porque no es higiene del contenido: es gobierno -- quien concede el acceso --."""
@@ -278,14 +196,6 @@ def _revisar_mcp(contenido: ContenidoRepositorio) -> list[Hallazgo]:
         return _hallazgo_de_formato(contenido.mcp)
     return reglas_credenciales.revisar_credenciales(
         contenido.mcp.ruta_relativa, contenido.mcp.contenido.get("credentials"))
-
-
-def _custodia_declarada(contenido: ContenidoRepositorio) -> dict:
-    """El bloque `ownership` del `.mcp.json`, si lo hay. Se propaga tal cual: la regla ya comprobo
-    que este completo, y aqui solo se transporta hacia el predicado firmado."""
-    if contenido.mcp is None or not contenido.mcp.es_legible:
-        return {}
-    return (contenido.mcp.contenido.get("credentials") or {}).get("ownership") or {}
 
 
 def _revisar_agentes(contenido: ContenidoRepositorio) -> list[Hallazgo]:

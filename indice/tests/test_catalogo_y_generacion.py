@@ -12,6 +12,7 @@ from indice_agentico.adaptadores import catalogo
 from indice_agentico.adaptadores.paquete import LecturaManifiesto
 from indice_agentico.aplicacion.generar import generar
 from indice_agentico.dominio.candidato import Descarte, Entrada, Indice, Motivo
+from indice_agentico import cli
 
 PROPIETARIO = {"name": "Plataforma Agentica (demo)", "email": "plataforma-agentica@ejemplo.dev"}
 
@@ -178,8 +179,6 @@ def test_sin_repositorios_el_indice_sale_vacio_y_no_falla():
 def test_un_indice_vacio_no_sobreescribe_el_catalogo_existente(tmp_path):
     """Defecto que cubre: sobreescribir con `plugins: []` desinstalaria todo de golpe. Toca disco
     porque lo que se prueba ES el efecto en disco -- no es una regla de dominio (T1)."""
-    from indice_agentico import cli
-
     previo = tmp_path / "marketplace.json"
     previo.write_text('{"plugins": ["algo"]}', encoding="utf-8")
 
@@ -190,8 +189,6 @@ def test_un_indice_vacio_no_sobreescribe_el_catalogo_existente(tmp_path):
 
 
 def test_un_indice_con_entradas_si_se_escribe(tmp_path):
-    from indice_agentico import cli
-
     salida = tmp_path / "sub" / "marketplace.json"
     codigo = cli.escribir(Indice((_entrada("a"),), ()), salida, "contenido")
 

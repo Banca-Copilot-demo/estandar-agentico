@@ -133,6 +133,7 @@ runs:
     # "Feature not available for the <org> organization", y sin este aviso el mensaje aparece
     # cuatro pasos mas abajo, mezclado con la salida de una accion de terceros.
     - name: ¿Esta organizacion puede atestar este repositorio?
+      id: preflight_atestacion
       shell: bash
       continue-on-error: true
       run: |
@@ -159,6 +160,7 @@ runs:
     # GitHub bloquea la etiqueta y los assets y firma el release con Sigstore por su cuenta. Se
     # comprueba y se avisa en vez de fallar, porque activarlo es una decision de la organizacion.
     - name: ¿El repositorio tiene releases inmutables?
+      id: preflight_inmutable
       shell: bash
       continue-on-error: true
       run: |
@@ -169,6 +171,21 @@ runs:
         fi
       env:
         GH_TOKEN: ${{ github.token }}
+
+    - name: Registrar los preflights que no se pudieron comprobar
+      if: always()
+      shell: bash
+      env:
+        RESULTADO_ATESTACION: ${{ steps.preflight_atestacion.outcome }}
+        RESULTADO_INMUTABLE: ${{ steps.preflight_inmutable.outcome }}
+      run: |
+        for sonda in "atestacion:$RESULTADO_ATESTACION" "releases-inmutables:$RESULTADO_INMUTABLE"; do
+          nombre="${sonda%%:*}"
+          resultado="${sonda#*:}"
+          if [ "$resultado" != "success" ]; then
+            echo "::warning::el preflight ${nombre} no se pudo comprobar (${resultado}): su silencio NO significa que este en orden"
+          fi
+        done
 
     - name: Publicar el release con el paquete
       shell: bash

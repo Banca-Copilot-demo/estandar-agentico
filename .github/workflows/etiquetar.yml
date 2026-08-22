@@ -25,6 +25,9 @@ on:
 permissions:
   contents: read
 
+env:
+  VERSION_PYTHON: "3.12"
+
 jobs:
   etiquetar:
     runs-on: ubuntu-latest
@@ -101,7 +104,7 @@ jobs:
         if: steps.app.outputs.hay == 'si'
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ env.VERSION_PYTHON }}
 
       - name: Instalar el validador del estandar
         if: steps.app.outputs.hay == 'si'

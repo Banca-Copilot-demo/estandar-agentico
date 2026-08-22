@@ -48,10 +48,10 @@ def _identidad(manifiesto: Path) -> tuple[str, str] | None:
     try:
         datos = json.loads(manifiesto.read_text(encoding="utf-8"))
     except json.JSONDecodeError as fallo:
-        log.error("%s no es JSON valido: %s", manifiesto, fallo)
+        log.error("%s no es JSON valido", manifiesto, exc_info=fallo)
         return None
     except OSError as fallo:
-        log.error("no se pudo leer %s: %s", manifiesto, fallo)
+        log.error("no se pudo leer %s", manifiesto, exc_info=fallo)
         return None
     nombre, version = datos.get("name"), datos.get("version")
     if not nombre or not version:

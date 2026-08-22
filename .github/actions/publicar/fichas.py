@@ -16,10 +16,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+# Cuanto se cita del cuerpo de una respuesta de error: lo justo para diagnosticar sin volcar
+# una pagina de HTML al log.
+_MAX_CUERPO_ERROR_CHARS = 200
+# El `tipo` con el que el predicado firmado marca un skill.
+_TIPO_SKILL = "skill"
 
 API_PORT = "https://api.port.io"
 BLUEPRINT = "artefacto_agentico"
@@ -48,7 +57,7 @@ def _pista_de_instalacion(artefacto: dict, en_marketplace: bool, repositorio: st
         # Se instala el PLUGIN, no el artefacto: un plugin se instala completo. Poner aqui el id del
         # artefacto daba un comando que no resuelve contra ninguna entrada del marketplace.
         return f"copilot plugin install {nombre_plugin}@{CATALOGO}"
-    if artefacto["tipo"] == "skill":
+    if artefacto["tipo"] == _TIPO_SKILL:
         # La forma es `gh skill install <repo> <skill[@version]>`, MEDIDO ejecutandolo: el nombre del
         # skill es un argumento aparte, no parte del repositorio. Concatenar la ruta al repositorio
         # -- como hacia la primera version -- produce un comando que falla con «must specify a skill
@@ -74,7 +83,7 @@ def _pista_de_verificacion(artefacto: dict, en_marketplace: bool, repositorio: s
     EXPLICITO, y la ficha tiene que decir como -- incluido el `--signer-repo`, sin el cual la
     verificacion falla con un mensaje que no menciona al firmante.
     """
-    if en_marketplace or artefacto["tipo"] == "skill":
+    if en_marketplace or artefacto["tipo"] == _TIPO_SKILL:
         return (f"gh attestation verify <paquete>.tar.gz --repo {repositorio} "
                 f"--signer-repo {SIGNER}")
     # Un archivo copiado fuera del paquete no se verifica contra la atestacion: se compara su sha256
@@ -139,7 +148,7 @@ def _publicar(entidad: dict, token: str) -> str:
         with urllib.request.urlopen(peticion, timeout=_TIEMPO_LIMITE_S) as respuesta:
             return f"HTTP {respuesta.status}"
     except urllib.error.HTTPError as fallo:
-        return f"HTTP {fallo.code}: {fallo.read()[:200].decode('utf-8', 'replace')}"
+        return f"HTTP {fallo.code}: {fallo.read()[:_MAX_CUERPO_ERROR_CHARS].decode('utf-8', 'replace')}"
     except (urllib.error.URLError, TimeoutError) as fallo:
         return f"sin respuesta: {fallo}"
 
@@ -153,22 +162,32 @@ def _parsear_argumentos() -> argparse.Namespace:
     parser.add_argument("--sha", required=True)
     parser.add_argument("--digest", required=True)
     parser.add_argument("--token", required=True)
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Activa logging DEBUG (detalles internos de ejecucion).")
     return parser.parse_args()
+
+
+def _configurar_logging(verboso: bool) -> None:
+    manejador = logging.StreamHandler(sys.stderr)
+    manejador.setFormatter(logging.Formatter("%(levelname)-8s %(message)s"))
+    logging.getLogger().setLevel(logging.DEBUG if verboso else logging.INFO)
+    logging.getLogger().addHandler(manejador)
 
 
 def main() -> int:
     argumentos = _parsear_argumentos()
+    _configurar_logging(verboso=argumentos.verbose)
     veredicto = json.loads(argumentos.veredicto.read_text(encoding="utf-8"))
     artefactos = veredicto.get("artefactos") or []
 
     if not artefactos:
-        print("El predicado no declara artefactos: no hay ficha que publicar.", file=sys.stderr)
+        log.info("el predicado no declara artefactos: no hay ficha que publicar")
         return 0
 
     fallos = 0
     for artefacto in artefactos:
         resultado = _publicar(_entidad(artefacto, veredicto, argumentos), argumentos.token)
-        print(f"  {artefacto['id']:50} {resultado}")
+        log.info("ficha %-50s %s", artefacto["id"], resultado)
         if not resultado.startswith("HTTP 2"):
             fallos += 1
 
