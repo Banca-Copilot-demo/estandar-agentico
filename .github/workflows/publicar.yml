@@ -12,6 +12,17 @@ name: Publicar version
 # archivo que se hashea es circular.
 
 on:
+  # ESTE REPOSITORIO TAMBIEN PUBLICA. Ofrece este workflow a los repositorios de dominio Y lo aplica
+  # a su propio plugin, que vive en `plugins/asistente-autoria/` como en cualquier otro repo. Es la
+  # unica forma de que el asistente de autoria entre al catalogo con su etiqueta, su release y su
+  # firma en vez de por una entrada escrita a mano — que es justo el atajo que el track cierra.
+  #
+  # Un archivo puede declarar los dos disparadores: `workflow_call` para quien lo invoca y `push`
+  # para si mismo. La logica no se duplica, que es lo que pasaria con un workflow llamador aparte.
+  push:
+    tags:
+      - "v*.*.*"
+      - "*--v*.*.*"
   workflow_call:
     inputs:
       repositorio-indice:

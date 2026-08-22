@@ -26,13 +26,24 @@ manifiesto="$raiz_skill/../../$RUTA_MANIFIESTO"
 
 version="$(campo_del_manifiesto "$manifiesto" version)"
 repositorio="$(campo_del_manifiesto "$manifiesto" repository)"
+nombre="$(campo_del_manifiesto "$manifiesto" name)"
 [ -n "$version" ] || abortar 'el manifiesto no declara el campo version'
+[ -n "$nombre" ] || abortar 'el manifiesto no declara el campo name'
 if [ -z "$repositorio" ]; then
   abortar 'el manifiesto no declara repository: sin el no se sabe de donde bajar el validador'
 fi
 
-origen="git+${repositorio}.git@v${version}#subdirectory=${SUBDIRECTORIO}"
-echo "Instalando el validador del estandar, version v${version}"
+url_de_clonado="${repositorio}.git"
+
+# La etiqueta se RESUELVE contra el remoto: hay dos formas y desde la cache del cliente no se puede
+# saber cual usa este repositorio. Ver `etiqueta_publicada` en `_comun.sh`.
+if ! etiqueta="$(etiqueta_publicada "$url_de_clonado" "$nombre" "$version")"; then
+  abortar "no encuentro en ${repositorio} ninguna etiqueta para la version ${version} (ni
+    \`v${version}\` ni \`${nombre}--v${version}\`). ${PISTA_CREDENCIALES}"
+fi
+
+origen="git+${url_de_clonado}@${etiqueta}#subdirectory=${SUBDIRECTORIO}"
+echo "Instalando el validador del estandar, version ${version} (etiqueta ${etiqueta})"
 echo "  desde ${origen}"
 
 if ! pip install --quiet --upgrade "$origen"; then

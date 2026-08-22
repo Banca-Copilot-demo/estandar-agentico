@@ -9,10 +9,10 @@ name: Pruebas del estandar
 # solo hace que la atestacion no pruebe nada.
 on:
   pull_request:
-    paths: ["validador/**", "indice/**", ".github/actions/publicar/**", "skills/**"]
+    paths: ["validador/**", "indice/**", ".github/actions/publicar/**", "plugins/**"]
   push:
     branches: [main]
-    paths: ["validador/**", "indice/**", ".github/actions/publicar/**", "skills/**"]
+    paths: ["validador/**", "indice/**", ".github/actions/publicar/**", "plugins/**"]
 
 permissions:
   contents: read
@@ -71,4 +71,10 @@ jobs:
       # 0 porque `$?` era el de `head`. Parecia que un artefacto retirado no bloqueaba.
       - name: Comprobar los codigos de salida del estado
         shell: bash
-        run: bash skills/instalar-artefacto-agentico/scripts/probar-estados.sh
+        run: bash plugins/asistente-autoria/skills/instalar-artefacto-agentico/scripts/probar-estados.sh
+
+      # La etiqueta la construye el asistente para el `pip install` del validador, y su fallo no lo
+      # ve CI: lo ve el desarrollador la primera vez que usa el skill. De ahi que se pruebe aqui.
+      - name: Comprobar la resolucion de la etiqueta del estandar
+        shell: bash
+        run: bash plugins/asistente-autoria/skills/crear-artefacto-agentico/scripts/probar-etiqueta.sh

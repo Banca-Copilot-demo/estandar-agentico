@@ -13,6 +13,10 @@ name: Etiquetar la version
 # etiquetado y sin publicar, en silencio. Con el token de la App el evento si propaga.
 
 on:
+  # ESTE REPOSITORIO TAMBIEN SE ETIQUETA. Ver el comentario equivalente en `publicar.yml`: el
+  # asistente de autoria es un plugin como cualquier otro y sigue el mismo camino.
+  push:
+    branches: [main]
   workflow_call:
     secrets:
       app-id:
