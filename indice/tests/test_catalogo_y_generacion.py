@@ -15,6 +15,9 @@ from indice_agentico.dominio.candidato import Descarte, Entrada, Indice, Motivo
 from indice_agentico import cli
 
 PROPIETARIO = {"name": "Plataforma Agentica (demo)", "email": "plataforma-agentica@ejemplo.dev"}
+# Ruta explicita y no la de por defecto: una prueba que dependa del directorio de trabajo pasa o
+# falla segun desde donde se invoque a pytest.
+ESQUEMAS = Path(__file__).resolve().parents[2] / "schemas"
 
 
 def _entrada(name: str, version: str = "0.2.0") -> Entrada:
@@ -179,18 +182,69 @@ def test_sin_repositorios_el_indice_sale_vacio_y_no_falla():
 def test_un_indice_vacio_no_sobreescribe_el_catalogo_existente(tmp_path):
     """Defecto que cubre: sobreescribir con `plugins: []` desinstalaria todo de golpe. Toca disco
     porque lo que se prueba ES el efecto en disco -- no es una regla de dominio (T1)."""
-    previo = tmp_path / "marketplace.json"
+    previo = tmp_path / catalogo.Proyeccion.CLAUDE_CODE.ruta
+    previo.parent.mkdir(parents=True)
     previo.write_text('{"plugins": ["algo"]}', encoding="utf-8")
 
-    codigo = cli.escribir(Indice((), ()), previo, "{}")
+    codigo = cli.escribir(Indice((), ()), tmp_path, "{}")
 
     assert codigo == cli.SALIDA_ERROR
     assert "algo" in previo.read_text(encoding="utf-8")
 
 
 def test_un_indice_con_entradas_si_se_escribe(tmp_path):
-    salida = tmp_path / "sub" / "marketplace.json"
-    codigo = cli.escribir(Indice((_entrada("a"),), ()), salida, "contenido")
+    indice = Indice((_entrada("a"),), ())
+    contenido = catalogo.render(indice, "agentico", PROPIETARIO, "0.1.0")
+
+    codigo = cli.escribir(indice, tmp_path, contenido, ESQUEMAS)
 
     assert codigo == cli.SALIDA_OK
-    assert salida.read_text(encoding="utf-8") == "contenido"
+    escrito = tmp_path / catalogo.Proyeccion.CLAUDE_CODE.ruta
+    assert escrito.read_text(encoding="utf-8") == contenido
+
+
+def test_se_escriben_LAS_DOS_proyecciones_en_la_misma_llamada():
+    """Defecto que cubre: la proyeccion de Copilot no se generaba -- se escribio a mano durante una
+    prueba de instalacion -- asi que se habria quedado rancia sin que nada lo indicara. Si una se
+    puede actualizar sin la otra, los usuarios de un cliente ven un catalogo mas viejo en silencio."""
+    assert {p.ruta for p in catalogo.Proyeccion} == {
+        ".claude-plugin/marketplace.json",
+        ".github/plugin/marketplace.json",
+    }
+
+
+def test_las_dos_proyecciones_se_escriben_con_el_mismo_contenido(tmp_path):
+    indice = Indice((_entrada("a"),), ())
+    contenido = catalogo.render(indice, "agentico", PROPIETARIO, "0.1.0")
+
+    cli.escribir(indice, tmp_path, contenido, ESQUEMAS)
+
+    escritos = {(tmp_path / p.ruta).read_text(encoding="utf-8") for p in catalogo.Proyeccion}
+    assert escritos == {contenido}
+
+
+# ── el catalogo se valida ANTES de escribirse ───────────────────────────────────────────────
+def test_un_catalogo_que_no_cumple_el_esquema_no_se_escribe(tmp_path):
+    """Defecto que cubre: el indice emitia el catalogo sin comprobarlo contra el esquema, asi que
+    una fuente que un cliente no sabe instalar se publicaba y solo se notaba al instalar."""
+    indice = Indice((_entrada("a"),), ())
+    invalido = json.dumps({"name": "agentico", "owner": PROPIETARIO,
+                           "plugins": [{"name": "x"}]})
+
+    codigo = cli.escribir(indice, tmp_path, invalido, ESQUEMAS)
+
+    assert codigo == cli.SALIDA_ERROR
+    assert not list(tmp_path.rglob("marketplace.json")), "no debe escribirse ninguna proyeccion"
+
+
+def test_la_combinacion_QUE_FALLA_EN_SILENCIO_se_rechaza(tmp_path):
+    """`github` + `path`: Claude Code lo acepta y despues IGNORA el `path`, instalando el
+    repositorio entero. No da error, da un plugin equivocado -- por eso lo para el esquema."""
+    indice = Indice((_entrada("a"),), ())
+    letal = json.dumps({
+        "name": "agentico", "owner": PROPIETARIO,
+        "plugins": [{"name": "a", "description": "d", "version": "0.2.0",
+                     "source": {"source": "github", "repo": "org/repo",
+                                "path": "plugins/a", "ref": "main"}}]})
+
+    assert cli.escribir(indice, tmp_path, letal, ESQUEMAS) == cli.SALIDA_ERROR

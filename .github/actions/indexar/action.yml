@@ -13,10 +13,14 @@ inputs:
     description: Topico que marca un repositorio de dominio.
     required: false
     default: agent-skills
-  salida:
-    description: Ruta del catalogo a reescribir, relativa a la raiz del repositorio del indice.
+  raiz:
+    description: >
+      Raiz del repositorio del indice. Las DOS proyecciones se escriben dentro, cada una en la ruta
+      donde su cliente la lee -- `.claude-plugin/` para Claude Code y `.github/plugin/` para
+      Copilot --. Esas rutas NO son un parametro: las fija cada cliente, y tenerlas aqui invitaba a
+      generar una sola y dejar la otra rancia.
     required: false
-    default: .claude-plugin/marketplace.json
+    default: .
   token:
     description: >
       Token con permiso de LECTURA sobre los repositorios de dominio y sus atestaciones. El
@@ -51,9 +55,12 @@ runs:
       run: |
         python -m indice_agentico.cli "${{ inputs.organizacion }}" \
           --topico "${{ inputs.topico }}" \
-          --salida "${{ inputs.salida }}" \
+          --raiz "${{ inputs.raiz }}" \
+          --esquemas "${{ github.action_path }}/../../../schemas" \
           --verbose
-        indexados="$(python -c "import json,sys; print(len(json.load(open(sys.argv[1], encoding='utf-8'))['plugins']))" "${{ inputs.salida }}")"
+        # Se cuenta sobre la proyeccion de Claude Code; las dos llevan las mismas entradas por
+        # construccion, y hay una prueba que lo fija.
+        indexados="$(python -c "import json,sys; print(len(json.load(open(sys.argv[1], encoding='utf-8'))['plugins']))" "${{ inputs.raiz }}/.claude-plugin/marketplace.json")"
         echo "indexados=$indexados" >> "$GITHUB_OUTPUT"
       env:
         GH_TOKEN: ${{ inputs.token }}
@@ -63,13 +70,16 @@ runs:
     - name: Commitear el indice si cambio
       shell: bash
       run: |
-        if git diff --quiet -- "${{ inputs.salida }}"; then
+        # LAS DOS PROYECCIONES VAN EN EL MISMO COMMIT: si una pudiera avanzar sin la otra, los
+        # usuarios de un cliente verian un catalogo mas viejo sin que nada lo indicara.
+        proyecciones=(".claude-plugin/marketplace.json" ".github/plugin/marketplace.json")
+        if git diff --quiet -- "${proyecciones[@]}"; then
           echo "El indice no cambio: no se commitea."
           exit 0
         fi
         git config user.name "indice-agentico"
         git config user.email "plataforma-agentica@ejemplo.dev"
-        git add "${{ inputs.salida }}"
+        git add "${proyecciones[@]}"
         git commit -m "indice: ${{ steps.generar.outputs.indexados }} plugin(s) con atestacion verificada"
         git push
 

@@ -7,7 +7,7 @@ lo demas siga en verde.
 from __future__ import annotations
 
 from indice_agentico.dominio.candidato import Candidato, Destino, Motivo
-from indice_agentico.dominio.reglas_indice import evaluar
+from indice_agentico.dominio.reglas_indice import evaluar, version_de_la_etiqueta
 
 MANIFIESTO = {"name": "migracion-cnf", "description": "Skills del dominio SDLC.",
               "version": "0.2.0"}
@@ -122,3 +122,26 @@ def test_el_sha_de_la_entrada_es_un_commit_y_no_un_nombre_de_rama():
     decision = evaluar(_candidato(sha="main"))
     assert decision.destino is Destino.RECHAZAR
     assert decision.motivo is Motivo.SHA_NO_RESUELTO
+
+
+# ── etiquetas por plugin: `<nombre>--vX.Y.Z` ────────────────────────────────────────────────
+def test_la_version_se_lee_igual_en_las_DOS_formas_de_etiqueta():
+    """Defecto MEDIDO leyendo el codigo contra la cadena de publicacion: la version se sacaba con
+    `etiqueta.removeprefix("v")`, asi que una etiqueta por plugin se comparaba ENTERA contra la
+    version del manifiesto y el candidato se rechazaba por VERSION_DISCREPANTE -- mandando al equipo
+    del dominio a buscar un desajuste de version que no existe."""
+    for etiqueta in ("v0.2.0", "demo.sdlc.migracion--v0.2.0"):
+        assert version_de_la_etiqueta(etiqueta) == "0.2.0", etiqueta
+
+
+def test_un_plugin_anidado_se_rechaza_por_la_SUBRUTA_y_no_por_la_version():
+    # El motivo importa tanto como el rechazo: `VERSION_DISCREPANTE` habria enviado a revisar el
+    # manifiesto, que esta bien.
+    decision = evaluar(_candidato(etiqueta="migracion-cnf--v0.2.0"))
+    assert decision.destino is Destino.RECHAZAR
+    assert decision.motivo is Motivo.SUBRUTA_NO_RESUELTA
+
+
+def test_un_plugin_en_la_raiz_sigue_indexandose():
+    # Lo que NO debe cambiar: el caso normal, un plugin por repositorio.
+    assert evaluar(_candidato(etiqueta="v0.2.0")).destino is Destino.INDEXAR

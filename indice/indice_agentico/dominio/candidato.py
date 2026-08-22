@@ -35,6 +35,8 @@ class Motivo(str, Enum):
     NO_CONFORME = "el veredicto atestado dice que no es conforme"
     VERSION_DISCREPANTE = "la version del manifiesto no coincide con la etiqueta"
     SHA_NO_RESUELTO = "el sha no es un commit de 40 caracteres: seria un puntero movil"
+    SUBRUTA_NO_RESUELTA = ("es un plugin anidado y el indice no sabe en que subdirectorio vive: "
+                           "listarlo como el repositorio completo instalaria lo que no es")
 
 
 @dataclass(frozen=True)

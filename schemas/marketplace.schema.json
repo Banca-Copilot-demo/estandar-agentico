@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/marketplace.schema.json",
+  "title": "Marketplace — el indice desde el que los clientes instalan",
+  "description": "Contrato del archivo GENERADO que publica el catalogo de plugins de la organizacion. No lo escribe una persona: lo produce el workflow del indice a partir de un unico barrido, y por eso este esquema existe — para que un indice mal formado se detecte al generarlo y no cuando alguien intente instalar. DOS PROYECCIONES DEL MISMO CATALOGO, NO DOS CATALOGOS: `.claude-plugin/marketplace.json` para Claude Code y `.github/plugin/marketplace.json` para Copilot. Tienen la misma forma y la misma lista de plugins; se diferencian SOLO en como se direcciona un plugin que vive en un subdirectorio, porque los dos clientes no aceptan lo mismo. Ese es el motivo de que este archivo defina dos subesquemas en vez de uno: la validez depende de a que cliente va dirigido el archivo, y JSON Schema no puede deducirlo de la ruta. El gate elige el subesquema por la ruta del archivo que esta validando. DIVERGENCIA MEDIDA ENTRE CLIENTES — es el hallazgo que este esquema protege: Copilot RECHAZA la fuente `git-subdir`, y Claude Code acepta `github` con un campo `path` pero LO IGNORA, instalando el repositorio entero como si fuera el plugin. Lo segundo es lo peligroso: no da error, da un plugin equivocado. De ahi que cada proyeccion permita exactamente las fuentes que SU cliente entiende y prohiba la combinacion que su cliente acepta en silencio sin honrar.",
+  "$comment": "POR QUE `sha` ADEMAS DE `ref`: cuando estan los dos, el cliente usa `sha` — una referencia movil como `main` significa que dos personas que instalan el mismo dia pueden recibir codigo distinto, y entonces el digest atestado no corresponde a lo instalado. El indice publica los dos: `sha` fija lo que se instala hoy y `ref` documenta de que rama salio. NO SE VALIDA AQUI, y a proposito: que el `sha` pertenezca al repositorio, que la etiqueta exista y que el plugin siga estando en esa ruta son comprobaciones contra el mundo, no contra la forma del documento. Las hace el gate del indice. Este esquema solo garantiza que el documento sea coherente antes de publicarlo.",
+  "$defs": {
+    "propietario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "email"],
+      "description": "A quien se reclama cuando el indice publica algo que no deberia. Un catalogo sin dueno localizable no tiene a quien escalarle.",
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "email": { "type": "string", "format": "email" }
+      }
+    },
+    "metadatosDelIndice": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string", "minLength": 1 },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "description": "Version del INDICE, no de los plugins que lista. Cambia cuando cambia la forma del catalogo."
+        }
+      }
+    },
+    "identidadDelPlugin": {
+      "type": "object",
+      "required": ["name", "description", "version", "source"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Como se instala: `plugin@marketplace`. Es la clave por la que una persona lo escribe, asi que dos entradas del mismo indice NO pueden compartirlo — lo comprueba el gate del indice, porque JSON Schema no puede exigir unicidad por una clave dentro de un array."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Lo que el usuario lee en la vitrina para decidir si lo instala. Es la unica prosa del catalogo: si esta vacia, el plugin es invisible en la practica aunque este publicado."
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "description": "DEBE coincidir con el `version` del `plugin.json` del plugin. El indice la copia del manifiesto; no se teclea aqui."
+        }
+      }
+    },
+    "fuenteRepositorioCompleto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "repo"],
+      "description": "El repositorio ENTERO es el plugin: su manifiesto esta en la raiz. Valida en las dos proyecciones, porque los dos clientes la entienden igual.",
+      "properties": {
+        "source": { "const": "github" },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$",
+          "description": "`propietario/repositorio`. Sin URL y sin `.git`: esta forma la resuelve el cliente."
+        },
+        "ref": { "type": "string", "minLength": 1 },
+        "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
+    "fuenteSubdirectorioClaudeCode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "url", "path"],
+      "description": "Un plugin que vive en un subdirectorio de un repositorio que aloja varios. Claude Code lo direcciona con `git-subdir`, que es la UNICA fuente suya que honra un subdirectorio. Lleva `url` completa y no `repo` porque `git-subdir` clona por git, no por la API de GitHub.",
+      "properties": {
+        "source": { "const": "git-subdir" },
+        "url": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+\\.git$",
+          "description": "URL de clonado, terminada en `.git`."
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^[^/][^\\s]*[^/]$",
+          "description": "Ruta del plugin dentro del repositorio, relativa y sin barra al principio ni al final. Es el directorio que contiene el manifiesto, no el manifiesto."
+        },
+        "ref": { "type": "string", "minLength": 1 },
+        "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
+    "fuenteSubdirectorioCopilot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "repo", "path"],
+      "description": "El mismo plugin en subdirectorio, direccionado como Copilot SI lo entiende: `github` mas `path`. Es exactamente la combinacion que la proyeccion de Claude Code prohibe, y no es una contradiccion — es la divergencia medida entre los dos clientes, que es la razon de que haya dos proyecciones y no una.",
+      "properties": {
+        "source": { "const": "github" },
+        "repo": { "type": "string", "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$" },
+        "path": { "type": "string", "pattern": "^[^/][^\\s]*[^/]$" },
+        "ref": { "type": "string", "minLength": 1 },
+        "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
+    "envolturaDelIndice": {
+      "type": "object",
+      "required": ["name", "owner", "plugins"],
+      "description": "La forma comun a las dos proyecciones. Lo unico que cambia entre ellas es que fuentes admite cada entrada de `plugins`.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "Nombre del marketplace: la segunda mitad de `plugin@marketplace`. Es lo que una persona teclea, asi que se mantiene corto y estable — renombrarlo invalida todo comando que alguien tenga escrito."
+        },
+        "owner": { "$ref": "#/$defs/propietario" },
+        "metadata": { "$ref": "#/$defs/metadatosDelIndice" },
+        "plugins": {
+          "type": "array",
+          "minItems": 1,
+          "description": "MINIMO UNA ENTRADA, y es una salvaguarda medida, no una formalidad: un indice vacio es sintacticamente valido y semanticamente catastrofico — al publicarse desinstala de golpe todo lo que el catalogo ofrecia. Si el barrido no encuentra nada, lo correcto es fallar y NO sobreescribir el catalogo anterior."
+        }
+      }
+    }
+  },
+  "not": {},
+  "$defs_nota": "LA RAIZ DE ESTE ARCHIVO RECHAZA TODO A PROPOSITO (`\"not\": {}`). No hay un unico esquema valido para «un marketplace»: la validez depende de a que cliente va dirigido el archivo. Si la raiz no impusiera nada, apuntarle un validador PASARIA EN VACIO y daria una conformidad que nadie comprobo — el mismo fallo silencioso que este esquema existe para cerrar. Asi, usar la raiz por error falla de inmediato y el mensaje lleva a elegir la proyeccion. Se referencian por puntero: `marketplace.schema.json#/proyecciones/claudeCode` y `#/proyecciones/copilot`.",
+  "proyecciones": {
+  "claudeCode": {
+    "$comment": "Subesquema para `.claude-plugin/marketplace.json`. El gate lo selecciona por esa ruta.",
+    "$ref": "#/$defs/envolturaDelIndice",
+    "properties": {
+      "plugins": {
+        "items": {
+          "allOf": [{ "$ref": "#/$defs/identidadDelPlugin" }],
+          "properties": {
+            "source": {
+              "description": "PROHIBIDO `github` CON `path`. Claude Code acepta ese documento y despues IGNORA el `path`: instala el repositorio completo creyendo haber instalado el plugin del subdirectorio. No hay error, hay un plugin equivocado — y en un repositorio con varios plugins, el mismo plugin equivocado para todas sus entradas. Un subdirectorio se direcciona aqui con `git-subdir`.",
+              "oneOf": [
+                { "$ref": "#/$defs/fuenteRepositorioCompleto" },
+                { "$ref": "#/$defs/fuenteSubdirectorioClaudeCode" }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "copilot": {
+    "$comment": "Subesquema para `.github/plugin/marketplace.json`. El gate lo selecciona por esa ruta.",
+    "$ref": "#/$defs/envolturaDelIndice",
+    "properties": {
+      "plugins": {
+        "items": {
+          "allOf": [{ "$ref": "#/$defs/identidadDelPlugin" }],
+          "properties": {
+            "source": {
+              "description": "PROHIBIDO `git-subdir`. Copilot RECHAZA esa fuente, asi que una entrada asi rompe el indice ENTERO para este cliente y no solo su propia instalacion. Un subdirectorio se direcciona aqui con `github` mas `path`.",
+              "oneOf": [
+                { "$ref": "#/$defs/fuenteRepositorioCompleto" },
+                { "$ref": "#/$defs/fuenteSubdirectorioCopilot" }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+  }
+}

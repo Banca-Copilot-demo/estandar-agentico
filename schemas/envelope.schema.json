@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/envelope.schema.json",
+  "title": "Envelope — la metadata comun a los SEIS tipos de artefacto agentico",
+  "description": "Lo que TODO artefacto declara, sea skill, agent, prompt, mcp, instructions o hooks. Los esquemas por tipo lo referencian con $ref y anaden SOLO sus campos; asi la pertenencia queda declarada y no insinuada. QUE VALIDA ESTE ESQUEMA: el objeto ENSAMBLADO por el gate, no un archivo concreto. Cada campo lleva `x-read-from`, que dice de que sitio EXACTO se lee: `frontmatter` (lo carga el cliente), `frontmatter.metadata` (aplanado dentro del mapa `metadata:`, que la especificacion define como cadena->cadena), `METADATA.json` (el archivo hermano) o `path` (lo deduce el gate de la ruta). Los valores nombran la ubicacion literal y no una metafora: `hermano` obligaba a saber de que era hermano. Ese reparto sale de la regla de tres preguntas: si lo lee un cliente va al frontmatter; si es texto plano que debe sobrevivir a una instalacion suelta va en `metadata:`; el resto, al hermano.",
+  "$comment": "REGLA DE NOMENCLATURA, declarada para que nadie la uniformice por error: las claves que el CLIENTE lee conservan LA ORTOGRAFIA DEL CLIENTE, aunque conviva con otras. De ahi que haya `allowed-tools` y `user-invocable` en kebab, `applyTo` en camel y `owner_team` en snake, todo a la vez. NO es descuido: renombrarlas produce un fallo SILENCIOSO — el campo parece gobernar y ningun cliente lo lee. Medido en artefactos reales: cinco archivos escriben `user-invokable` y cinco `user-invocable`, y dos `applies_to` frente a uno `applyTo`; la mitad usa una clave muerta. Solo lo NUESTRO usa snake_case (gobierno) o el prefijo `x-` (anotaciones de este esquema). QUE NO ESTA AQUI Y POR QUE: `evals` esta en los tres tipos que llevan suite -- skill, agent y prompt -- y no aqui. El envelope es lo que declaran LOS SEIS; un campo que aplica a tres estaba insinuando pertenencia en vez de declararla, que es justo el defecto que partir los esquemas venia a cerrar. Y los directorios de apoyo -- scripts, references, assets, examples, docs -- NO se declaran en ningun campo a proposito: se descubren por convencion y el gate resuelve contra el arbol las rutas que el cuerpo referencia. Medido sobre un catalogo real, de las 70 rutas que sus metadatos declaraban NINGUNA resolvia: una lista paralela al arbol se queda rancia porque nada la obliga a coincidir. REQUISITO DE INVOCACION: el validador tiene que activar el comprobador de `format`. Medido: sin el, `format: date` NO valida nada y un `approval.date` de \"ayer por la tarde\" pasa en verde — y de esa fecha depende que la aprobacion de un `mcp` caduque.",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "kind",
+    "version",
+    "status",
+    "description",
+    "owner_team",
+    "data_classification",
+    "standard_version"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*\\.[a-z0-9]+(-[a-z0-9]+)*\\.[a-z0-9]+(-[a-z0-9]+)*$",
+      "x-read-from": "frontmatter.metadata",
+      "description": "Identificador de GOBIERNO, `<org>.<dominio>.<nombre>` (ej: acme.sdlc.jira-mcp). Los dos primeros segmentos coinciden con el id del plugin que lo contiene. NO es el identificador que usa el cliente — ese es `name` — y por eso admite puntos, que en un `name` de skill estan prohibidos. El anclaje del ultimo segmento al archivo o a la carpeta lo comprueba el GATE: es una relacion entre el dato y el arbol, y ningun JSON Schema puede expresarla."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "x-read-from": "frontmatter",
+      "description": "El identificador TECNICO que usa el cliente para encontrar el artefacto, no una etiqueta legible — lo legible es `description`. Cada tipo estrecha el patron: un skill solo admite minusculas, digitos y guiones porque la especificacion lo exige; un agent y un prompt admiten puntos porque son extensiones de cliente y su convencion es con espacio de nombres. El gate exige que coincida con la carpeta (skill, mcp) o con el nombre de archivo (agent, prompt, instructions)."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "skill",
+        "agent",
+        "prompt",
+        "mcp",
+        "instructions",
+        "hooks"
+      ],
+      "x-read-from": "artifact-path",
+      "description": "NO se declara: el gate lo deduce de la ruta (skills/<n>/SKILL.md, agents/<n>.agent.md, commands/<n>.prompt.md, .mcp.json, hooks.json, *.instructions.md). Medido: ninguno de los 34 artefactos reales lo declaraba. Un campo obligatorio, deducible y que nadie rellena solo anade un sitio donde equivocarse y permite contradecir a la carpeta. Si alguien lo declara, el gate exige que concuerde."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
+      "x-read-from": "frontmatter.metadata",
+      "description": "SemVer 2.0.0 del ARTEFACTO, independiente de la version del plugin. MAYOR = cambia su contrato observable. Para un `mcp`, MAYOR tambien aplica cuando cambia el servidor de terceros o su version fijada: es un cambio de dependencia externa, no un detalle. ENTRE COMILLAS SIEMPRE: vive en `metadata:`, que es un mapa cadena->cadena, y sin comillas un `1.10` se leeria como numero y perderia el cero."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "conformant",
+        "certified",
+        "deprecated",
+        "retired"
+      ],
+      "x-read-from": "frontmatter.metadata",
+      "description": "Cinco valores. `conformant` lo escribe el ultimo step de la publicacion; `certified` esta RESERVADO y hoy es inalcanzable porque no existe workflow de evals. `retired` NO SE DECLARA normalmente: lo DERIVA el indice cuando `deprecation.sunset_date` ya paso, porque cuando llega la fecha nadie edita el artefacto -- un estado que depende del paso del tiempo no puede vivir en un archivo que hay que tocar a mano. Declararlo es la via de RETIRO DE EMERGENCIA, y entonces el motivo es obligatorio."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "x-read-from": "frontmatter",
+      "description": "La API publica del artefacto: es lo que se carga al arrancar para TODOS los artefactos instalados, y lo que decide si el modelo lo elige. Tiene que decir QUE hace y CUANDO usarlo. El tope de 1024 lo fija la especificacion."
+    },
+    "owner_team": {
+      "type": "string",
+      "x-read-from": "frontmatter.metadata",
+      "description": "El EQUIPO responsable, nunca una persona: un dueno individual deja el artefacto huerfano en cuanto cambia de puesto. El gate comprueba que exista en la organizacion, y si no puede consultarla AVISA en vez de dar por bueno. Aplanado y no anidado como `owner{team,contact}` porque `metadata:` solo admite cadenas."
+    },
+    "owner_contact": {
+      "type": "string",
+      "x-read-from": "frontmatter.metadata",
+      "description": "Canal de contacto del equipo dueno. Aplanado por la misma razon que owner_team."
+    },
+    "data_classification": {
+      "type": "string",
+      "enum": [
+        "public",
+        "internal",
+        "confidential",
+        "restricted"
+      ],
+      "x-read-from": "frontmatter.metadata",
+      "description": "Clasificacion del dato que el artefacto puede llegar a tocar. Sustituye tambien a `visibility`, que se retiro por solaparse sin anadir decision: `public` con `confidential` era una combinacion contradictoria que nada impedia."
+    },
+    "standard_version": {
+      "type": "string",
+      "x-read-from": "frontmatter.metadata",
+      "description": "La version del estandar contra la que se aprobo este artefacto. Resuelve un problema real que ningun otro origen aborda: cuando se publica un gate nuevo, saber que artefactos pasaron por el anterior."
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "x-read-from": "METADATA.json",
+      "description": "Etiquetas de busqueda. Un catalogo sin tags no se busca. En el hermano y no en `metadata:` porque es una lista."
+    },
+    "content_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "x-read-from": "METADATA.json",
+      "description": "Huella del CONTENIDO del artefacto: su archivo de definicion, sus suites y sus directorios de recursos, recursivamente. Existe porque sin ella un veredicto viejo se lee como aprobado reciente despues de editar el artefacto, y la atestacion NO cubre ese caso: se puede firmar un paquete cuyo contenido cambio tras pasar los evals. Complementa a la atestacion, no la sustituye: la atestacion prueba QUIEN construyo, la huella prueba QUE hay dentro. Y a diferencia de la atestacion no depende del plan de facturacion. Se normalizan los saltos de linea y se encuadra cada archivo con su ruta y longitud, para que mover un fragmento entre archivos cambie el digest."
+    },
+    "deprecation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sunset_date",
+        "reason",
+        "decided_by"
+      ],
+      "x-read-from": "METADATA.json",
+      "description": "OBLIGATORIO cuando `status` es `deprecated` o `retired`. Un solo estado de obsolescencia mezclaria dos cosas distintas -- «no lo uses en cosas nuevas pero sigue funcionando» y «ya no existe» -- y entre las dos hace falta un PLAZO ANUNCIADO: sin el, el retiro es una sorpresa. RFC 9745 y RFC 8594 las separan por eso, y RFC 9745 anade la regla de que la fecha de fin no puede preceder al anuncio. PRECEDENTE MEDIDO: Anthropic usa este mismo vocabulario de estados y define `deprecated` como «sigue funcionando pero ya no se recomienda; se proporciona un reemplazo recomendado y se asigna una fecha de retiro». Su politica es «al menos 60 dias», y su historial real de nueve deprecaciones lo cumple sin excepciones: minimo 60, mediana 63, maximo 189 -- el plazo escala con el coste de migrar, no con el capricho.",
+      "properties": {
+        "sunset_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Fecha a partir de la cual el artefacto deja de estar disponible. Es lo que convierte el retiro en un cambio gestionado. EL GATE la comprueba, no el esquema: JSON Schema no compara dos fechas. Plazo minimo al publicar la deprecacion: 60 dias por defecto -- el suelo de Anthropic, su mediana observada, y dentro de la banda de 30 a 90 dias que la industria recomienda para APIs INTERNAS -- y 90 dias para unas `instructions` gestionadas, porque su retiro borra un archivo del repositorio de OTRO equipo y le cambia el comportamiento sin que nadie alli haya hecho nada. El plazo escala con el coste de migrar."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Por que se deprecia. Es lo unico que hace ACCIONABLE el aviso al instalar: «esta deprecado» no ayuda, «el framework de origen sale de soporte en marzo» si."
+        },
+        "decided_by": {
+          "type": "string",
+          "description": "Quien lo decidio. Deprecar NO es un veredicto de gate: es la unica transicion de estado que nace de una decision humana, y por eso deja nombre."
+        },
+        "superseded_by": {
+          "type": "string",
+          "description": "El artefacto que lo sustituye. OPCIONAL: a veces algo deja de tener sentido y no hay sucesor, y exigirlo obligaria a inventar uno. EL GATE comprueba que, si esta, EXISTA en el catalogo: un sucesor inventado es la misma clase de defecto que una ruta que no resuelve."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "deprecated",
+              "retired"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "deprecation"
+        ],
+        "description": "Sin fecha de fin, sin motivo y sin decisor, deprecar es solo una etiqueta."
+      }
+    }
+  ]
+}

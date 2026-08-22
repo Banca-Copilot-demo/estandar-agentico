@@ -1,0 +1,154 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ejemplo.dev/track-agentico/schemas/eval-suite-schema/1.1",
+  "title": "Eval Suite — esquema de la suite de evaluacion de un artefacto agentico (Track Agentico v1)",
+  "description": "Contrato de una suite de evals co-localizada con el artefacto que evalua (`<artefacto>/evals/*.eval.json`). Un esquema unico para los tres NIVELES de evaluacion: nivel 1 (el artefacto por si solo: su salida y su activacion), nivel 2 (seleccion y orquestacion: ¿se eligio el artefacto correcto y se encadeno bien?) y nivel 3 (el flujo completo de punta a punta). El nivel se declara, no se infiere. PRINCIPIO RECTOR: comprobacion determinista primero, juez con modelo solo para lo que ninguna comprobacion puede verificar — el juez cuesta consumo de modelo en cada corrida y es la principal fuente de resultados inestables.",
+  "type": "object",
+  "required": ["schema_version", "artifact", "level", "eval_type", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0", "description": "Version del ESQUEMA de la suite." },
+    "artifact": { "type": "string", "description": "Id del artefacto evaluado. Debe coincidir con el `id` del frontmatter; el validador comprueba la correspondencia (una suite que apunta a otro artefacto mide lo que no debe)." },
+    "level": {
+      "type": "integer",
+      "enum": [1, 2, 3],
+      "description": "1 = el artefacto aislado; 2 = seleccion y orquestacion (aplica a agentes con handoffs y a la eleccion entre capacidades); 3 = flujo completo end-to-end. Determina que se monta antes de correr el caso."
+    },
+    "eval_type": {
+      "type": "string",
+      "enum": ["output", "trigger", "selection", "mcp_contract"],
+      "description": "'mcp_contract' = se verifica el CONTRATO de una configuracion MCP: que la conexion se establece, que las herramientas de la lista blanca aparecen, que NO aparece ninguna fuera de ella, y que el TEXTO de sus descripciones no cambio desde la aprobacion. Es determinista y no consume modelo, asi que es el unico tipo de evaluacion que no hay razon para diferir. 'output' = se juzga el ENTREGABLE producido. 'trigger' = se juzga si el artefacto SE ACTIVA (o no) ante una consulta del usuario; es la unica forma de verificar que una `description` cumple su funcion de seleccion. 'selection' = se juzga si, ante una tarea, se eligio el artefacto correcto entre varios candidatos (nivel 2)."
+    },
+    "deliverable": {
+      "type": "string",
+      "enum": ["text", "artifact"],
+      "default": "text",
+      "description": "'artifact' = la salida es un archivo con formato estricto (JSON, YAML, codigo) y se comprueba como tal; 'text' = la salida es prosa. Junto con `allowed_tools` del artefacto determina el modo de ejecucion del caso."
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Valores por defecto de la suite, sobreescribibles por caso.",
+      "properties": {
+        "runs_per_case": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3,
+          "description": "Cuantas veces se corre cada caso. Por defecto 3 y no 1: un modelo no es determinista, y con una sola corrida no se distingue un artefacto solido de uno que acerto por suerte. Es la palanca principal de costo de la certificacion."
+        },
+        "pass_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 1.0,
+          "description": "Fraccion de corridas que deben pasar para dar el caso por aprobado. Debe declararse de forma consciente: 1.0 exige determinismo perfecto (razonable para comprobaciones deterministas), un valor menor tolera variabilidad (razonable cuando interviene un juez)."
+        },
+        "timeout_seconds": { "type": "integer", "minimum": 1, "description": "Presupuesto de tiempo por corrida. Agotarlo NO es un fallo de calidad del artefacto (ver `execution_failure_policy`)." }
+      }
+    },
+    "execution_failure_policy": {
+      "type": "string",
+      "enum": ["separate_verdict"],
+      "default": "separate_verdict",
+      "description": "INVARIANTE del motor, declarado para que nadie lo reinterprete: un fallo de EJECUCION (se agoto el tiempo, la salida vino vacia, el proveedor rechazo la corrida) NO se reporta como mala calidad del artefacto. Se enruta a un veredicto aparte. Confundirlos hace dos daños concretos: rechaza artefactos sanos por ruido de plataforma, y consume rondas de correccion intentando arreglar la calidad de algo que nunca llego a ejecutarse."
+    },
+    "fixtures": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Rutas relativas de los insumos que se montan antes de correr los casos (proyecto de ejemplo, archivos de configuracion). Deben ser SINTETICOS o anonimizados: un fixture con datos reales del cliente convierte la suite en un vehiculo de fuga de datos y bloquea la certificacion por el escaneo de contenido."
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 3,
+      "description": "Casos de la suite. Para `mcp_contract` los casos minimos son evidentes y siempre los mismos: la conexion se establece, las herramientas declaradas aparecen, una herramienta NO declarada no aparece, y el texto de las descripciones no cambio. Minimo 3 a proposito: con menos de tres no hay forma de cubrir a la vez el camino feliz, un borde y un caso negativo, y una suite de un solo caso feliz certifica cualquier cosa.",
+      "items": { "$ref": "#/definitions/case" }
+    }
+  },
+  "definitions": {
+    "case": {
+      "type": "object",
+      "required": ["id", "title", "category"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "Identificador estable del caso (se usa para comparar reportes entre versiones)." },
+        "title": { "type": "string", "description": "Que verifica el caso, en una frase." },
+        "category": {
+          "type": "string",
+          "enum": ["happy_path", "edge_case", "negative", "security"],
+          "description": "Tipo de caso. Una suite sin ningun caso 'negative' no verifica que el artefacto se abstenga cuando debe: es la omision mas frecuente y la que produce artefactos que siempre 'encuentran algo que hacer'."
+        },
+        "input": { "type": "object", "description": "Entrada estructurada e independiente del proveedor. El renderizador la convierte en el mensaje al modelo. Para `eval_type` 'output'." },
+        "query": { "type": "string", "description": "Consulta del usuario. Para `eval_type` 'trigger' o 'selection'." },
+        "should_trigger": { "type": "boolean", "description": "Si el artefacto DEBE activarse ante esa consulta. Para 'trigger'. Un caso con `false` es lo que impide que una `description` demasiado amplia capture tareas ajenas." },
+        "expected_artifact": { "type": "string", "description": "Id del artefacto que deberia elegirse. Para 'selection'." },
+        "runs_per_case": { "type": "integer", "minimum": 1, "description": "Sobreescribe el valor de la suite para este caso." },
+        "pass_threshold": { "type": "number", "minimum": 0, "maximum": 1, "description": "Sobreescribe el umbral de la suite para este caso." },
+        "checks": {
+          "type": "array",
+          "description": "Comprobaciones DETERMINISTAS (sin consumo de modelo). Son la primera linea: baratas, estables y explicables. Todo lo que pueda comprobarse asi NO debe ir al juez.",
+          "items": { "$ref": "#/definitions/check" }
+        },
+        "judge": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Evaluacion por modelo, para lo que ninguna comprobacion determinista alcanza (coherencia, pertinencia, calidad de una explicacion). Cada criterio debe ser una afirmacion verificable e independiente; un criterio vago ('esta bien hecho') produce veredictos inestables y no diagnosticables.",
+          "properties": {
+            "criteria": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["name", "description"],
+                "additionalProperties": false,
+                "properties": {
+                  "name": { "type": "string" },
+                  "description": { "type": "string", "description": "El criterio, redactado como afirmacion comprobable contra la salida." },
+                  "weight": { "type": "number", "minimum": 0, "description": "Peso relativo del criterio." }
+                }
+              }
+            },
+            "rubric": { "type": "string", "description": "Instruccion global para el juez, cuando los criterios necesiten contexto compartido." }
+          },
+          "required": ["criteria"]
+        }
+      },
+      "anyOf": [
+        { "required": ["checks"] },
+        { "required": ["judge"] }
+      ]
+    },
+    "check": {
+      "type": "object",
+      "required": ["type"],
+      "description": "Una comprobacion determinista. El catalogo de tipos es CERRADO y lo publica el motor: un tipo inventado no se puede ejecutar y una suite que lo use nunca podria aprobar, asi que el validador la rechaza antes de gastar una sola corrida.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "contains",
+            "contains_any_case",
+            "not_contains",
+            "matches_regex",
+            "output_is_valid_json",
+            "output_is_valid_yaml",
+            "json_path_equals",
+            "json_path_exists",
+            "file_exists",
+            "occurrence_count",
+            "line_count_between",
+            "mcp_connects",
+            "mcp_tool_present",
+            "mcp_tool_absent",
+            "mcp_tool_description_unchanged"
+          ],
+          "description": "Tipo de comprobacion. 'not_contains' es el que verifica una prohibicion (p.ej. que no quede ningun rastro del patron de origen tras una migracion) y es el mas util para artefactos de transformacion. Los cuatro tipos `mcp_*` solo aplican a `eval_type: mcp_contract`: comprueban que el servidor responde y que la superficie de herramientas expuesta es EXACTAMENTE la declarada. `mcp_tool_absent` detecta que el servidor de terceros añadio herramientas por su cuenta desde la ultima aprobacion. `mcp_tool_description_unchanged` compara el HASH del texto de la descripcion de cada herramienta contra el capturado al aprobar: la descripcion de una herramienta es texto de terceros que el modelo LEE, y la literatura de tool poisoning coincide en que las instrucciones envenenadas se colocan justo ahi porque es la parte de la definicion que un humano no abre. Cambiar el texto sin cambiar el nombre es un rug pull que las otras tres comprobaciones no ven."
+        },
+        "value": { "description": "Valor esperado, segun el tipo." },
+        "path": { "type": "string", "description": "Ruta del archivo o expresion de acceso al dato, para los tipos que la requieren." },
+        "min": { "type": "integer", "description": "Cota inferior, para tipos de conteo." },
+        "max": { "type": "integer", "description": "Cota superior, para tipos de conteo." },
+        "note": { "type": "string", "description": "Por que existe esta comprobacion. Recomendado: una comprobacion sin motivo escrito se relaja en cuanto molesta." }
+      }
+    }
+  }
+}

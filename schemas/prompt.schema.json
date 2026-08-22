@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/prompt.schema.json",
+  "title": "Prompt — lo TECLEA la persona por su nombre, como un comando",
+  "description": "Extension de cliente: porta en Copilot y Claude Code, no en los seis. REGLA DE DESISTIMIENTO: ante duda entre prompt y skill, elige skill. Un prompt es un skill con `user-invocable` que ademas pierde portabilidad, asi que la unica razon para elegir prompt es que la invocacion por nombre sea el punto — no la capacidad.",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "required": [
+    "produces"
+  ],
+  "properties": {
+    "name": {
+      "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$",
+      "description": "Minusculas, digitos, guiones y puntos. El gate exige que coincida con el nombre de archivo: `<name>.prompt.md`. Medido: los 8 prompts reales cumplen la convencion."
+    },
+    "produces": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "x-read-from": "METADATA.json",
+      "description": "Que entrega el prompt. Obligatorio porque es lo unico que permite escribir un eval: un prompt que no declara su salida no se puede comprobar."
+    },
+    "agent": {
+      "type": "string",
+      "x-read-from": "frontmatter",
+      "description": "El agente al que el prompt entra, si entra a uno. `agent` y no `entrypoint_agent`: es la clave que el cliente lee, y 4 prompts reales ya la escriben asi. Renombrarla fue un fallo silencioso — el campo parecia gobernar y nadie lo leia."
+    },
+    "argument-hint": {
+      "type": "string",
+      "x-read-from": "frontmatter",
+      "description": "La pista que el cliente muestra al teclear el comando. Clave real y compartida por los dos clientes; la declaran 4 prompts reales."
+    },
+    "arguments": {
+      "type": "array",
+      "x-read-from": "METADATA.json",
+      "description": "Los argumentos, estructurados. COEXISTE con `argument-hint` en vez de sustituirlo: esto es para el gobierno y el catalogo, el hint es lo que ve la persona. Y el hint SE GENERA de aqui, para que no puedan divergir.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean",
+            "default": false
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "model": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "x-read-from": "frontmatter"
+    },
+    "evals": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-read-from": "METADATA.json",
+      "description": "Puntero a la suite de evaluacion. Requisito para `certified`, no para `conformant`. SOLO en los tipos que llevan suite -- skill, agent y prompt --: `mcp` esta exento porque su contrato se comprueba en G2 sin consumir modelo, e `instructions` porque su eval seria diferencial y aun no sabemos medirlo.",
+      "properties": {
+        "suite": {
+          "type": "string",
+          "description": "Ruta relativa a la suite. La convencion es `evals/evals.json`, la de la especificacion, para ser compatibles con las herramientas oficiales."
+        },
+        "waiver": {
+          "type": "string",
+          "description": "Motivo de la exencion. PENDIENTE DE DECISION: hoy la exencion vive dentro del artefacto, asi que la escribe quien la pide. Un ledger de gobierno externo seria mejor sitio."
+        }
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

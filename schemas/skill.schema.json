@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/skill.schema.json",
+  "title": "Skill — capacidad reutilizable que el modelo ELIGE y aplica",
+  "description": "El unico tipo que porta en los seis clientes, y por eso la regla de diseno es expresar como skill todo lo que se pueda. Un `prompt` es un skill con `user-invocable` que ademas pierde portabilidad. NINGUN campo propio es obligatorio: `when_to_use` dejo de serlo porque es un campo de Claude Code que Copilot no lee, y la senal de activacion real es `description`, que si es normativa y la cargan los seis. El tipo mas numeroso del catalogo se gobierna con el envelope, que es lo que de verdad se comprueba.",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "name": {
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Minusculas, digitos y guiones. Sin guion al principio ni al final y sin dos seguidos. Y tiene que COINCIDIR CON EL DIRECTORIO PADRE: es la unica regla de identidad que la especificacion impone, y si no se cumple el cliente no encuentra el skill. Lo comprueba el gate, no el esquema."
+    },
+    "compatibility": {
+      "type": "string",
+      "maxLength": 500,
+      "x-read-from": "frontmatter",
+      "description": "GENERADO a partir de `platform`, nunca escrito a mano. Es el campo que la especificacion reserva para requisitos de entorno, y el cliente lo muestra. Escribirlo a mano junto a `platform` garantizaria que los dos divergen con el tiempo."
+    },
+    "user-invocable": {
+      "type": "boolean",
+      "x-read-from": "frontmatter",
+      "description": "Con GUION, que es la ortografia real y una de las cuatro extensiones que Copilot y Claude Code comparten. Medido en artefactos reales: cinco archivos escriben `user-invokable` y cinco `user-invocable`; la mitad usa una clave que nadie lee, y el fallo es silencioso porque el campo PARECE gobernar."
+    },
+    "argument-hint": {
+      "type": "string",
+      "x-read-from": "frontmatter",
+      "description": "Pista de argumentos que el cliente muestra al invocar. Es clave real y compartida por los dos clientes. Coexiste con `arguments[]`, que es la forma estructurada para el gobierno y el catalogo: el hint es lo que ve la persona."
+    },
+    "allowed-tools": {
+      "type": "string",
+      "x-read-from": "frontmatter",
+      "description": "Una CADENA SEPARADA POR ESPACIOS, no un array, y con guion: `Bash(git:*) Bash(gh:*) Read`. Es la forma exacta que el cliente lee."
+    },
+    "when_to_use": {
+      "type": "string",
+      "x-read-from": "frontmatter",
+      "description": "OPCIONAL. Campo de Claude Code, no de la especificacion. Si se declara, no debe repetir la `description`."
+    },
+    "platform": {
+      "$ref": "#/$defs/platform",
+      "x-read-from": "METADATA.json",
+      "description": "Sobre que plataforma aplica el artefacto, y desde cual si viene de otra."
+    },
+    "technologies": {
+      "type": "array",
+      "x-read-from": "METADATA.json",
+      "description": "Tecnologias concretas, para lo que NO es una migracion de plataforma. Opcional, y sin exigir clasificar el papel de cada tecnologia: quien solo necesita declarar «uso Java» no deberia tener que decidir si es origen, destino o entorno de ejecucion.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "model": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "x-read-from": "METADATA.json",
+      "description": "Modelos con los que el artefacto se probo. TEXTO LIBRE a proposito, con AVISO del gate si el valor no esta en una lista conocida: una lista cerrada atrapa erratas pero caduca sola cada vez que cambian los modelos disponibles, y un gate que se queda obsoleto se desactiva."
+    },
+    "dependencies": {
+      "type": "array",
+      "x-read-from": "METADATA.json",
+      "description": "Otros artefactos que este necesita. El enum viene de una convencion establecida y probada: `requires` y `orchestrates` son BLOQUEANTES — sin ellos el artefacto no funciona — mientras `chains` y `companion` son informativos.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "artifact",
+          "kind"
+        ],
+        "properties": {
+          "artifact": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "requires",
+              "orchestrates",
+              "chains",
+              "companion"
+            ]
+          }
+        }
+      }
+    },
+    "evals": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-read-from": "METADATA.json",
+      "description": "Puntero a la suite de evaluacion. Requisito para `certified`, no para `conformant`. SOLO en los tipos que llevan suite -- skill, agent y prompt --: `mcp` esta exento porque su contrato se comprueba en G2 sin consumir modelo, e `instructions` porque su eval seria diferencial y aun no sabemos medirlo.",
+      "properties": {
+        "suite": {
+          "type": "string",
+          "description": "Ruta relativa a la suite. La convencion es `evals/evals.json`, la de la especificacion, para ser compatibles con las herramientas oficiales."
+        },
+        "waiver": {
+          "type": "string",
+          "description": "Motivo de la exencion. PENDIENTE DE DECISION: hoy la exencion vive dentro del artefacto, asi que la escribe quien la pide. Un ledger de gobierno externo seria mejor sitio."
+        }
+      }
+    }
+  },
+  "unevaluatedProperties": false,
+  "$defs": {
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target"
+      ],
+      "description": "`target` obligatorio y `source` opcional, y esto se decidio con datos: de 16 artefactos reales que declaran plataforma, los 16 tienen destino y solo 14 tienen origen. Dos son «como se hace algo en la plataforma nueva», no migraciones — y otros dos rellenaban `source: \"N/A - No equivalent\"` a mano, que es la senal de un campo obligatorio que no deberia serlo. La estructura separa lo filtrable de la prosa: hoy la pregunta «que artefactos aplican a CNF 1.0.1» solo se responde con busqueda de texto.",
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/named_platform"
+        },
+        "source": {
+          "$ref": "#/$defs/named_platform"
+        }
+      }
+    },
+    "named_platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "El nombre de la plataforma, filtrable: CNF, Atlas, Quarkus."
+        },
+        "version": {
+          "type": "string",
+          "description": "Su version. Cadena y no numero porque hay rangos reales: `2.6/3.0`, `1.x`, `3.19+`."
+        },
+        "notes": {
+          "type": "string",
+          "description": "La prosa que hoy va entre parentesis: librerias, extensiones, matices."
+        }
+      }
+    }
+  }
+}

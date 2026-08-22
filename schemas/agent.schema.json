@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/agent.schema.json",
+  "title": "Agent — se INVOCA y delega una tarea completa con su propio contexto",
+  "description": "Extension de cliente, no de la especificacion: porta en Copilot y Claude Code, no en los seis. Lo que lo distingue de un skill es que su `description` decide si el modelo le DELEGA la tarea entera, y que puede pasarla a otro agente con `handoffs`. El nombre admite puntos porque la convencion real de los agentes es con espacio de nombres, y la restriccion de la especificacion sobre `name` solo aplica a los skills.",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "required": [
+    "role",
+    "inputs",
+    "outputs"
+  ],
+  "properties": {
+    "name": {
+      "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$",
+      "description": "Minusculas, digitos, guiones y PUNTOS. El gate exige que coincida con el nombre de archivo: `<name>.agent.md`. Medido en artefactos reales: los 5 agentes cumplen la convencion, y `atla.cnf-migrator.analyst` vive en `atla.cnf-migrator.analyst.agent.md`."
+    },
+    "role": {
+      "type": "string",
+      "x-read-from": "METADATA.json",
+      "description": "Que responsabilidad asume el agente. Obligatorio porque sin el no se puede juzgar si dos agentes se solapan, que es la revision que hace el aprobador de dominio."
+    },
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "x-read-from": "METADATA.json",
+      "description": "Lo que el agente necesita para empezar. `produced_by` no tiene equivalente en las convenciones conocidas, que se quedan en una lista de cadenas: declarar QUIEN produce cada entrada es lo que permite detectar una cadena de agentes rota antes de ejecutarla.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean",
+            "default": true
+          },
+          "description": {
+            "type": "string"
+          },
+          "produced_by": {
+            "type": "string",
+            "description": "El artefacto que produce esta entrada, si viene de otro."
+          }
+        }
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "minItems": 1,
+      "x-read-from": "METADATA.json",
+      "description": "Lo que el agente entrega. `format` es aportacion propia: sin el, «devuelve un informe» no se puede comprobar en un eval.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "handoffs": {
+      "type": "array",
+      "x-read-from": "frontmatter",
+      "description": "A que otros agentes puede pasar la tarea. Clave real de Copilot, y la usan 5 agentes reales. `auto_send` por defecto en false a proposito: una cadena que se dispara sola sin que nadie la confirme es una cadena que nadie audita.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "label",
+          "agent"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "auto_send": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "x-read-from": "frontmatter",
+      "description": "Herramientas que el agente puede usar. `tools` y no `allowed_tools`: es la clave que Copilot lee para un agente, y un agente real de BCP ya la declara asi. Nota: para un SKILL la clave equivalente es `allowed-tools` y su valor es una cadena separada por espacios — mismo concepto, dos formas segun el tipo, y no las unificamos porque las fija el cliente."
+    },
+    "model": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "x-read-from": "frontmatter",
+      "description": "Modelos con los que el agente se probo. Lo declaran 17 artefactos reales."
+    },
+    "evals": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-read-from": "METADATA.json",
+      "description": "Puntero a la suite de evaluacion. Requisito para `certified`, no para `conformant`. SOLO en los tipos que llevan suite -- skill, agent y prompt --: `mcp` esta exento porque su contrato se comprueba en G2 sin consumir modelo, e `instructions` porque su eval seria diferencial y aun no sabemos medirlo.",
+      "properties": {
+        "suite": {
+          "type": "string",
+          "description": "Ruta relativa a la suite. La convencion es `evals/evals.json`, la de la especificacion, para ser compatibles con las herramientas oficiales."
+        },
+        "waiver": {
+          "type": "string",
+          "description": "Motivo de la exencion. PENDIENTE DE DECISION: hoy la exencion vive dentro del artefacto, asi que la escribe quien la pide. Un ledger de gobierno externo seria mejor sitio."
+        }
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

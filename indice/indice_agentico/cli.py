@@ -13,7 +13,7 @@ import os
 import sys
 from pathlib import Path
 
-from indice_agentico.adaptadores import catalogo
+from indice_agentico.adaptadores import catalogo, esquema
 from indice_agentico.aplicacion.generar import generar
 from indice_agentico.dominio.candidato import Indice
 
@@ -22,6 +22,9 @@ log = logging.getLogger(__name__)
 SALIDA_OK = 0
 SALIDA_ERROR = 1
 TOPICO_POR_DEFECTO = "agent-skills"
+# Donde vive `marketplace.schema.json`: en el repositorio del estandar, que es donde se publica el
+# contrato. No se empaqueta dentro del indice para que no haya dos copias que puedan derivar (G2).
+DIRECTORIO_DE_ESQUEMAS_POR_DEFECTO = Path("schemas")
 NOMBRE_CATALOGO_POR_DEFECTO = "agentico"
 FORMATO_CI = "%(levelname)-8s %(name)s - %(message)s"
 FORMATO_LOCAL = "%(asctime)s %(levelname)-8s %(name)s - %(message)s"
@@ -49,8 +52,13 @@ def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--equipo", default="Plataforma Agentica (demo)")
     parser.add_argument("--contacto", default="plataforma-agentica@ejemplo.dev")
     parser.add_argument("--version", default="0.1.0", help="version del catalogo")
-    parser.add_argument("--salida", type=Path,
-                        help="archivo donde escribir; por defecto, stdout")
+    parser.add_argument("--raiz", type=Path,
+                        help="raiz del repositorio del marketplace donde escribir LAS DOS "
+                             "proyecciones, cada una en la ruta que su cliente lee; por defecto, "
+                             "stdout")
+    parser.add_argument("--esquemas", type=Path, default=DIRECTORIO_DE_ESQUEMAS_POR_DEFECTO,
+                        help="directorio con `marketplace.schema.json`, contra el que se valida "
+                             "cada proyeccion ANTES de escribirla")
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser.parse_args(argv)
 
@@ -66,13 +74,36 @@ def _informar_descartes(indice: Indice) -> None:
         log.warning("FUERA DEL INDICE %s: %s", rechazo.repositorio, rechazo.motivo.value)
 
 
-def escribir(indice: Indice, salida: Path, contenido: str) -> int:
-    """Escribe el catalogo, o explica por que no. Separado de `main` para poder probar el guardarail
-    sin parchear nada: recibe el indice y la ruta, y devuelve el codigo de salida."""
+def escribir(indice: Indice, raiz: Path, contenido: str,
+             directorio_de_esquemas: Path = DIRECTORIO_DE_ESQUEMAS_POR_DEFECTO) -> int:
+    """Escribe LAS DOS proyecciones, o explica por que ninguna. Separado de `main` para poder probar
+    el guardarail sin parchear nada: recibe el indice y la raiz, y devuelve el codigo de salida.
+
+    Las dos se escriben en la misma llamada a proposito: si una se pudiera actualizar sin la otra,
+    los usuarios de un cliente veran un catalogo mas viejo que los del otro sin que nada lo indique.
+    """
     if indice.entradas:
-        salida.parent.mkdir(parents=True, exist_ok=True)
-        salida.write_text(contenido, encoding="utf-8")
-        log.info("escrito %s con %d plugin(s)", salida, len(indice.entradas))
+        # SE VALIDAN LAS DOS ANTES DE ESCRIBIR NINGUNA. Validar despues solo documentaria que se
+        # publico algo malo, y escribir una y abortar en la otra dejaria el catalogo a medias.
+        defectos = {
+            proyeccion: esquema.incumplimientos(contenido, proyeccion.subesquema,
+                                                directorio_de_esquemas)
+            for proyeccion in catalogo.Proyeccion
+        }
+        if any(defectos.values()):
+            for proyeccion, incumplimientos in defectos.items():
+                for defecto in incumplimientos:
+                    log.error("%s no cumple el esquema del marketplace: %s",
+                              proyeccion.ruta, defecto)
+            log.error("no se escribe ninguna proyeccion: un catalogo que no cumple el esquema es un "
+                      "catalogo que algun cliente no sabra instalar")
+            return SALIDA_ERROR
+
+        for proyeccion in catalogo.Proyeccion:
+            salida = raiz / proyeccion.ruta
+            salida.parent.mkdir(parents=True, exist_ok=True)
+            salida.write_text(contenido, encoding="utf-8")
+            log.info("escrito %s con %d plugin(s)", salida, len(indice.entradas))
         return SALIDA_OK
 
     # Un indice vacio sobreescribiendo uno que funcionaba desinstalaria todo de golpe. Nunca es un
@@ -95,7 +126,7 @@ def escribir(indice: Indice, salida: Path, contenido: str) -> int:
         log.error("no se descubrio NINGUN repositorio de dominio: revisa el token -- el "
                   "GITHUB_TOKEN del repositorio del indice no ve los dominios privados -- y que "
                   "los repositorios lleven el topico")
-    log.error("no se sobreescribe %s", salida)
+    log.error("no se sobreescribe ninguna proyeccion en %s", raiz)
     return SALIDA_ERROR
 
 
@@ -109,10 +140,10 @@ def main(argv: list[str] | None = None) -> int:
     propietario = {"name": argumentos.equipo, "email": argumentos.contacto}
     contenido = catalogo.render(indice, argumentos.nombre, propietario, argumentos.version)
 
-    if argumentos.salida is None:
+    if argumentos.raiz is None:
         print(contenido, end="")
         return SALIDA_OK
-    return escribir(indice, argumentos.salida, contenido)
+    return escribir(indice, argumentos.raiz, contenido, argumentos.esquemas)
 
 
 if __name__ == "__main__":

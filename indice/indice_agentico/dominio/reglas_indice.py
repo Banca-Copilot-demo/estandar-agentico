@@ -32,6 +32,29 @@ from indice_agentico.dominio.candidato import (
 _SIN_DESCRIPCION = "(sin descripcion en el manifiesto)"
 LONGITUD_SHA_COMMIT = 40
 
+# Separador de la etiqueta por plugin: `<nombre>--vX.Y.Z`. Un repositorio de dominio que aloja
+# varios plugins publica una etiqueta por plugin, porque un solo `vX.Y.Z` no dice de cual es.
+_SEPARADOR_DE_ETIQUETA_POR_PLUGIN = "--v"
+_PREFIJO_DE_VERSION = "v"
+
+
+def version_de_la_etiqueta(etiqueta: str) -> str:
+    """La version que una etiqueta declara, en sus DOS formas.
+
+    `vX.Y.Z` cuando el repositorio es un solo plugin en la raiz, y `<nombre>--vX.Y.Z` cuando aloja
+    varios. Sin esto, la etiqueta por plugin se comparaba entera contra la version del manifiesto y
+    el candidato se rechazaba por VERSION_DISCREPANTE -- un mensaje que manda al equipo del dominio
+    a buscar un desajuste de version que no existe.
+    """
+    if _SEPARADOR_DE_ETIQUETA_POR_PLUGIN in etiqueta:
+        return etiqueta.rsplit(_SEPARADOR_DE_ETIQUETA_POR_PLUGIN, 1)[1]
+    return etiqueta.removeprefix(_PREFIJO_DE_VERSION)
+
+
+def es_etiqueta_por_plugin(etiqueta: str) -> bool:
+    """Si la etiqueta identifica UN plugin dentro de un repositorio que aloja varios."""
+    return _SEPARADOR_DE_ETIQUETA_POR_PLUGIN in etiqueta
+
 
 def _omitir(motivo: Motivo) -> Decision:
     return Decision(destino=Destino.OMITIR, motivo=motivo)
@@ -70,9 +93,18 @@ def evaluar(candidato: Candidato) -> Decision:
     if not candidato.manifiesto:
         return _rechazar(Motivo.SIN_MANIFIESTO)
 
-    version_etiqueta = candidato.etiqueta.removeprefix("v")
+    version_etiqueta = version_de_la_etiqueta(candidato.etiqueta)
     if candidato.manifiesto.get("version") != version_etiqueta:
         return _rechazar(Motivo.VERSION_DISCREPANTE)
+
+    # UN PLUGIN ANIDADO NO SE INDEXA TODAVIA, y se rechaza en voz alta en vez de indexarse mal. Para
+    # instalarlo, el cliente necesita la SUBRUTA dentro del repositorio, y aqui no hay de donde
+    # sacarla: el paquete trae el manifiesto en su raiz -- a proposito, es lo que el cliente espera
+    # al extraerlo -- asi que los bytes sellados no dicen de que subdirectorio salieron. Emitir la
+    # fuente del repositorio COMPLETO seria un puntero valido en forma y equivocado en contenido:
+    # Claude Code instalaria el repositorio entero creyendo instalar este plugin, sin dar error.
+    if es_etiqueta_por_plugin(candidato.etiqueta):
+        return _rechazar(Motivo.SUBRUTA_NO_RESUELTA)
 
     return Decision(destino=Destino.INDEXAR, entrada=Entrada(
         name=candidato.manifiesto["name"],
