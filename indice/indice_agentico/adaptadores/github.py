@@ -69,13 +69,23 @@ def etiquetas_publicadas(repositorio: str) -> tuple[str, ...]:
     verificar la atestacion de cada release del historial costaria unos diez segundos por release.
     """
     salida = _gh("release", "list", "--repo", repositorio,
-                 "--limit", str(_MAX_RELEASES_POR_REPOSITORIO), "--json", "tagName,publishedAt")
+                 "--limit", str(_MAX_RELEASES_POR_REPOSITORIO),
+                 "--json", "tagName,publishedAt,isDraft,isPrerelease")
     if salida is None:
         return ()
     releases = json.loads(salida)
+    # NI BORRADORES NI PRELANZAMIENTOS. Un borrador no esta publicado, y `prerelease` es la senal
+    # NATIVA de GitHub para «esto no es para consumo general»: es lo que permite RETIRAR del catalogo
+    # un release cuyo plugin ya no se mantiene sin borrarlo -- un release publicado no se puede
+    # borrar sin romper las atestaciones que cuelgan de el, y marcarlo se deshace en un clic.
+    publicados = [r for r in releases if not r.get("isDraft") and not r.get("isPrerelease")]
+    retirados = len(releases) - len(publicados)
+    if retirados:
+        log.info("%s: %d release(s) ignorado(s) por ser borrador o prelanzamiento",
+                 repositorio, retirados)
     # `gh` ya los devuelve de mas nuevo a mas viejo, pero se ordena explicitamente: el orden decide
     # cual version de cada plugin queda vigente, y no conviene que dependa de un detalle del CLI.
-    ordenados = sorted(releases, key=lambda r: r.get("publishedAt") or "", reverse=True)
+    ordenados = sorted(publicados, key=lambda r: r.get("publishedAt") or "", reverse=True)
     return tuple(r["tagName"] for r in ordenados)
 
 

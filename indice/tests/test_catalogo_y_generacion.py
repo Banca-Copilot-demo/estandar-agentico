@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from indice_agentico.adaptadores import catalogo
+from indice_agentico.adaptadores import catalogo, github
 from indice_agentico.adaptadores.paquete import LecturaManifiesto
 from indice_agentico.aplicacion.generar import generar
 from indice_agentico.dominio.candidato import Descarte, Entrada, Indice, Motivo
@@ -54,6 +54,33 @@ def test_los_plugins_salen_ordenados_por_nombre():
 def test_el_catalogo_avisa_de_que_esta_generado():
     generado = json.loads(catalogo.render(Indice((), ()), "agentico", PROPIETARIO, "0.1", CLAUDE))
     assert "no editar a mano" in generado["metadata"]["description"]
+
+
+# ── borradores y prelanzamientos NO entran al catalogo ──────────────────────────────────────
+def test_un_prelanzamiento_no_entra_al_catalogo(monkeypatch):
+    """Es el mecanismo para RETIRAR del catalogo un release cuyo plugin ya no se mantiene: un
+    release publicado no se puede borrar sin romper las atestaciones que cuelgan de el, y
+    `prerelease` es la senal nativa de GitHub para «esto no es para consumo general».
+
+    Defecto MEDIDO contra la organizacion real: el catalogo listaba `demo.sdlc.migracion-cnf 0.3.0`,
+    de cuando el repositorio era un plugin unico. Ese plugin ya no existe en el arbol -- hoy hay dos
+    bajo `plugins/` -- pero su release seguia siendo el mas nuevo de su grupo, asi que la vitrina
+    anunciaba algo que nadie mantiene.
+
+    Se parchea `_gh` y no el adaptador porque lo que se prueba ES el filtrado del adaptador (T4 pide
+    inyectar dobles para probar OTRA cosa a traves de un adaptador; aqui el adaptador es el sujeto).
+    """
+    respuesta = json.dumps([
+        {"tagName": "vigente--v1.0.0", "publishedAt": "2026-01-02", "isDraft": False,
+         "isPrerelease": False},
+        {"tagName": "retirado--v9.9.9", "publishedAt": "2026-01-03", "isDraft": False,
+         "isPrerelease": True},
+        {"tagName": "borrador--v9.9.9", "publishedAt": "2026-01-04", "isDraft": True,
+         "isPrerelease": False},
+    ])
+    monkeypatch.setattr(github, "_gh", lambda *argumentos: respuesta)
+
+    assert github.etiquetas_publicadas("org/repo") == ("vigente--v1.0.0",)
 
 
 # ── caso de uso, con dobles ────────────────────────────────────────────────────────────────
