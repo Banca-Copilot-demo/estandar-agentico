@@ -22,7 +22,8 @@ from indice_agentico.dominio.candidato import (
     Indice,
     Motivo,
 )
-from indice_agentico.dominio.reglas_indice import etiquetas_vigentes, evaluar
+from indice_agentico.dominio.reglas_etiquetas import etiquetas_vigentes
+from indice_agentico.dominio.reglas_indice import evaluar
 
 log = logging.getLogger(__name__)
 

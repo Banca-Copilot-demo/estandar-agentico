@@ -7,11 +7,8 @@ lo demas siga en verde.
 from __future__ import annotations
 
 from indice_agentico.dominio.candidato import Candidato, Destino, Motivo
-from indice_agentico.dominio.reglas_indice import (
-    etiquetas_vigentes,
-    evaluar,
-    version_de_la_etiqueta,
-)
+from indice_agentico.dominio.reglas_etiquetas import etiquetas_vigentes, version_de_la_etiqueta
+from indice_agentico.dominio.reglas_indice import evaluar
 
 MANIFIESTO = {"name": "migracion-cnf", "description": "Skills del dominio SDLC.",
               "version": "0.2.0"}
