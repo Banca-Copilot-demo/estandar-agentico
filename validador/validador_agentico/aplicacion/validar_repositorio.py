@@ -21,10 +21,9 @@ from validador_agentico.adaptadores.repositorio import (
     ContenidoRepositorio,
 )
 from validador_agentico.aplicacion import proyeccion
-from validador_agentico.dominio import reglas_agente_instructions, reglas_aprobacion
+from validador_agentico.dominio import reglas_agente, reglas_aprobacion
 from validador_agentico.dominio import reglas_credenciales, reglas_layout, reglas_mcp
-from validador_agentico.dominio import reglas_recursos
-from validador_agentico.dominio import reglas_solapamiento
+from validador_agentico.dominio import reglas_instructions, reglas_recursos
 from validador_agentico.dominio import reglas_higiene, reglas_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
 from validador_agentico.dominio.especificacion import RUTAS_MANIFIESTO
@@ -246,7 +245,7 @@ def _revisar_agentes(contenido: ContenidoRepositorio) -> list[Hallazgo]:
             hallazgos.append(error(agente.ruta_relativa,
                                    "sin frontmatter: el agente es indescubrible"))
             continue
-        hallazgos += reglas_agente_instructions.revisar_agente(
+        hallazgos += reglas_agente.revisar_agente(
             agente.ruta_relativa, agente.nombre_directorio, agente.frontmatter)
         hallazgos += reglas_artefacto.revisar_envelope(
             agente.ruta_relativa, agente.frontmatter.get("metadata") or {})
@@ -254,28 +253,31 @@ def _revisar_agentes(contenido: ContenidoRepositorio) -> list[Hallazgo]:
 
 
 def _revisar_instructions(contenido: ContenidoRepositorio) -> list[Hallazgo]:
+    """NO se les aplica el envelope: `instructions` dejo de ser un tipo gobernado -- no hay canal para
+    distribuirlas, comprobado en la referencia de plugins de los dos clientes --. Lo que queda es
+    higiene: dejar constancia de que existen y de su alcance, porque son el unico archivo que cambia
+    el comportamiento del agente sin que nadie lo elija.
+
+    Un archivo sin frontmatter tampoco es un error aqui: sin gobierno no hay campos obligatorios que
+    exigir, y lo unico que se pierde es el `applyTo` -- que ya se avisa como tal --.
+    """
     hallazgos: list[Hallazgo] = []
     for instruccion in contenido.instructions:
-        if instruccion.frontmatter is None:
-            hallazgos.append(error(instruccion.ruta_relativa, "sin frontmatter"))
-            continue
-        hallazgos += reglas_agente_instructions.revisar_instructions(
-            instruccion.ruta_relativa, instruccion.frontmatter, instruccion.lineas)
-        hallazgos += reglas_artefacto.revisar_envelope(
-            instruccion.ruta_relativa, instruccion.frontmatter.get("metadata") or {})
+        hallazgos += reglas_instructions.revisar_instructions(
+            instruccion.ruta_relativa, instruccion.frontmatter or {}, instruccion.lineas)
     return hallazgos
 
 
 def _revisar_solapamiento_de_instructions(contenido: ContenidoRepositorio) -> list[Hallazgo]:
-    """Se pasan las que TIENEN ambito: la falta de `applies_to` ya la senala la regla por artefacto,
-    y volver a nombrarla aqui daria dos hallazgos por el mismo defecto."""
+    """Se pasan las que TIENEN ambito: la falta de `applyTo` ya la senala la regla por archivo, y
+    volver a nombrarla aqui daria dos hallazgos por el mismo hecho."""
     declaradas = [
         (instruccion.ruta_relativa,
-         instruccion.frontmatter.get("applies_to") or instruccion.frontmatter.get("applyTo"))
+         reglas_instructions.ambito_de(instruccion.frontmatter or {}))
         for instruccion in contenido.instructions
-        if instruccion.frontmatter is not None
     ]
-    return reglas_solapamiento.revisar_solapamiento(declaradas)
+    return reglas_instructions.revisar_solapamiento(
+        [(donde, ambito) for donde, ambito in declaradas if ambito])
 
 
 def _revisar_yaml(contenido: ContenidoRepositorio) -> list[Hallazgo]:

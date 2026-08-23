@@ -1,6 +1,6 @@
 ---
 name: crear-artefacto-agentico
-description: Crea un artefacto agentico conforme al estandar agentico -skill, agente, prompt, mcp o instructions- dentro del plugin del repositorio actual, rellena su metadata de gobierno, lo valida en local y abre el pull request. Usalo cuando alguien quiera crear, anadir, publicar o registrar un skill, un agente, un comando, una configuracion MCP o instrucciones para Copilot.
+description: Crea un artefacto agentico conforme al estandar agentico -skill, agente, prompt, mcp o hooks- dentro del plugin del repositorio actual, rellena su metadata de gobierno, lo valida en local y abre el pull request. Usalo cuando alguien quiera crear, anadir, publicar o registrar un skill, un agente, un comando, una configuracion MCP o instrucciones para Copilot.
 license: Proprietary
 compatibility: Requiere git y gh (GitHub CLI) en el PATH
 allowed-tools: Bash(git:*) Bash(gh:*) Read Write
@@ -40,10 +40,29 @@ mas especifico a lo mas general, y el criterio de cada pregunta es COMO SE ACTIV
 
 1. ¿Configura un servidor MCP para exponer herramientas? -> **mcp**
 2. ¿Tiene que interceptar un evento del cliente? -> **hooks**
-3. ¿Tiene que estar SIEMPRE activo sobre unos archivos concretos? -> **instructions**
-4. ¿Lo teclea la persona por su nombre, como un comando? -> **prompt**
-5. ¿Delega una tarea completa con su propio contexto y sus handoffs? -> **agent**
-6. Si ninguna: **skill** — el modelo lo elige cuando su `description` encaja.
+3. ¿Lo teclea la persona por su nombre, como un comando? -> **prompt**
+4. ¿Delega una tarea completa con su propio contexto y sus handoffs? -> **agent**
+5. Si ninguna: **skill** — el modelo lo elige cuando su `description` encaja.
+
+**`instructions` NO está en esta lista, y no es un olvido.** Un archivo
+`.instructions.md` se aplica solo a lo que casa con su `applyTo`, y **no hay forma de
+distribuirlo**: la referencia de plugins de Claude Code dice que un `CLAUDE.md` en la raíz
+de un plugin no se carga como contexto, y el conjunto de componentes de un plugin de
+Copilot no las incluye. Así que la plataforma no puede publicarlas ni mantenerlas.
+
+Si lo que buscas es *«esto tiene que aplicarse siempre a estos archivos»*, tienes dos
+caminos y ninguno es un artefacto nuevo:
+
+- **Si la regla la pone la organización** — «usa siempre arquitectura hexagonal» — el
+  artefacto es un **skill** o un **prompt**, que sí viajan en el plugin. Pierdes la
+  aplicación automática y ganas que exista de verdad en el repositorio de quien lo instale.
+- **Si la regla es local del equipo**, escribe unas `instructions` en tu repositorio y ya
+  está: es legítimo y así funciona el cliente. Queda fuera del catálogo, y el gate solo
+  avisará de que existen y de su alcance.
+
+Y si la regla **debe ser inviolable**, no puede vivir en una instrucción de ninguna forma:
+las instrucciones se combinan sin orden definido y las de organización tienen la
+precedencia más baja. Eso necesita un **gate**, no una sugerencia al modelo.
 
 REGLA DE DESISTIMIENTO: si dudas entre `prompt` y `skill`, elige **skill**. Un skill porta en los
 seis clientes y un prompt solo en dos, asi que un prompt es un skill con `user-invocable` que

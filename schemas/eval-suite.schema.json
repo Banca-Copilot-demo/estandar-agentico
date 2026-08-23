@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/eval-suite.schema.json",
   "title": "Eval Suite — esquema de la suite de evaluacion de un artefacto agentico (Track Agentico v1)",
   "description": "Contrato de una suite de evals co-localizada con el artefacto que evalua (`<artefacto>/evals/*.eval.json`). Un esquema unico para los tres NIVELES de evaluacion: nivel 1 (el artefacto por si solo: su salida y su activacion), nivel 2 (seleccion y orquestacion: ¿se eligio el artefacto correcto y se encadeno bien?) y nivel 3 (el flujo completo de punta a punta). El nivel se declara, no se infiere. PRINCIPIO RECTOR: comprobacion determinista primero, juez con modelo solo para lo que ninguna comprobacion puede verificar — el juez cuesta consumo de modelo en cada corrida y es la principal fuente de resultados inestables.",

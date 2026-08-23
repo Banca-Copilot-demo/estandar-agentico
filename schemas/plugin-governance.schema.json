@@ -1,75 +1,117 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/plugin-governance.schema.json",
   "title": "Manifiesto de gobierno del plugin agentico — Track Agentico",
   "description": "Contrato de `GOVERNANCE.json`, en la raiz DEL PLUGIN — que no siempre es la raiz del repositorio: un repositorio de dominio puede alojar varios plugins bajo `plugins/<nombre>/`, y entonces cada uno lleva el suyo junto a su propio `plugin.json`. IMPORTANTE — LO QUE ESTE ARCHIVO NO ES: no es el manifiesto del plugin. El manifiesto es `plugin.json` conforme a Agent Plugins 1.0 (https://agent-plugins.org/schemas/1.0.0/plugin.schema.json), especificacion abierta y neutral de proveedor que define empaquetado, layout, instalacion y marketplaces; ese archivo admite SOLO diez campos de primer nivel ($schema, name, version, description, author, homepage, repository, license, keywords, extensions), asi que el gobierno de la organizacion NO cabe ahi. Este archivo lo complementa y se referencia desde `plugin.json` en `extensions['com.ejemplo.gobierno'].governance`, usando el mecanismo de namespace DNS-inverso que la propia especificacion define para datos especificos de un cliente. DIVISION DE RESPONSABILIDADES: la industria define el formato y la distribucion (Agent Plugins 1.0 + Agent Skills); la organizacion define aprobacion, trazabilidad, ciclo de vida y catalogo — que es lo que ninguna de las dos especificaciones cubre (no tienen modelo de confianza, ni verificacion de firma, ni atestacion). Alineado a: SemVer 2.0.0 (version), SPDX (license en plugin.json), SLSA/in-toto (attestation), NIST AI RMF (ciclo de vida y decommissioning).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "domain", "owner", "status", "data_classification", "standard_version", "artifacts"],
-
+  "required": [
+    "id",
+    "domain",
+    "owner",
+    "status",
+    "data_classification",
+    "standard_version",
+    "artifacts"
+  ],
   "properties": {
     "id": {
       "type": "string",
       "pattern": "^[a-z0-9]+(\\.[a-z0-9][a-z0-9-]*)+$",
       "description": "Identificador canonico del plugin: <org>.<dominio>.<nombre>, p. ej. acme.sdlc.migracion-cnf. DEBE coincidir con el campo `name` de plugin.json (la especificacion admite puntos en modo Open Plugin Spec). Es lo unico estable entre organizaciones: una dependencia se declara por id, nunca por ruta ni por URL, y el catalogo de Port resuelve id -> repositorio + etiqueta. El namespace DNS-inverso con verificacion de propiedad del dominio es el mecanismo del registro oficial de MCP; sin esa verificacion, el prefijo es una convencion de nombres y no una garantia de origen."
     },
-
     "domain": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]*$",
       "description": "Dominio al que pertenece el plugin. DEBE coincidir con la custom property `domain` del repositorio en GitHub: es lo que hace que el ruleset de la organizacion alcance el repo automaticamente. Un repositorio de dominio sin esa propiedad nace sin gate y en silencio. CONSECUENCIA — UN REPOSITORIO ALOJA PLUGINS DE UN SOLO DOMINIO: la custom property es UNA por repositorio, asi que si dos plugins del mismo repo declararan dominios distintos, uno de los dos quedaria etiquetado con el dominio del otro en el catalogo y alcanzado por el ruleset equivocado. Varios plugins por repositorio: si. Varios dominios por repositorio: no. Es la razon de ser de un repositorio DE DOMINIO."
     },
-
     "owner": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["team", "contact"],
+      "required": [
+        "team",
+        "contact"
+      ],
       "description": "Dueno del plugin. El gate G4 exige que sea declarado Y RESOLUBLE contra la organizacion de GitHub: un equipo que no resuelve es texto libre, y un plugin sin dueno real no se puede deprecar, corregir ni retirar — queda en el catalogo para siempre.",
       "properties": {
-        "team": { "type": "string", "description": "Equipo responsable. Debe existir como team en la organizacion (requiere permiso Members:read del validador)." },
-        "contact": { "type": "string", "description": "Canal o correo de contacto del equipo, no de una persona: las personas rotan." },
-        "codeowners": { "type": "boolean", "description": "Si el repositorio declara CODEOWNERS por carpeta. Recomendado cuando varios equipos publican en el mismo repo de dominio, para que la revision no se convierta en cuello de botella." }
+        "team": {
+          "type": "string",
+          "description": "Equipo responsable. Debe existir como team en la organizacion (requiere permiso Members:read del validador)."
+        },
+        "contact": {
+          "type": "string",
+          "description": "Canal o correo de contacto del equipo, no de una persona: las personas rotan."
+        },
+        "codeowners": {
+          "type": "boolean",
+          "description": "Si el repositorio declara CODEOWNERS por carpeta. Recomendado cuando varios equipos publican en el mismo repo de dominio, para que la revision no se convierta en cuello de botella."
+        }
       }
     },
-
     "status": {
       "type": "string",
-      "enum": ["draft", "conformant", "certified", "deprecated", "retired"],
+      "enum": [
+        "draft",
+        "conformant",
+        "certified",
+        "deprecated",
+        "retired"
+      ],
       "description": "Estado del ciclo de vida. NO se declara a mano: se DERIVA de los gates superados, y un PR que lo suba sin la evidencia correspondiente se bloquea. draft = en autoria. conformant = supero G1-G4 (ninguno consume modelo). certified = conformant + G5 (su suite alcanza el umbral). deprecated = sigue funcionando pero no se recomienda; exige superseded_by y sunset_date. retired = fuera de circulacion, terminal. La separacion deprecated/retired la exige RFC 9745 §4: el sello de Sunset NO DEBE ser anterior al de Deprecation, o sea que son dos instantes distintos y no caben en un estado."
     },
-
     "data_classification": {
       "type": "string",
-      "enum": ["public", "internal", "confidential", "restricted"],
+      "enum": [
+        "public",
+        "internal",
+        "confidential",
+        "restricted"
+      ],
       "description": "Clasificacion del dato mas sensible que el plugin toca o transporta. Condiciona el gate G3 y el aprobador requerido."
     },
-
     "standard_version": {
       "type": "string",
       "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
       "description": "Version del ESTANDAR contra la que se aprobo este plugin. POR QUE EXISTE: cuando el estandar publica un gate nuevo, los plugins que estaban conformes dejan de estarlo de golpe. Sin este campo no se sabe a quien afecta el cambio ni a quien avisar. Es el equivalente del .copier-answers.yml de una plantilla, aplicado al estandar. La politica de transicion —cuanto tiempo se aceptan dos versiones, y si un gate nuevo entra primero como advertencia— es decision abierta."
     },
-
     "artifacts": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Inventario declarado por tipo. El gate G1 lo compara contra el arbol real DEL PLUGIN al que pertenece este archivo — no del repositorio: cuando un repositorio aloja varios plugins, contar el arbol completo haria que cada plugin fallara por los artefactos de sus VECINOS. Si el inventario declarado y el real no coinciden, el PR se bloquea. Es lo que evita que el catalogo publique un inventario que no existe.",
+      "description": "Inventario declarado por tipo. El gate G1 lo compara contra el arbol real DEL PLUGIN al que pertenece este archivo — no del repositorio: cuando un repositorio aloja varios plugins, contar el arbol completo haria que cada plugin fallara por los artefactos de sus VECINOS. Si el inventario declarado y el real no coinciden, el PR se bloquea. Es lo que evita que el catalogo publique un inventario que no existe. `instructions` no se cuenta: dejo de ser un tipo gobernado, y contar algo que no se gobierna daria a entender que el catalogo lo conoce.",
       "properties": {
-        "skills":       { "type": "integer", "minimum": 0, "description": "Componente ESTANDAR de Agent Plugins 1.0. Portable a los seis clientes." },
-        "mcps":         { "type": "integer", "minimum": 0, "description": "Componente ESTANDAR de Agent Plugins 1.0 (.mcp.json). Portable a los seis clientes." },
-        "agents":       { "type": "integer", "minimum": 0, "description": "EXTENSION DE CLIENTE: la v1 de la especificacion cubre solo skills y MCP. Porta a Copilot y Claude Code, no mas alla." },
-        "prompts":      { "type": "integer", "minimum": 0, "description": "EXTENSION DE CLIENTE. Preferir skill con user_invocable=true: hace lo mismo, porta a los seis clientes y viaja versionado. Decision abierta 11." },
-        "instructions": { "type": "integer", "minimum": 0, "description": "EXTENSION DE CLIENTE. Solo se cuentan las DISTRIBUIDAS —las que la plataforma publica e instala en repositorios de otros equipos—; el archivo local que cada squad edita queda fuera del ciclo de vida." },
-        "scripts":      { "type": "integer", "minimum": 0 }
+        "skills": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Componente ESTANDAR de Agent Plugins 1.0. Portable a los seis clientes."
+        },
+        "mcps": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Componente ESTANDAR de Agent Plugins 1.0 (.mcp.json). Portable a los seis clientes."
+        },
+        "agents": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "EXTENSION DE CLIENTE: la v1 de la especificacion cubre solo skills y MCP. Porta a Copilot y Claude Code, no mas alla."
+        },
+        "prompts": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "EXTENSION DE CLIENTE. Preferir skill con user_invocable=true: hace lo mismo, porta a los seis clientes y viaja versionado. Decision abierta 11."
+        },
+        "scripts": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
-
     "model_allowlist": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Modelos permitidos para los artefactos de este plugin. Cada valor del campo `model` de un artefacto debe pertenecer a esta lista (el gate G1 lo comprueba). POR QUE AQUI Y NO EN CADA ARTEFACTO: en el activo real la misma lista de 4 modelos estaba repetida en 13 archivos, asi que cada rotacion del catalogo obligaba a tocar 13 sitios."
     },
-
     "certification": {
       "type": "object",
       "additionalProperties": false,
@@ -77,12 +119,26 @@
       "properties": {
         "verdict": {
           "type": "string",
-          "enum": ["conformant", "certified", "not_conformant", "inconclusive"],
+          "enum": [
+            "conformant",
+            "certified",
+            "not_conformant",
+            "inconclusive"
+          ],
           "description": "Resultado derivado del reporte de conformidad, no declarado. `inconclusive` es la cuarta opcion a proposito: un fallo de EJECUCION —timeout, salida vacia, rechazo del proveedor— NO es un fallo de calidad y se enruta aparte. Marcarlo como no conforme rechaza artefactos sanos y ensena a los equipos a desconfiar del gate."
         },
         "gates_passed": {
           "type": "array",
-          "items": { "type": "string", "enum": ["G1", "G2", "G3", "G4", "G5"] },
+          "items": {
+            "type": "string",
+            "enum": [
+              "G1",
+              "G2",
+              "G3",
+              "G4",
+              "G5"
+            ]
+          },
           "description": "Gates superados. G1-G4 cuestan CERO consumo de modelo y atrapan 14 de los 15 hallazgos medidos en el activo real; G5 es el unico que cuesta inferencia y corre al final. La separacion tiene respaldo en la literatura de evaluacion en produccion (evaluacion aislada por capas): evita gastar llamadas al modelo en entradas que fallan la validacion determinista, y evita confundir un fallo del andamiaje con un problema de comportamiento del modelo."
         },
         "attestation": {
@@ -90,69 +146,136 @@
           "additionalProperties": false,
           "description": "Sello de INTEGRIDAD del veredicto. Un veredicto vale UNICAMENTE para el contenido que midio: sin este sello, editar un artefacto despues de aprobar deja el plugin marcado como aprobado con la evidencia de otra version, y nadie lo nota. El validador recomputa el digest al instalar y al re-abrir un PR; si no coincide, la aprobacion VENCE y el plugin vuelve a draft. APOYO NATIVO: las entradas de marketplace admiten fijado por `sha` de 40 caracteres, inmune a force-push o a etiquetas que se muevan, y gh skill registra el SHA del arbol de git del directorio de origen. COROLARIO OPERATIVO: proteccion de etiquetas obligatoria en los repos de dominio — una etiqueta que se puede mover invalida cualquier fijado.",
           "properties": {
-            "content_digest": { "type": "string", "description": "sha256 del contenido evaluable (artefactos declarados + sus evals + sus recursos), con fin de linea normalizado a LF para que el resultado sea igual en Windows, macOS y CI — sin normalizar, el mismo contenido da hashes distintos y el veredicto vencería en cada clon. GOVERNANCE.json se EXCLUYE del digest a proposito: si se incluyera, escribir este bloque cambiaria el digest que acaba de sellarse." },
-            "git_tag": { "type": "string", "description": "Etiqueta que materializa esta version aprobada." },
-            "commit": { "type": "string", "description": "Commit exacto aprobado (40 caracteres)." },
-            "workflow_run": { "type": "string", "description": "Corrida del workflow que produjo el veredicto: es el 'constructor' de la atestacion en terminos SLSA/in-toto." }
+            "content_digest": {
+              "type": "string",
+              "description": "sha256 del contenido evaluable (artefactos declarados + sus evals + sus recursos), con fin de linea normalizado a LF para que el resultado sea igual en Windows, macOS y CI — sin normalizar, el mismo contenido da hashes distintos y el veredicto vencería en cada clon. GOVERNANCE.json se EXCLUYE del digest a proposito: si se incluyera, escribir este bloque cambiaria el digest que acaba de sellarse."
+            },
+            "git_tag": {
+              "type": "string",
+              "description": "Etiqueta que materializa esta version aprobada."
+            },
+            "commit": {
+              "type": "string",
+              "description": "Commit exacto aprobado (40 caracteres)."
+            },
+            "workflow_run": {
+              "type": "string",
+              "description": "Corrida del workflow que produjo el veredicto: es el 'constructor' de la atestacion en terminos SLSA/in-toto."
+            }
           }
         },
         "provenance_level": {
           "type": "string",
-          "enum": ["slsa_build_l2", "slsa_build_l3"],
+          "enum": [
+            "slsa_build_l2",
+            "slsa_build_l3"
+          ],
           "description": "Nivel SLSA de procedencia alcanzado. `slsa_build_l2` = atestacion generada por el workflow. `slsa_build_l3` = ademas firmada SIN CLAVES via OIDC con actions/attest-build-provenance: el token OIDC del workflow va a Fulcio, que emite un certificado de 10 minutos ligado a la identidad de ese workflow, y la atestacion se guarda en la API de atestaciones de GitHub, FUERA del repositorio. GitHub aporta toda la infraestructura criptografica, asi que el nivel 3 NO exige custodiar claves — es el objetivo de este track. POR QUE NO BASTA guardar el digest en este archivo: quien tiene permiso de escritura podria editarlo, y el artefacto contendria su propia prueba de validez (autoatestacion circular); la atestacion debe vivir fuera del artefacto y estar firmada por una identidad que el autor no controla. Permisos del workflow: id-token:write y attestations:write. Salvedad: la instancia de Sigstore de GitHub no tiene registro de transparencia y solo federa con GitHub Actions."
         }
       }
     },
-
     "deprecation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["superseded_by", "sunset_date", "decided_by"],
+      "required": [
+        "superseded_by",
+        "sunset_date",
+        "decided_by"
+      ],
       "description": "Obligatorio cuando status = deprecated. El retiro es en DOS TIEMPOS por especificacion (RFC 9745 §4 + RFC 8594): entre marcar algo obsoleto y que deje de funcionar hace falta un plazo anunciado, o el retiro es una sorpresa. El ejemplo de la propia RFC separa ambas fechas por un ano.",
       "properties": {
-        "superseded_by": { "type": "string", "description": "id del sucesor, o la cadena 'none' con decision registrada si no hay reemplazo." },
-        "sunset_date": { "type": "string", "format": "date", "description": "Fecha de retiro efectivo. NO DEBE ser anterior a la fecha en que se declaro deprecated (RFC 9745 §4). Propuesta de arranque: 90 dias cuando el plugin contiene instructions managed —cambian comportamiento ajeno— y 30 para el resto; sin medir, a calibrar con el equipo." },
-        "decided_by": { "type": "string", "description": "Quien lo declaro. La decision humana se persiste; lo derivable se recalcula." },
-        "behavior_change": { "type": "string", "description": "Que cambia de comportamiento al retirarse, no solo que archivos desaparecen. Obligatorio en la practica cuando hay instructions managed: al retirarlas, la siguiente instalacion ELIMINA el archivo del repositorio destino y el comportamiento vuelve al anterior sin que nadie alli haya hecho nada." },
-        "affected_repositories": { "type": "array", "items": { "type": "string" }, "description": "Repositorios donde esta instalado y a cuyos duenos hay que avisar. Es el unico caso en que una decision del autor afecta a repositorios ajenos." }
+        "superseded_by": {
+          "type": "string",
+          "description": "id del sucesor, o la cadena 'none' con decision registrada si no hay reemplazo."
+        },
+        "sunset_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Fecha de retiro efectivo. NO DEBE ser anterior a la fecha en que se declaro deprecated (RFC 9745 §4). Propuesta de arranque: 90 dias cuando el plugin contiene instructions managed —cambian comportamiento ajeno— y 30 para el resto; sin medir, a calibrar con el equipo."
+        },
+        "decided_by": {
+          "type": "string",
+          "description": "Quien lo declaro. La decision humana se persiste; lo derivable se recalcula."
+        },
+        "behavior_change": {
+          "type": "string",
+          "description": "Que cambia de comportamiento al retirarse, no solo que archivos desaparecen. Obligatorio en la practica cuando hay instructions managed: al retirarlas, la siguiente instalacion ELIMINA el archivo del repositorio destino y el comportamiento vuelve al anterior sin que nadie alli haya hecho nada."
+        },
+        "affected_repositories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Repositorios donde esta instalado y a cuyos duenos hay que avisar. Es el unico caso en que una decision del autor afecta a repositorios ajenos."
+        }
       }
     },
-
     "distribution": {
       "type": "object",
       "additionalProperties": false,
       "description": "Como se distribuye. PRINCIPIO: el canal lo define la industria. Publicar es un solo camino para los cinco tipos (PR -> gates -> etiqueta -> ficha); instalar tambien (`copilot plugin install`, que trae los cinco tipos a la vez). ACLARACION DE ALCANCE: 'Marketplace' en el acuerdo 02 significa un marketplace ALOJADO EN GITHUB, no un listing en GitHub Marketplace — este ultimo solo admite Apps y Actions y no tiene tipo de listing para skills, agentes ni plugins.",
       "properties": {
-        "marketplace_repo": { "type": "string", "description": "Repositorio indice que contiene marketplace.json. Se GENERA por el workflow al publicar, nunca se mantiene a mano. Es el entregable E5." },
-        "install_hint": { "type": "string", "description": "Comando exacto que la ficha de Port muestra al desarrollador, p. ej. `copilot plugin install migracion-cnf@agentico`. Reduce el salto de descubrir a instalar a un copiar y pegar: el acuerdo 02 descarta que Port instale, asi que el salto no se elimina, se abarata." },
-        "curated": { "type": "boolean", "description": "RESERVADO — no usar mientras la decision abierta 14 este abierta. Marcaria que el plugin forma parte del conjunto curado que se distribuye a toda la organizacion via /agents en .github o .github-private, disponible para todos los miembros con independencia de su acceso al repositorio. Entrar aqui es decision de la PLATAFORMA, no del autor: la barra deberia ser mas alta que conformant. Nota: este canal es de Copilot y no porta a otros clientes." },
+        "marketplace_repo": {
+          "type": "string",
+          "description": "Repositorio indice que contiene marketplace.json. Se GENERA por el workflow al publicar, nunca se mantiene a mano. Es el entregable E5."
+        },
+        "install_hint": {
+          "type": "string",
+          "description": "Comando exacto que la ficha de Port muestra al desarrollador, p. ej. `copilot plugin install migracion-cnf@agentico`. Reduce el salto de descubrir a instalar a un copiar y pegar: el acuerdo 02 descarta que Port instale, asi que el salto no se elimina, se abarata."
+        },
+        "curated": {
+          "type": "boolean",
+          "description": "RESERVADO — no usar mientras la decision abierta 14 este abierta. Marcaria que el plugin forma parte del conjunto curado que se distribuye a toda la organizacion via /agents en .github o .github-private, disponible para todos los miembros con independencia de su acceso al repositorio. Entrar aqui es decision de la PLATAFORMA, no del autor: la barra deberia ser mas alta que conformant. Nota: este canal es de Copilot y no porta a otros clientes."
+        },
         "clients": {
           "type": "array",
-          "items": { "type": "string", "enum": ["github-copilot", "claude-code", "cursor", "codex-cli", "chatgpt", "kiro", "vscode"] },
+          "items": {
+            "type": "string",
+            "enum": [
+              "github-copilot",
+              "claude-code",
+              "cursor",
+              "codex-cli",
+              "chatgpt",
+              "kiro",
+              "vscode"
+            ]
+          },
           "description": "Clientes declarados y PROBADOS con este plugin. No es aspiracional: lo que se declara aqui se verifica con el artefacto de referencia. Poner el manifiesto en .claude-plugin/plugin.json hace que un mismo plugin sirva a Copilot y a Claude Code sin duplicar nada, porque esa ruta esta en el orden de descubrimiento de Copilot y es la unica que Claude Code reconoce."
         }
       }
     },
-
     "registry": {
       "type": "object",
       "additionalProperties": false,
       "description": "Como se proyecta en el catalogo de Port. PRINCIPIO: el catalogo guarda la FICHA y un PUNTERO; el artefacto vive y se versiona en GitHub. Nunca se copia el contenido al portal, porque dos copias son dos verdades.",
       "properties": {
-        "entity": { "type": "string", "description": "Entidad del catalogo a la que se publica." },
+        "entity": {
+          "type": "string",
+          "description": "Entidad del catalogo a la que se publica."
+        },
         "pointer": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "repository": { "type": "string" },
-            "tag": { "type": "string" },
-            "sha": { "type": "string", "description": "SHA de 40 caracteres. Preferible a la etiqueta para el fijado: es inmune a force-push y a etiquetas que se muevan." }
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "sha": {
+              "type": "string",
+              "description": "SHA de 40 caracteres. Preferible a la etiqueta para el fijado: es inmune a force-push y a etiquetas que se muevan."
+            }
           }
         },
-        "publish_inventory": { "type": "boolean", "description": "Si la ficha del catalogo publica el inventario por tipo (12 skills, 3 agentes, ...). POR QUE EL INVENTARIO Y NO UN NUMERO DE TOKENS: el coste de contexto real depende del tokenizador del modelo, asi que cualquier cifra que publicaramos seria una ESTIMACION — y el cliente ya muestra un 'Context cost' propio al instalar. Publicar los dos daria dos verdades. El inventario es EXACTO, el gate G1 ya lo compara contra el arbol real, y transmite la misma senal de tamano sin inventar una cifra que va a discrepar con la del cliente. El coste de contexto sigue siendo el CRITERIO para dimensionar la granularidad del plugin; no es un campo publicado." }
+        "publish_inventory": {
+          "type": "boolean",
+          "description": "Si la ficha del catalogo publica el inventario por tipo (12 skills, 3 agentes, ...). POR QUE EL INVENTARIO Y NO UN NUMERO DE TOKENS: el coste de contexto real depende del tokenizador del modelo, asi que cualquier cifra que publicaramos seria una ESTIMACION — y el cliente ya muestra un 'Context cost' propio al instalar. Publicar los dos daria dos verdades. El inventario es EXACTO, el gate G1 ya lo compara contra el arbol real, y transmite la misma senal de tamano sin inventar una cifra que va a discrepar con la del cliente. El coste de contexto sigue siendo el CRITERIO para dimensionar la granularidad del plugin; no es un campo publicado."
+        }
       }
     },
-
     "mcp": {
       "type": "object",
       "additionalProperties": false,
@@ -162,24 +285,36 @@
           "type": "array",
           "minItems": 1,
           "description": "Un elemento por servidor declarado en `mcpServers`. El gate contrasta esta lista contra el `.mcp.json` real: si declaran cosas distintas, el PR se bloquea.",
-          "items": { "$ref": "mcp.schema.json#/$defs/servidorGobernado" }
+          "items": {
+            "$ref": "mcp.schema.json#/$defs/servidorGobernado"
+          }
         },
-        "credentials": { "$ref": "mcp.schema.json#/$defs/credenciales" },
-        "approval": { "$ref": "mcp.schema.json#/$defs/aprobacion" }
+        "credentials": {
+          "$ref": "mcp.schema.json#/$defs/credenciales"
+        },
+        "approval": {
+          "$ref": "mcp.schema.json#/$defs/aprobacion"
+        }
       },
-      "required": ["servers", "credentials", "approval"]
+      "required": [
+        "servers",
+        "credentials",
+        "approval"
+      ]
     },
-
     "hooks": {
       "type": "object",
       "additionalProperties": false,
       "description": "Gobierno de los hooks del plugin, si los lleva. AQUI NO SE DECLARAN LOS EVENTOS a proposito: son las claves del propio `hooks.json` -- `PostToolUse` y compañia --, asi que el gate los LEE de ahi. Una lista paralela al archivo se queda rancia porque nada la obliga a coincidir, que es el mismo motivo por el que se retiro la lista de carpetas admitidas. Lo unico que no esta en el archivo, y por tanto lo unico que se declara, es QUIEN lo aprobo. MEDIDO en los plugins oficiales de AWS: su `hooks/hooks.json` lleva UNA clave, `hooks`, y ninguna metadata -- no existe registro de hooks ni formato de la industria para esto, asi que donde poner el gobierno es enteramente decision nuestra.",
       "properties": {
-        "approval": { "$ref": "mcp.schema.json#/$defs/aprobacion" }
+        "approval": {
+          "$ref": "mcp.schema.json#/$defs/aprobacion"
+        }
       },
-      "required": ["approval"]
+      "required": [
+        "approval"
+      ]
     },
-
     "x_extensions": {
       "type": "object",
       "description": "Valvula de escape VISIBLE para lo que el estandar aun no cubre. El resto del esquema rechaza claves desconocidas a proposito: un esquema permisivo habria aceptado sin protestar las variantes que conviven hoy en el baseline (user-invocable / user-invokable, applyTo / applies_to) y no habria unificado nada. Lo que aparezca aqui en tres o mas plugins es candidato a subir al estandar."
