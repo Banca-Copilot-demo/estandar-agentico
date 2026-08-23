@@ -11,7 +11,30 @@
 set -uo pipefail
 
 readonly AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly SKILL="$AQUI/../skills/instalar-artefacto-agentico/scripts"
+readonly RAIZ="$AQUI/.."
+
+# EL SKILL SE BUSCA, NO SE ESCRIBE A MANO, y esto es un defecto MEDIDO. La ruta estaba fija en
+# `../skills/instalar-artefacto-agentico/scripts`, y al reestructurar el repositorio en `plugins/` el
+# skill se mudo a `plugins/asistente-autoria/skills/...`. Consecuencia: este recorrido llevaba TRES
+# NOCHES en rojo -- paso hasta el 21-ago y fallo el 22, el 23 y al dispararlo a mano -- y cada corrida
+# reportaba CUATRO fallos confusos («la atestacion no verifica», «el sha256 no coincide») en vez de la
+# unica causa real, que era que el directorio no existia. Un fallo mal atribuido es peor que ninguno:
+# manda a investigar la atestacion cuando el problema era una ruta.
+#
+# El comodin sobre `plugins/*` sobrevive a que el plugin se renombre, que es justo lo que paso. Y si
+# no aparece exactamente UNO, se aborta con el motivo: seguir con una ruta que no existe es lo que
+# produjo los cuatro mensajes enganosos.
+_encontrados=("$RAIZ"/plugins/*/skills/instalar-artefacto-agentico/scripts)
+if [ ! -d "${_encontrados[0]:-}" ]; then
+  echo "FALLO no encuentro los scripts del skill de instalacion bajo $RAIZ/plugins/*/skills/instalar-artefacto-agentico/scripts" >&2
+  echo "      si el skill se movio o se renombro, este recorrido no puede comprobar nada: se aborta en vez de reportar fallos que no son." >&2
+  exit 1
+fi
+if [ "${#_encontrados[@]}" -ne 1 ]; then
+  echo "FALLO hay ${#_encontrados[@]} skills de instalacion y no se cual usar: ${_encontrados[*]}" >&2
+  exit 1
+fi
+readonly SKILL="${_encontrados[0]}"
 readonly FIRMANTE="Banca-Copilot-demo/estandar-agentico"
 readonly SHA256_IMPOSIBLE="0000000000000000000000000000000000000000000000000000000000000000"
 
