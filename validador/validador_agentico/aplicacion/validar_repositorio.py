@@ -108,7 +108,11 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
             *_revisar_duenos(contenido, equipos_conocidos),
             *_revisar_forma_contra_esquemas(contenido, directorio_de_esquemas),
         ])
-        artefactos += proyeccion.listar_artefactos(contenido, raiz_plugin)
+        # EL MISMO `prefijo` que ya se usa para los hallazgos: la ficha publica la ruta relativa al
+        # REPOSITORIO, que es como la resuelven sus consumidores -- la pista de verificacion descarga
+        # `<repo>/<ruta>` fijado al sha --. Sin el, un plugin anidado publicaba rutas que no existen
+        # desde la raiz, y dos plugins con `.mcp.json` publicaban la MISMA ruta.
+        artefactos += proyeccion.listar_artefactos(contenido, raiz_plugin, prefijo)
         publicado = proyeccion.plugin_publicado(contenido, raiz_plugin, raiz)
         if publicado is not None:
             plugins.append(publicado)

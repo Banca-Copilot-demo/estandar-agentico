@@ -102,9 +102,14 @@ def equipos_declarados(contenido: ContenidoRepositorio) -> list[tuple[str, str]]
 
 
 def artefacto_publicado(tipo: str, ruta: str, frontmatter: dict,
-                         raiz: Path) -> ArtefactoPublicado | None:
+                         raiz: Path, prefijo: str = "") -> ArtefactoPublicado | None:
     """`None` cuando el envelope no esta completo: un artefacto sin gobierno no tiene ficha que
-    publicar, y el gate ya lo habra marcado como error."""
+    publicar, y el gate ya lo habra marcado como error.
+
+    `ruta` llega relativa al PLUGIN -- es lo que el adaptador leyo -- y `prefijo` es la subruta del
+    plugin dentro del repositorio. La ficha publica la suma de las dos, y el digesto se sigue
+    calculando desde `raiz`, que es la raiz del plugin. Ver el porque en `listar_artefactos`.
+    """
     metadata = frontmatter.get("metadata") or {}
     identificador = metadata.get("id")
     if not identificador:
@@ -112,7 +117,7 @@ def artefacto_publicado(tipo: str, ruta: str, frontmatter: dict,
     return ArtefactoPublicado(
         id=identificador,
         tipo=tipo,
-        ruta=ruta,
+        ruta=f"{prefijo}{ruta}",
         owner_team=metadata.get("owner_team", ""),
         owner_contact=metadata.get("owner_contact", ""),
         version=str(metadata.get("version", "")),
@@ -122,24 +127,42 @@ def artefacto_publicado(tipo: str, ruta: str, frontmatter: dict,
     )
 
 
-def listar_artefactos(contenido: ContenidoRepositorio,
-                       raiz: Path) -> tuple[ArtefactoPublicado, ...]:
+def listar_artefactos(contenido: ContenidoRepositorio, raiz: Path,
+                       prefijo: str = "") -> tuple[ArtefactoPublicado, ...]:
+    """Las fichas de este plugin, con la `ruta` RELATIVA AL REPOSITORIO.
+
+    POR QUE EL PREFIJO, y es un defecto MEDIDO en el recorrido de instalacion contra lo publicado. La
+    `ruta` se publicaba relativa al PLUGIN -- `commands/x.prompt.md` -- y todos sus consumidores la
+    resuelven contra la RAIZ DEL REPOSITORIO: la pista de verificacion de la ficha descarga
+    `<repo>/<ruta>` fijado al sha, y el humo hace lo mismo. Con el plugin en la raiz las dos rutas
+    coinciden y no se notaba; con el plugin en `plugins/referencia/` el consumidor pedia un archivo
+    que no existe, y el sintoma era «el sha256 del prompt no coincide con lo firmado» -- una alarma de
+    integridad por un problema de ruta.
+
+    Y HABIA UN SEGUNDO SINTOMA PEOR: la `ruta` dejaba de ser UNICA. Los dos `mcp` del repositorio de
+    demo publicaban `ruta=.mcp.json` los dos, asi que dos fichas distintas del catalogo apuntaban al
+    mismo archivo y no habia forma de saber a que se referia cada una.
+
+    El digesto se sigue calculando desde `raiz`, que es la raiz del PLUGIN: es donde el archivo esta
+    de verdad. Lo que cambia es lo que se PUBLICA, no lo que se lee.
+    """
     publicados: list[ArtefactoPublicado] = []
     for coleccion, tipo in TIPO_POR_COLECCION:
         for artefacto in getattr(contenido, coleccion):
             if artefacto.frontmatter is None:
                 continue
             publicado = artefacto_publicado(tipo, artefacto.ruta_relativa,
-                                             artefacto.frontmatter, raiz)
+                                             artefacto.frontmatter, raiz, prefijo)
             if publicado is not None:
                 publicados.append(publicado)
-    del_mcp = mcp_publicado(contenido, raiz)
+    del_mcp = mcp_publicado(contenido, raiz, prefijo)
     if del_mcp is not None:
         publicados.append(del_mcp)
     return tuple(publicados)
 
 
-def mcp_publicado(contenido: ContenidoRepositorio, raiz: Path) -> ArtefactoPublicado | None:
+def mcp_publicado(contenido: ContenidoRepositorio, raiz: Path,
+                   prefijo: str = "") -> ArtefactoPublicado | None:
     """El `mcp` como artefacto del predicado, o `None` si no hay o no esta gobernado.
 
     Va aparte de los demas porque su metadata NO esta en un frontmatter -- un `.mcp.json` es
@@ -169,7 +192,9 @@ def mcp_publicado(contenido: ContenidoRepositorio, raiz: Path) -> ArtefactoPubli
         # mas el tipo. Un id inventado aparte seria un segundo nombre para la misma cosa.
         id=f"{gobierno['id']}.{TIPO_MCP}",
         tipo=TIPO_MCP,
-        ruta=contenido.mcp.ruta_relativa,
+        # Con el prefijo del plugin: sin el, los dos `mcp` de un repositorio con varios plugins
+        # publicaban `.mcp.json` los DOS, y dos fichas distintas apuntaban al mismo archivo.
+        ruta=f"{prefijo}{contenido.mcp.ruta_relativa}",
         owner_team=dueno.get("team", ""),
         owner_contact=dueno.get("contact", ""),
         version=str(gobierno.get("standard_version", "")),
