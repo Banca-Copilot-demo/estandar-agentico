@@ -37,10 +37,14 @@ on:
       port-client-secret:
         description: Client secret de Port.
         required: false
-      token-indice:
+      app-id:
         description: >
-          Token con escritura sobre el repositorio del indice. Opcional: sin el, la publicacion se
-          completa y el indice se pone al dia en su siguiente pasada programada.
+          App ID de la App del ciclo de vida. Se usa SOLO para acunar un token efimero con el que
+          disparar un evento en el repositorio del indice -- no se escribe nada alli --. Opcional:
+          sin el, la publicacion se completa y el indice se pone al dia en su pasada programada.
+        required: false
+      app-key:
+        description: Clave privada de esa App. Solo sirve para pedir tokens, nunca es un token.
         required: false
 
 # EL PERMISO MINIMO PARA CADA COSA, y ni uno mas:
@@ -72,4 +76,5 @@ jobs:
           # al indice son aceleradores, la garantia la da el sello --.
           port-client-id: ${{ secrets.port-client-id || secrets.PORT_CLIENT_ID }}
           port-client-secret: ${{ secrets.port-client-secret || secrets.PORT_CLIENT_SECRET }}
-          token-indice: ${{ secrets.token-indice || secrets.TOKEN_INDICE }}
+          app-id: ${{ secrets.app-id || secrets.APP_ID_AGENTICO }}
+          app-key: ${{ secrets.app-key || secrets.APP_KEY_AGENTICO }}
