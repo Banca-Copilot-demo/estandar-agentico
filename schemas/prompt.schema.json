@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/prompt.schema.json",
   "title": "Prompt — lo TECLEA la persona por su nombre, como un comando",
-  "description": "Extension de cliente: porta en Copilot y Claude Code, no en los seis. REGLA DE DESISTIMIENTO: ante duda entre prompt y skill, elige skill. Un prompt es un skill con `user-invocable` que ademas pierde portabilidad, asi que la unica razon para elegir prompt es que la invocacion por nombre sea el punto — no la capacidad.",
+  "description": "Extension de cliente: porta en Copilot y Claude Code, no en los seis. REGLA DE DESISTIMIENTO: ante duda entre prompt y skill, elige skill. Un prompt es un skill con `user-invocable` que ademas pierde portabilidad, asi que la unica razon para elegir prompt es que la invocacion por nombre sea el punto — no la capacidad. NO CONFUNDIR CON `instructions`, y la distincion decide que tipo se usa: un prompt lo INVOCA una persona por su nombre y viaja DENTRO de un plugin, asi que se distribuye e instala como cualquier artefacto. Unas `instructions` se aplican SOLAS a los archivos que casan con su `applyTo`, y NO hay canal para instalarlas en el repositorio de otro equipo — comprobado en la referencia de plugins de los dos clientes --. Consecuencia practica: si la organizacion quiere DISTRIBUIR una guia, el artefacto es un `prompt` o un `skill`; `instructions` se gobierna donde ya vive.",
   "allOf": [
     {
       "$ref": "envelope.schema.json"
