@@ -104,7 +104,7 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
     custodia: dict = {}
     for raiz_plugin in raices:
         contenido = repositorio.leer(raiz_plugin, lector)
-        prefijo = f"{raiz_plugin.relative_to(raiz).as_posix()}/" if varios else ""
+        prefijo = _prefijo_de(raiz_plugin, raiz, varios)
         parcial = proyeccion.construir_inventario(contenido)
         inventario = proyeccion.sumar_inventarios(inventario, parcial)
         hallazgos += _prefijar(prefijo, [
@@ -147,6 +147,23 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
     return Veredicto(hallazgos=tuple(hallazgos), inventario=inventario,
                      artefactos=tuple(artefactos), plugins=tuple(plugins),
                      credencial_ownership=custodia)
+
+
+def _prefijo_de(unidad: Path, raiz: Path, varios: bool) -> str:
+    """La subruta de la unidad dentro del repositorio, o vacio si la unidad ES la raiz.
+
+    EL CASO DE LA RAIZ SE TRATA APARTE, y es un defecto MEDIDO al instalar de verdad. La expresion era
+    `f"{unidad.relative_to(raiz).as_posix()}/"`, y para la raiz `relative_to` devuelve `.`, asi que el
+    prefijo salia `./` y el conjunto suelto de un repositorio MIXTO firmaba rutas como
+    `./skills/revisar-jql/SKILL.md`. La API de GitHub tolera ese `./` -- se comprobo -- pero el mismo
+    archivo pasaba a tener DOS rutas canonicas segun el layout: `skills/x` en un repositorio de puros
+    sueltos y `./skills/x` en uno mixto. Cualquier comparacion de rutas -- deduplicar fichas, cruzar
+    una ruta contra el diff de un pull request -- falla con eso, y encima queda escrito en un registro
+    FIRMADO, que es donde menos se puede corregir despues.
+    """
+    if not varios or unidad == raiz:
+        return ""
+    return f"{unidad.relative_to(raiz).as_posix()}/"
 
 
 def _prefijar(prefijo: str, hallazgos: list[Hallazgo]) -> list[Hallazgo]:

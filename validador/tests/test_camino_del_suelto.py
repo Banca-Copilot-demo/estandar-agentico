@@ -119,6 +119,20 @@ def test_un_repositorio_MIXTO_publica_el_plugin_Y_el_conjunto_suelto(tmp_path):
     ], unidades
 
 
+def test_la_ruta_del_suelto_en_un_repo_mixto_NO_lleva_punto_barra(tmp_path):
+    # MEDIDO al instalar de verdad: la ruta firmada salia `./skills/revisar-jql/SKILL.md`. La API de
+    # GitHub tolera ese `./`, pero el mismo archivo pasaba a tener DOS rutas canonicas segun el layout
+    # -- con `./` en un repo mixto y sin el en uno de puros sueltos -- y eso rompe cualquier
+    # comparacion de rutas. Ademas queda escrito en un registro FIRMADO.
+    _con_plugin(tmp_path, "uno")
+    _repositorio_suelto(tmp_path)
+
+    rutas = {a.id: a.ruta for a in validar(tmp_path).artefactos}
+
+    assert rutas["demo.sdlc.revisar-jql"] == "skills/revisar-jql/SKILL.md", rutas
+    assert not any(r.startswith("./") for r in rutas.values()), rutas
+
+
 def test_el_gate_VE_los_artefactos_de_las_dos_unidades(tmp_path):
     """El defecto original: en un repositorio mixto, los artefactos de la raiz no los leia nadie, asi
     que el inventario los ignoraba y no recibian ficha. Aqui tienen que contar los dos."""
