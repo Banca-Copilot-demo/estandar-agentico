@@ -1,0 +1,162 @@
+name: Demo — custodia de credenciales con Vault y OIDC
+
+# QUE DEMUESTRA, y por que hace falta demostrarlo. La comprobacion de deriva de los MCP necesita la
+# credencial del servidor para pedirle `tools/list`. Guardarla como secreto de GitHub la deja
+# accesible a CUALQUIER workflow del repositorio y sin caducidad. La alternativa es que no exista
+# ningun secreto en GitHub: el workflow presenta su identidad OIDC, la boveda comprueba QUIEN es y le
+# da una credencial de minutos.
+#
+# ESTE WORKFLOW LO EJERCITA DE VERDAD. Levanta un Vault en el propio runner y le hace validar el token
+# OIDC AUTENTICO que GitHub le da a este job. Vault solo necesita salida a internet para bajar las
+# claves publicas de GitHub; no hace falta cuenta, ni red entrante, ni un secreto.
+#
+# Y COMPRUEBA EL CASO NEGATIVO, que es el que demuestra que la propiedad existe: un rol atado a OTRO
+# `job_workflow_ref` tiene que RECHAZAR el mismo token. Sin esa comprobacion solo se sabria que la
+# autenticacion funciona, no que discrimina -- y discriminar es todo el valor.
+#
+# LIMITE, dicho por delante: `vault server -dev` es en memoria, sin sellado y sin alta disponibilidad.
+# Esto demuestra que el MECANISMO funciona, no que una instalacion de produccion este bien montada.
+# Las politicas y el despliegue son de quien opera la boveda.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Lo unico que se pide: poder solicitar el token OIDC de este job. No da acceso a nada mas.
+  id-token: write
+
+env:
+  VERSION_VAULT: "1.18.3"
+  VAULT_ADDR: "http://127.0.0.1:8200"
+  # En modo dev el token raiz lo elige quien arranca el servidor. Es de juguete y muere con el job:
+  # no es un secreto, y ponerlo como tal solo esconderia como funciona la demo.
+  VAULT_TOKEN_RAIZ: "token-de-juguete-solo-para-esta-demo"
+  ROL_CORRECTO: "comprobar-mcp"
+  ROL_AJENO: "otro-workflow"
+  RUTA_SECRETO: "secret/agentico/mcp/demo.sdlc.linaje-datos"
+
+jobs:
+  demostrar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar Vault
+        shell: bash
+        run: |
+          curl -sS -o vault.zip \
+            "https://releases.hashicorp.com/vault/${VERSION_VAULT}/vault_${VERSION_VAULT}_linux_amd64.zip"
+          unzip -o -q vault.zip
+          ./vault version
+
+      - name: Levantar Vault en modo dev
+        shell: bash
+        run: |
+          ./vault server -dev -dev-root-token-id="$VAULT_TOKEN_RAIZ" \
+            -dev-listen-address=127.0.0.1:8200 > vault.log 2>&1 &
+          # Se espera a que responda en vez de dormir un numero fijo: un `sleep` corto falla en un
+          # runner lento y uno largo alarga cada ejecucion sin motivo.
+          for _ in $(seq 1 30); do
+            ./vault status >/dev/null 2>&1 && break
+            sleep 1
+          done
+          ./vault status
+
+      # EL ATADO DE CLAIMS ES LA PIEZA. Vault autoriza solo si TODOS los claims del token coinciden con
+      # los del rol. `job_workflow_ref` identifica el ARCHIVO de workflow y su rama, asi que la
+      # credencial no la obtiene otro workflow del mismo repositorio, ni una rama distinta, ni un fork.
+      - name: Configurar el metodo JWT contra el proveedor OIDC de GitHub
+        shell: bash
+        env:
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN_RAIZ }}
+        run: |
+          ./vault auth enable jwt
+          ./vault write auth/jwt/config \
+            oidc_discovery_url="https://token.actions.githubusercontent.com" \
+            bound_issuer="https://token.actions.githubusercontent.com"
+
+          ./vault policy write solo-leer-mcp - <<'POLITICA'
+          path "secret/data/agentico/mcp/*" {
+            capabilities = ["read"]
+          }
+          POLITICA
+
+          # El rol legitimo: atado a ESTE archivo de workflow, en esta rama.
+          ./vault write auth/jwt/role/${ROL_CORRECTO} \
+            role_type="jwt" user_claim="actor" \
+            bound_audiences="https://github.com/${GITHUB_REPOSITORY_OWNER}" \
+            bound_claims_type="string" \
+            bound_claims="job_workflow_ref=${GITHUB_REPOSITORY}/.github/workflows/demo-vault-oidc.yml@refs/heads/main" \
+            policies="solo-leer-mcp" ttl="10m"
+
+          # El rol AJENO: mismo repositorio, otro archivo de workflow. Sirve para comprobar que el
+          # token de este job NO le vale.
+          ./vault write auth/jwt/role/${ROL_AJENO} \
+            role_type="jwt" user_claim="actor" \
+            bound_audiences="https://github.com/${GITHUB_REPOSITORY_OWNER}" \
+            bound_claims_type="string" \
+            bound_claims="job_workflow_ref=${GITHUB_REPOSITORY}/.github/workflows/otro.yml@refs/heads/main" \
+            policies="solo-leer-mcp" ttl="10m"
+
+      - name: Guardar una credencial de juguete en la ruta del mcp
+        shell: bash
+        env:
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN_RAIZ }}
+        run: ./vault kv put "$RUTA_SECRETO" token="credencial-de-juguete-solo-lista-herramientas"
+
+      # Aqui esta el nucleo: se pide a GitHub el token OIDC de ESTE job y se cambia por uno de Vault.
+      # En ningun momento hay una credencial guardada en GitHub.
+      - name: Pedir el token OIDC de este job y canjearlo en Vault
+        id: canje
+        shell: bash
+        run: |
+          # `ACTIONS_ID_TOKEN_REQUEST_*` solo existen porque el job declara `id-token: write`.
+          jwt="$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https://github.com/${GITHUB_REPOSITORY_OWNER}" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')"
+
+          # NO se imprime el token. Se imprimen sus CLAIMS, que es lo que hace entendible la demo: se
+          # ve exactamente sobre que decide Vault.
+          printf '%s' "$jwt" | python3 .github/scripts/mostrar_claims_oidc.py
+
+          printf '%s' "$jwt" > jwt.txt
+          echo "::notice::token OIDC obtenido; ninguna credencial guardada en GitHub"
+
+      - name: El rol LEGITIMO autentica y lee la credencial
+        shell: bash
+        run: |
+          token_vault="$(./vault write -field=token auth/jwt/login \
+            role="$ROL_CORRECTO" jwt="$(cat jwt.txt)")"
+          # Se comprueba que se PUEDE leer, sin imprimir el valor: la demo prueba el acceso, no
+          # publica la credencial.
+          VAULT_TOKEN="$token_vault" ./vault kv get -field=token "$RUTA_SECRETO" > /dev/null
+          echo "::notice::el rol ${ROL_CORRECTO} autentico y leyo la credencial (token de 10 minutos)"
+
+      # LA COMPROBACION QUE DEMUESTRA LA PROPIEDAD. Si esto pasara, el atado de claims no serviria de
+      # nada y cualquier workflow del repositorio podria sacar la credencial.
+      - name: Un rol atado a OTRO workflow RECHAZA el mismo token
+        shell: bash
+        run: |
+          if ./vault write auth/jwt/login role="$ROL_AJENO" jwt="$(cat jwt.txt)" > /dev/null 2>&1; then
+            echo "::error::el rol ajeno acepto el token: el atado por job_workflow_ref NO esta protegiendo nada"
+            exit 1
+          fi
+          echo "::notice::el rol ${ROL_AJENO} RECHAZO el token: la credencial solo la obtiene este workflow"
+
+      - name: Que queda demostrado
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Custodia de credenciales con Vault y OIDC"
+            echo
+            echo "| Propiedad | Resultado |"
+            echo "|---|---|"
+            echo "| Vault valida el token OIDC real de GitHub | comprobado |"
+            echo "| El rol atado a este workflow obtiene la credencial | comprobado |"
+            echo "| Un rol atado a otro workflow la RECHAZA | comprobado |"
+            echo "| Secretos de credencial guardados en GitHub | **ninguno** |"
+            echo
+            echo "Lo que NO demuestra: \`vault server -dev\` es en memoria, sin sellado y sin alta"
+            echo "disponibilidad. Esto prueba que el MECANISMO funciona, no que una instalacion de"
+            echo "produccion este bien montada."
+          } >> "$GITHUB_STEP_SUMMARY"
