@@ -216,6 +216,22 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token-indice }}
 
+    # EL AVISO OMITIDO DEJA RASTRO. Saltarse este paso es legitimo -- el aviso es un ACELERADOR, y el
+    # indice reconstruye el catalogo en su pasada programada -- pero saltarselo EN SILENCIO no: el
+    # artefacto no aparece en la vitrina hasta el dia siguiente y nada dice por que. MEDIDO: las dos
+    # publicaciones de un repositorio de dominio se saltaron el aviso porque le falta `TOKEN_INDICE`,
+    # y solo se descubrio leyendo el log paso por paso.
+    - name: ¿Por que no se aviso al indice?
+      if: inputs.repositorio-indice == '' || inputs.token-indice == ''
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.repositorio-indice }}" ]; then
+          motivo="este workflow no declara \`repositorio-indice\`"
+        else
+          motivo="falta el secreto del token de escritura sobre ${{ inputs.repositorio-indice }}"
+        fi
+        echo "::notice::no se avisa al indice: ${motivo}. El artefacto YA es instalable; entrara al catalogo en la siguiente pasada programada del indice, no al instante."
+
     # FASE 4c · LA FICHA. Se construye del PREDICADO FIRMADO -- `veredicto.json` --, no releyendo el
     # repositorio: si se leyera el repositorio, la ficha podria decir algo distinto de lo que se
     # sello, y habria dos fuentes de verdad sobre el mismo artefacto.
