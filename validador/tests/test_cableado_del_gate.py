@@ -144,6 +144,18 @@ def _dos_instrucciones_que_se_solapan(raiz: Path) -> None:
     _escribir_instruccion(raiz, "otra", ambito="**/*.py")
 
 
+def _skill_huerfano_junto_a_un_plugin(raiz: Path) -> None:
+    """Un plugin anidado Y un skill en la raiz: el segundo no pertenece a ninguna unidad publicable."""
+    del_plugin = raiz / "plugins" / "uno"
+    manifiesto = del_plugin / ".claude-plugin"
+    manifiesto.mkdir(parents=True)
+    (manifiesto / "plugin.json").write_text(json.dumps(
+        {"name": "demo.sdlc.uno", "version": "1.0.0", "description": "Un plugin."}),
+        encoding="utf-8")
+    _escribir_skill(del_plugin, "dentro-del-plugin")
+    _escribir_skill(raiz, "en-la-raiz")
+
+
 # (regla que se prueba, como montar el repositorio, fragmento que SOLO esa regla emite)
 _CABLES = (
     ("_revisar_plugin", _sin_plugin,
@@ -166,6 +178,8 @@ _CABLES = (
      "posible token de GitHub"),
     ("_revisar_solapamiento_de_instructions", _dos_instrucciones_que_se_solapan,
      "su ambito se solapa con"),
+    ("_revisar_huerfanos", _skill_huerfano_junto_a_un_plugin,
+     "NO pertenece a ninguna unidad publicable"),
 )
 
 

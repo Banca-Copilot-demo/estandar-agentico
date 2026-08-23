@@ -46,7 +46,11 @@ from validador_agentico.adaptadores import esquema
 from validador_agentico.adaptadores import frontmatter as adaptador_frontmatter
 from validador_agentico.adaptadores import repositorio as adaptador_repositorio
 from validador_agentico.adaptadores.repositorio import (
+    DIRECTORIO_AGENTES,
+    DIRECTORIO_PROMPTS,
+    DIRECTORIO_SKILLS,
     RUTA_GOBIERNO,
+    RUTA_MCP,
     ArchivoJson,
     ContenidoRepositorio,
 )
@@ -54,7 +58,7 @@ from validador_agentico.aplicacion import proyeccion
 from validador_agentico.dominio import reglas_agente, reglas_aprobacion
 from validador_agentico.dominio import reglas_credenciales, reglas_layout, reglas_mcp
 from validador_agentico.dominio import reglas_instructions, reglas_recursos
-from validador_agentico.dominio import reglas_higiene, reglas_hooks
+from validador_agentico.dominio import reglas_higiene, reglas_hooks, reglas_huerfanos
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
 from validador_agentico.dominio import ensamblado, forma_frontmatter
 from validador_agentico.dominio.especificacion import RUTAS_MANIFIESTO
@@ -118,14 +122,17 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
             plugins.append(publicado)
         custodia = {**custodia, **proyeccion.custodia_declarada(contenido)}
 
-    # Estas TRES son del REPOSITORIO, no de cada plugin: la higiene se revisa sobre el arbol
+    # Estas CUATRO son del REPOSITORIO, no de cada plugin: la higiene se revisa sobre el arbol
     # completo -- un secreto no deja de serlo por estar fuera de un plugin --, la mezcla de
-    # firmantes se juzga sobre el pull request entero, y el solapamiento de instructions se mide
-    # entre TODAS las del repositorio: dos plugins vecinos se instalan juntos en el repositorio
-    # destino, asi que comprobar cada plugin por separado dejaria pasar el caso mas probable.
+    # firmantes se juzga sobre el pull request entero, el solapamiento de instructions se mide
+    # entre TODAS las del repositorio -- dos plugins vecinos se instalan juntos en el repositorio
+    # destino, asi que comprobar cada plugin por separado dejaria pasar el caso mas probable -- y los
+    # HUERFANOS solo se ven desde arriba: son artefactos que no caen dentro de ninguna raiz de plugin,
+    # asi que por construccion ningun recorrido por plugin los encuentra.
     del_repositorio = repositorio.leer(raiz, lector)
     hallazgos += [*_revisar_higiene(del_repositorio), *_revisar_mezcla(archivos_cambiados),
-                  *_revisar_solapamiento_de_instructions(del_repositorio)]
+                  *_revisar_solapamiento_de_instructions(del_repositorio),
+                  *_revisar_huerfanos(raiz, raices)]
 
     log.info("%d hallazgo(s) en %s", len(hallazgos), raiz.name)
     return Veredicto(hallazgos=tuple(hallazgos), inventario=inventario,
@@ -303,6 +310,19 @@ def _revisar_instructions(contenido: ContenidoRepositorio) -> list[Hallazgo]:
         hallazgos += reglas_instructions.revisar_instructions(
             instruccion.ruta_relativa, instruccion.frontmatter or {}, instruccion.lineas)
     return hallazgos
+
+
+def _revisar_huerfanos(raiz: Path, raices: tuple[Path, ...]) -> list[Hallazgo]:
+    """Artefactos en la raiz de un repositorio que aloja plugins: nadie los publica.
+
+    Las rutas de artefacto se le pasan como DATO desde el adaptador, porque la regla es de dominio y
+    no tiene que saber como se llaman los directorios en disco.
+    """
+    huerfanos = reglas_huerfanos.artefactos_huerfanos(
+        raiz, raices,
+        directorios=(DIRECTORIO_SKILLS, DIRECTORIO_AGENTES, DIRECTORIO_PROMPTS),
+        archivos=(RUTA_MCP,))
+    return reglas_huerfanos.revisar_huerfanos(huerfanos)
 
 
 def _revisar_solapamiento_de_instructions(contenido: ContenidoRepositorio) -> list[Hallazgo]:
