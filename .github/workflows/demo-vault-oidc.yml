@@ -40,6 +40,11 @@ jobs:
   demostrar:
     runs-on: ubuntu-latest
     steps:
+      # Hace falta para el script que muestra los claims del token. MEDIDO: sin este paso el workflow
+      # llegaba hasta el canje y fallaba con «can't open file .github/scripts/...».
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
       - name: Descargar Vault
         shell: bash
         run: |
