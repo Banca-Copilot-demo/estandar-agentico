@@ -26,6 +26,23 @@ TOPICO_POR_DEFECTO = "agent-skills"
 # contrato. No se empaqueta dentro del indice para que no haya dos copias que puedan derivar (G2).
 DIRECTORIO_DE_ESQUEMAS_POR_DEFECTO = Path("schemas")
 NOMBRE_CATALOGO_POR_DEFECTO = "agentico"
+# ESTOS TRES FORMATOS SON IDENTICOS a los de `validador_agentico.adaptadores.registro`, y la
+# duplicacion es DELIBERADA. Se deja escrito porque G2 no admite duplicar en silencio:
+#
+# `indice-agentico` y `validador-agentico` son dos paquetes INSTALABLES POR SEPARADO -- la accion
+# `indexar` instala solo este, y `validar`/`publicar` solo el otro --, asi que compartir el modulo
+# exigiria una de dos cosas, y las dos cuestan mas de lo que ahorran:
+#
+#   (a) un tercer paquete: habria que añadirlo a los cuatro sitios que hoy instalan uno solo, y una
+#       dependencia por RUTA entre paquetes hermanos no resuelve con `pip install <ruta>/indice`;
+#   (b) que este paquete dependa del validador: acopla el generador del indice al gate, y tampoco
+#       instala -- el validador no esta publicado en ningun indice de paquetes.
+#
+# Lo que se duplica son doce lineas de infraestructura de logging, sin ninguna regla de negocio. Si
+# algun dia hay un tercer consumidor, o si estos formatos empiezan a divergir, la balanza cambia y
+# toca (a). SI ESTOS FORMATOS SE TOCAN, hay que tocar los dos: son un contrato de legibilidad, y
+# medido en este mismo repositorio -- cuatro copias dentro del validador ya habian divergido, dos de
+# ellas entre si, y el mismo comando producia logs con nombre de modulo o sin el segun el entry point.
 FORMATO_CI = "%(levelname)-8s %(name)s - %(message)s"
 FORMATO_LOCAL = "%(asctime)s %(levelname)-8s %(name)s - %(message)s"
 FORMATO_HORA = "%H:%M:%S"

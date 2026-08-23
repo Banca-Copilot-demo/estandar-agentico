@@ -7,12 +7,22 @@ name: Pruebas del estandar
 # son infraestructura de la que dependen todos los dominios, y los dos fallan en silencio si nadie
 # los prueba -- el empaquetador con especial facilidad: un digest inestable no rompe nada visible,
 # solo hace que la atestacion no pruebe nada.
+# `schemas/**` ESTA EN LA LISTA, y faltaba. Las pruebas dejaron de ser independientes de los esquemas
+# el dia que empezaron a validar contra los REALES del repositorio -- cuatro archivos de prueba los
+# leen --, asi que un esquema es hoy una ENTRADA de la suite. Sin este filtro, cambiar un esquema no
+# disparaba las pruebas que dependen de el: se podia romper la validacion de forma y CI callaba.
+#
+# LA LISTA ESTA DOS VECES A LA FUERZA. Se intento con una ancla YAML (`&`/`*`) para no repetirla, y NO
+# vale: el archivo parsea como YAML correcto pero GitHub Actions no resuelve anclas ni alias, asi que
+# el disparador de `push` se habria quedado sin filtro sin dar ningun error. Es una limitacion de la
+# plataforma, no una eleccion: si las dos listas divergen, el sintoma es que las pruebas corren en los
+# pull requests y no en `main`, o al contrario.
 on:
   pull_request:
-    paths: ["validador/**", "indice/**", ".github/actions/publicar/**", "plugins/**"]
+    paths: ["validador/**", "indice/**", "schemas/**", ".github/actions/publicar/**", "plugins/**"]
   push:
     branches: [main]
-    paths: ["validador/**", "indice/**", ".github/actions/publicar/**", "plugins/**"]
+    paths: ["validador/**", "indice/**", "schemas/**", ".github/actions/publicar/**", "plugins/**"]
 
 permissions:
   contents: read

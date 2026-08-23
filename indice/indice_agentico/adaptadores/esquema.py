@@ -50,12 +50,20 @@ def _validador_de(esquema: dict, proyeccion: str) -> Draft202012Validator:
     return Draft202012Validator(subesquema)
 
 
+# Como se escribe la ruta de un defecto dentro del documento. UN PUNTO, igual que en el validador: era
+# `/` aqui y `.` alli, o sea el mismo concepto con dos notaciones segun que paquete emitiera el
+# mensaje. No es un defecto -- las dos se leen -- pero `metadata/id` en una anotacion de pull request
+# se confunde con una ruta de archivo, que es justo lo que el campo de al lado ya contiene.
+_SEPARADOR_DE_RUTA = "."
+_RUTA_RAIZ = "(raiz)"
+
+
 def incumplimientos(contenido: str, proyeccion: str,
                     directorio_de_esquemas: Path) -> list[str]:
     """Los defectos de una proyeccion, ya legibles. Lista vacia = conforme."""
     validador = _validador_de(_cargar(directorio_de_esquemas), proyeccion)
     documento = json.loads(contenido)
     return [
-        f"{'/'.join(str(t) for t in fallo.path) or '(raiz)'}: {fallo.message}"
+        f"{_SEPARADOR_DE_RUTA.join(str(t) for t in fallo.path) or _RUTA_RAIZ}: {fallo.message}"
         for fallo in sorted(validador.iter_errors(documento), key=lambda f: list(f.path))
     ]

@@ -18,6 +18,7 @@ import json
 from enum import Enum
 
 from indice_agentico.dominio.candidato import Entrada, Indice
+from indice_agentico.dominio.reglas_indice import SUBRUTA_DEL_REPOSITORIO
 
 _SANGRIA = 2
 _AVISO = "GENERADO por el workflow del indice: no editar a mano."
@@ -45,7 +46,6 @@ class Proyeccion(Enum):
         return self.value[1]
 
 
-SUBRUTA_DEL_REPOSITORIO = "."
 _SUFIJO_DE_CLONADO = ".git"
 _HOST = "https://github.com"
 

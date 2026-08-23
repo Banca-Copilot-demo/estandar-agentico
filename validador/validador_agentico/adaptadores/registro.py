@@ -19,6 +19,11 @@ import sys
 
 # El nombre del modulo se incluye SIEMPRE: con cuatro entry points y tres capas, un mensaje sin decir
 # de donde sale obliga a buscarlo por texto en todo el paquete.
+#
+# EL PAQUETE `indice-agentico` TIENE ESTOS MISMOS TRES FORMATOS, duplicados a proposito porque los dos
+# paquetes se instalan por separado y compartirlos exigiria un tercer paquete con dependencias por
+# ruta. El razonamiento completo esta en `indice/indice_agentico/cli.py`, junto a su copia. SI SE
+# TOCAN AQUI, hay que tocarlos alli: son un contrato de legibilidad, no una preferencia local.
 FORMATO_CI = "%(levelname)-8s %(name)s - %(message)s"
 FORMATO_LOCAL = "%(asctime)s %(levelname)-8s %(name)s - %(message)s"
 FORMATO_HORA = "%H:%M:%S"

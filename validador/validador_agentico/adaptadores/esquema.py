@@ -45,6 +45,12 @@ _PATRON_ESQUEMAS = "*.json"
 # La palabra clave cuyo fallo es DERIVADO de otros. Ver el comentario en `incumplimientos`.
 _VALIDADOR_NO_EVALUADAS = "unevaluatedProperties"
 
+# Como se escribe la ruta de un campo dentro del objeto validado. El paquete del indice usa la MISMA
+# notacion, y antes no: era `.` aqui y `/` alli, o sea dos formas de escribir lo mismo segun que
+# paquete emitiera el mensaje.
+_SEPARADOR_DE_RUTA = "."
+_RUTA_RAIZ = "(raiz)"
+
 
 class EsquemasNoDisponiblesError(FileNotFoundError):
     """No se encontraron los esquemas. Es un ERROR y no una degradacion: un gate que no puede
@@ -126,4 +132,5 @@ def incumplimientos(objeto: dict, nombre_del_esquema: str,
     otros = [f for f in fallos if f.validator != _VALIDADOR_NO_EVALUADAS]
     utiles = otros if otros else fallos
 
-    return [f"{'.'.join(str(t) for t in f.path) or '(raiz)'}: {f.message}" for f in utiles]
+    return [f"{_SEPARADOR_DE_RUTA.join(str(t) for t in f.path) or _RUTA_RAIZ}: {f.message}"
+            for f in utiles]

@@ -36,7 +36,12 @@ from indice_agentico.dominio.reglas_etiquetas import (
 _SIN_DESCRIPCION = "(sin descripcion en el manifiesto)"
 LONGITUD_SHA_COMMIT = 40
 
-_SUBRUTA_DEL_REPOSITORIO = "."
+# La subruta que significa «el plugin ES el repositorio entero». PUBLICA y definida SOLO aqui: el
+# adaptador del catalogo la declaraba por su cuenta con el mismo valor, y una constante con el mismo
+# valor en dos sitios es lo que G2 nombra literalmente. El dominio la posee porque el significado de
+# `.` es una regla del estandar -- que la raiz del repositorio es una subruta valida -- y no un detalle
+# de como se escribe el catalogo. El adaptador la importa, o sea la flecha apunta hacia dentro (G5).
+SUBRUTA_DEL_REPOSITORIO = "."
 
 
 def _subruta_declarada(candidato: Candidato) -> str | None:
@@ -46,7 +51,7 @@ def _subruta_declarada(candidato: Candidato) -> str | None:
     del plugin, y la etiqueta es un texto que una persona pudo escribir de otra forma.
     """
     if not es_etiqueta_por_plugin(candidato.etiqueta):
-        return _SUBRUTA_DEL_REPOSITORIO
+        return SUBRUTA_DEL_REPOSITORIO
     declarados = (candidato.veredicto or {}).get("plugins") or []
     nombre = (candidato.manifiesto or {}).get("name")
     for plugin in declarados:
