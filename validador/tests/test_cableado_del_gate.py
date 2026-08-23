@@ -21,7 +21,9 @@ la forma de comprobar que la prueba nueva sirve de algo es desconectar la regla 
 """
 from __future__ import annotations
 
+import inspect
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -178,3 +180,38 @@ def test_el_gate_invoca_la_regla(regla, construir, fragmento, tmp_path):
     mensajes = [h.mensaje for h in veredicto.hallazgos]
     assert any(fragmento in m for m in mensajes), (
         f"{regla} no se invoco, o dejo de emitir {fragmento!r}. Hallazgos: {mensajes}")
+
+
+# Las reglas que `validar()` invoca de verdad, leidas de su propio codigo. Los argumentos no llevan
+# parentesis anidados, asi que `[^()]*` basta.
+_INVOCACION_DE_REGLA = re.compile(r"\*(_revisar_\w+)\([^()]*\)")
+
+
+def test_toda_regla_invocada_por_el_gate_tiene_su_cable_probado():
+    """El unico hueco que las pruebas de arriba NO pueden cubrir: una regla NUEVA sin cable.
+
+    POR QUE ESTA PRUEBA Y NO UN ARNES DE MUTACION EN CI. Desconectar una regla existente ya lo atrapan
+    las pruebas de arriba, que corren en CI en cada cambio de `validador/**`. Lo unico que quedaba
+    fuera es que alguien AÑADA una regla a `validar()` y se olvide de su entrada en `_CABLES`: la
+    regla entraria sin que nada compruebe que se invoca, y volveriamos al punto de partida sin
+    enterarnos. Barrer quince mutaciones en CI para detectar eso cuesta tres minutos por corrida;
+    comparar dos listas cuesta un milisegundo y detecta exactamente lo mismo.
+
+    Lee el codigo fuente de `validar()` a proposito: la lista de reglas invocadas no esta disponible
+    de otra forma, y cualquier registro paralelo que hubiera que mantener a mano tendria el mismo
+    problema que esta prueba existe para evitar.
+    """
+    invocadas = set(_INVOCACION_DE_REGLA.findall(inspect.getsource(validar)))
+    con_cable = {nombre for nombre, _, _ in _CABLES}
+
+    # Estas tres tienen su cable probado en `test_gate.py`, no aqui: llegan por parametro opcional y
+    # necesitan que el gate reciba contexto (esquemas, equipos, archivos cambiados).
+    probadas_en_test_gate = {"_revisar_forma_contra_esquemas", "_revisar_duenos", "_revisar_mezcla"}
+    # Y estas dos las cubren las pruebas de `mcp` y de YAML invalido que ya existian en `test_gate.py`.
+    probadas_de_antes = {"_revisar_mcp", "_revisar_yaml"}
+
+    sin_cable = invocadas - con_cable - probadas_en_test_gate - probadas_de_antes
+    assert not sin_cable, (
+        f"reglas invocadas por el gate sin prueba de cableado: {sorted(sin_cable)}. "
+        f"Añade su entrada en `_CABLES` y comprueba que sirve desconectando la regla: si la prueba "
+        f"nueva no falla al desconectarla, no esta probando el cable.")
