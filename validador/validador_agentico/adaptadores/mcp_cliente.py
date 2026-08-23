@@ -10,7 +10,9 @@ Streamable HTTP obliga a dos cosas que se descubrieron MIDIENDO contra servidore
 
   1. La cabecera `Accept` DEBE anunciar `application/json` Y `text/event-stream`. Con solo el primero,
      un servidor estricto responde 400 -- medido contra el MCP de GitHub --. Un servidor permisivo lo
-     acepta igual -- medido contra el de AWS --, y por eso la primera version parecia correcta.
+     acepta igual -- medido contra el de AWS --, y por eso la primera version parecia correcta: pasaba
+     las pruebas y fallaba contra el servidor estricto. CONFIRMADO despues del arreglo: el MCP de
+     GitHub responde y devuelve el digest de sus herramientas.
   2. Antes de `tools/list` va `initialize`, cuya respuesta puede traer `Mcp-Session-Id`; si viene, hay
      que devolverlo en las peticiones siguientes junto con `MCP-Protocol-Version`.
 
