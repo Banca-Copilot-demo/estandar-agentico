@@ -147,7 +147,7 @@ def _dos_instrucciones_que_se_solapan(raiz: Path) -> None:
 # (regla que se prueba, como montar el repositorio, fragmento que SOLO esa regla emite)
 _CABLES = (
     ("_revisar_plugin", _sin_plugin,
-     "sin plugin: los artefactos quedan gobernados"),
+     "sin plugin: los artefactos se gobiernan por su propia metadata"),
     ("_revisar_gobierno", _con_plugin_sin_gobierno,
      "declara un plugin pero no su gobierno"),
     ("_revisar_skills", _skill_sin_frontmatter,

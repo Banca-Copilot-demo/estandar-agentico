@@ -69,6 +69,11 @@
       ],
       "description": "Clasificacion del dato mas sensible que el plugin toca o transporta. Condiciona el gate G3 y el aprobador requerido."
     },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "description": "Version del PAQUETE que este gobierno describe, en SemVer y como cadena. SOLO para un repositorio de artefactos SUELTOS, y es lo que le permite tener cadena de publicacion: sin ella no hay de donde derivar la etiqueta, asi que no hay release, ni atestacion, ni ficha en el catalogo -- y el consumidor no puede verificar nada antes de instalar. CUANDO HAY PLUGIN NO SE DECLARA: la version del paquete es la del `plugin.json`, que es lo que el marketplace resuelve, y declararla en dos sitios seria pedir que divergieran. El gate lo comprueba: sobra si hay manifiesto, y falta si no lo hay. NO CONFUNDIR con `standard_version`, que es la version del ESTANDAR contra la que se aprobo -- dos cosas distintas que la primera version de este esquema no distinguia, y por eso el camino del artefacto suelto quedo sin implementar."
+    },
     "standard_version": {
       "type": "string",
       "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",

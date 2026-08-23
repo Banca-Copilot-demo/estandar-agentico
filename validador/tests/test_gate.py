@@ -177,6 +177,10 @@ def _crear_mcp(raiz, credenciales: dict | None = None) -> None:
         "status": "draft",
         "data_classification": "internal",
         "standard_version": "7.0.0",
+        # `version` forma parte de «completo» desde que un repositorio SIN plugin es su propia unidad
+        # de publicacion: sin ella no hay de donde derivar la etiqueta, y el gate lo bloquea. Este
+        # fixture no tiene `plugin.json`, asi que le toca declararla.
+        "version": "1.0.0",
         "artifacts": {"skills": 1, "agents": 0, "prompts": 0, "mcps": 1, "instructions": 0},
     }
     if credenciales is not None:
