@@ -79,6 +79,15 @@ class ArtefactoPublicado:
     # sha256 del ARCHIVO, no del paquete. Es lo que permite verificar un artefacto que se copio
     # fuera del paquete -- un prompt, unas instructions -- contra lo que se firmo.
     sha256: str = ""
+    # SOLO LO USA EL `mcp`, y esta en el dataclass compartido a proposito: el predicado es una lista
+    # plana de artefactos, y partirla por tipo obligaria a todo consumidor a saber de tipos para leer
+    # un campo. Vacio en los demas.
+    #
+    # POR QUE VIAJA FIRMADO. Es la referencia contra la que la comprobacion periodica decide si un
+    # servidor MCP cambio sus herramientas. Si viviera solo en el `METADATA.json` -- que es un archivo
+    # editable del repositorio -- cualquiera con escritura podria ajustarlo para que coincidiera con
+    # un servidor ya envenenado, y la comprobacion diria que todo esta en orden.
+    tools_digest: str = ""
 
 
 @dataclass(frozen=True)

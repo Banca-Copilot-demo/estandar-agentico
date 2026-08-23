@@ -84,7 +84,17 @@
           },
           "write_operations": {
             "type": "boolean",
-            "description": "Si alguna herramienta MODIFICA algo fuera del cliente. Es el unico indicador de riesgo que se declara, porque es el que decide quien tiene que aprobar. Deliberadamente NO se pide la lista de herramientas permitidas ni los alcances de la credencial: el control efectivo lo ejerce la credencial, no este archivo, y un campo que parece un control sin serlo da falsa confianza."
+            "description": "Si alguna herramienta MODIFICA algo fuera del cliente. Es el unico indicador de RIESGO que se declara, porque es el que decide quien tiene que aprobar. Deliberadamente NO se pide la lista de herramientas PERMITIDAS ni los alcances de la credencial: el control efectivo lo ejerce la credencial, no este archivo, y un campo que parece un control sin serlo da falsa confianza. Eso NO alcanza a `tools_digest`, que es otra cosa: no autoriza nada, DETECTA que la superficie declarada cambio. Autorizar y detectar son problemas distintos y se resuelven en sitios distintos."
+          },
+          "tools_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "sha256 de las herramientas que el servidor declaraba CUANDO SE APROBO: nombre, descripcion y esquema de entrada de cada una, en forma canonica. Se registra al aprobar y una comprobacion periodica lo recalcula; si difiere, la superficie cambio sin pasar por revision. QUE ATAQUE CIERRA: el *rug pull* -- CVE-2025-54136, taxonomia MCP-38 --, en el que un servidor de confianza cambia la descripcion de una herramienta despues de ser aprobado. Y la descripcion de una herramienta es una INSTRUCCION PARA EL MODELO, asi que cambiarla es inyeccion de prompt sin tocar el codigo del plugin. El protocolo MCP no ofrece ninguna primitiva contra esto -- sin firma, sin version que el cliente deba fijar, sin notificacion que los clientes honren -- y ningun cliente avisa cuando una definicion cambia. LIMITE: DETECTA, no previene; la ventana es el intervalo de comprobacion. NO entra en el digest nada mas que esos tres campos ni el orden en que el servidor las devuelva, porque un digest que cambia por ruido se vuelve una alarma que se aprende a ignorar."
+          },
+          "tools_digest_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Cuando se registro el digest. Sin esta fecha no se sabe si la comprobacion periodica compara contra algo reciente o contra algo de hace un año."
           }
         },
         "allOf": [
@@ -107,6 +117,32 @@
                 "endpoint"
               ],
               "description": "Con transporte remoto, DONDE conecta es parte del gobierno: es el destino al que sale el dato. Con stdio no hay endpoint que declarar."
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "source": {
+                  "properties": {
+                    "kind": {
+                      "const": "remote"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "source"
+              ]
+            },
+            "then": {
+              "required": [
+                "tools_digest",
+                "tools_digest_date"
+              ],
+              "description": "UN SERVIDOR REMOTO NO SE APRUEBA SIN EL DIGEST DE SUS HERRAMIENTAS. En los demas origenes el codigo se descarga y `version_pin` lo fija: ese paquete exacto es inmutable, y cambiarlo exige subir la version y pasar por un pull request. Un remoto corre en la infraestructura de otro y NO HAY VERSION QUE FIJAR -- su dueño puede cambiar mañana lo que sus herramientas declaran, y las descripciones son instrucciones para el modelo --. Ahi el digest no es un refuerzo: es el UNICO control que existe, y aprobar un remoto sin el es confianza ciega en un tercero. En los origenes descargables el digest es opcional porque `version_pin` ya cubre lo esencial."
             }
           }
         ]
