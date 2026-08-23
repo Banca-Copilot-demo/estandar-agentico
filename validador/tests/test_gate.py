@@ -156,12 +156,22 @@ def test_desactivarla_no_la_invoca_y_deja_su_motivo_escrito(tmp_path):
     assert "--sin-comprobacion-oficial" in oficial.detalle
 
 
+_MCP_FIJADO = '{"mcpServers": {"catalogo": {"command": "uvx", "args": ["paquete-mcp@0.4.1"]}}}'
+
+
+def _crear_mcp(raiz, gobierno: str | None = None) -> None:
+    """Un `mcp` se declara con DOS archivos: la configuracion que lee el cliente y el `METADATA.json`
+    hermano donde vive nuestro gobierno. `gobierno=None` simula el hermano ausente."""
+    (raiz / ".mcp.json").write_text(_MCP_FIJADO, encoding="utf-8")
+    if gobierno is not None:
+        (raiz / "METADATA.json").write_text(gobierno, encoding="utf-8")
+
+
 def test_un_mcp_sin_custodia_declarada_bloquea_el_gate(tmp_path):
     """Defecto medido: ninguna prueba del arnes tenia un `.mcp.json`, asi que el cableado del
     adaptador no estaba cubierto y un fallo al leerlo pasaba las 84 pruebas en verde."""
     raiz = _repositorio_minimo(tmp_path)
-    (raiz / ".mcp.json").write_text('{"credentials": {"mechanism": "secret-ref"}}',
-                                    encoding="utf-8")
+    _crear_mcp(raiz, '{"credentials": {"mechanism": "secret-ref"}}')
 
     resultado = ejecutar(raiz, comprobador_oficial=ComprobadorFalso(Resultado.CONFORME))
 
@@ -173,11 +183,38 @@ def test_un_mcp_sin_custodia_declarada_bloquea_el_gate(tmp_path):
 
 def test_un_mcp_con_oauth_no_pide_custodia(tmp_path):
     raiz = _repositorio_minimo(tmp_path)
-    (raiz / ".mcp.json").write_text('{"credentials": {"mechanism": "oauth"}}', encoding="utf-8")
+    _crear_mcp(raiz, '{"credentials": {"mechanism": "oauth"}}')
 
     resultado = ejecutar(raiz, comprobador_oficial=ComprobadorFalso(Resultado.CONFORME))
 
     assert resultado.conforme
+
+
+def test_un_mcp_sin_su_METADATA_hermano_bloquea_el_gate(tmp_path):
+    """Defecto MEDIDO con un `mcp` real: el gobierno se leia del propio `.mcp.json`, que es justo
+    donde el esquema dice que NO va -- es configuracion del cliente y no admite claves nuestras --.
+    Sin el hermano, el `mcp` no declara dueno, ni credencial, ni aprobacion."""
+    raiz = _repositorio_minimo(tmp_path)
+    _crear_mcp(raiz, gobierno=None)
+
+    resultado = ejecutar(raiz, comprobador_oficial=ComprobadorFalso(Resultado.CONFORME))
+
+    assert not resultado.conforme
+    assert "METADATA.json" in " ".join(h.mensaje for h in resultado.veredicto.errores)
+
+
+def test_un_mcp_con_referencia_movil_bloquea_el_gate(tmp_path):
+    """El gate tiene que rechazar el *rug pull* de punta a punta, no solo en la regla suelta."""
+    raiz = _repositorio_minimo(tmp_path)
+    (raiz / ".mcp.json").write_text(
+        '{"mcpServers": {"catalogo": {"command": "uvx", "args": ["paquete-mcp@latest"]}}}',
+        encoding="utf-8")
+    (raiz / "METADATA.json").write_text('{"credentials": {"mechanism": "oauth"}}', encoding="utf-8")
+
+    resultado = ejecutar(raiz, comprobador_oficial=ComprobadorFalso(Resultado.CONFORME))
+
+    assert not resultado.conforme
+    assert "rug pull" in " ".join(h.mensaje for h in resultado.veredicto.errores)
 
 
 _SKILL_CON_YAML_ROTO = """---

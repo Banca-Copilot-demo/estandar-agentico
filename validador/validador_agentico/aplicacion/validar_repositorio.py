@@ -18,7 +18,8 @@ from validador_agentico.adaptadores import repositorio as adaptador_repositorio
 from validador_agentico.adaptadores.repositorio import ArchivoJson, ContenidoRepositorio
 from validador_agentico.aplicacion import proyeccion
 from validador_agentico.dominio import reglas_agente_instructions, reglas_aprobacion
-from validador_agentico.dominio import reglas_credenciales, reglas_layout, reglas_recursos
+from validador_agentico.dominio import reglas_credenciales, reglas_layout, reglas_mcp
+from validador_agentico.dominio import reglas_recursos
 from validador_agentico.dominio import reglas_solapamiento
 from validador_agentico.dominio import reglas_higiene, reglas_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
@@ -197,14 +198,34 @@ def _revisar_mezcla(archivos_cambiados: tuple[str, ...] | None) -> list[Hallazgo
 
 
 def _revisar_mcp(contenido: ContenidoRepositorio) -> list[Hallazgo]:
-    """El `.mcp.json` del repositorio, si lo hay. La custodia de la credencial se revisa aqui y no en
-    G3 porque no es higiene del contenido: es gobierno -- quien concede el acceso --."""
+    """El `mcp`, que se gobierna con DOS archivos y hay que revisar los dos.
+
+    El `.mcp.json` es la configuracion que lee el CLIENTE: de ahi sale si sus referencias estan
+    fijadas a una version. El `METADATA.json` hermano es donde vive nuestro gobierno -- la custodia
+    de la credencial y la aprobacion --, porque un archivo de configuracion no admite claves nuestras.
+
+    MEDIDO con un `mcp` real: la custodia se leia del `.mcp.json`, que es justo donde el esquema dice
+    que NO va. Habria obligado a meter campos de gobierno en un archivo que consumen los clientes.
+    """
     if contenido.mcp is None:
         return []
     if not contenido.mcp.es_legible:
         return _hallazgo_de_formato(contenido.mcp)
-    return reglas_credenciales.revisar_credenciales(
-        contenido.mcp.ruta_relativa, contenido.mcp.contenido.get("credentials"))
+
+    hallazgos = reglas_mcp.revisar_servidores(
+        contenido.mcp.ruta_relativa, contenido.mcp.contenido.get("mcpServers"))
+
+    if contenido.metadata_mcp is None:
+        return [*hallazgos, error(f"{contenido.mcp.ruta_relativa} (hermano)",
+                                 "falta el `METADATA.json` junto al `.mcp.json`: un archivo de "
+                                 "configuracion no admite metadata, asi que sin el hermano el `mcp` "
+                                 "no declara dueno, ni credencial, ni aprobacion")]
+    if not contenido.metadata_mcp.es_legible:
+        return [*hallazgos, *_hallazgo_de_formato(contenido.metadata_mcp)]
+
+    return [*hallazgos, *reglas_credenciales.revisar_credenciales(
+        contenido.metadata_mcp.ruta_relativa,
+        contenido.metadata_mcp.contenido.get("credentials"))]
 
 
 def _revisar_agentes(contenido: ContenidoRepositorio) -> list[Hallazgo]:
