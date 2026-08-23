@@ -1,0 +1,116 @@
+name: Comprobar la deriva de los MCP
+
+# QUE COMPRUEBA. Que las herramientas que un servidor MCP declara HOY son las mismas que declaraba
+# cuando se aprobo. Se compara el `tools_digest` atestado contra el que se calcula ahora; si difieren,
+# la superficie cambio sin pasar por revision.
+#
+# EL ATAQUE QUE CIERRA es el *rug pull* -- CVE-2025-54136, taxonomia MCP-38 --: un servidor de
+# confianza cambia la descripcion de una herramienta despues de ser aprobado. Y la descripcion de una
+# herramienta es una INSTRUCCION PARA EL MODELO, asi que cambiarla es inyeccion de prompt sin tocar el
+# codigo del plugin. El protocolo MCP no da ninguna primitiva contra esto -- sin firma, sin version
+# que el cliente deba fijar, sin notificacion que los clientes honren -- y ningun cliente avisa cuando
+# una definicion cambia. La literatura señala comparar por hash como la comprobacion minima viable, y
+# que UNA consulta no basta: hacen falta dos separadas en el tiempo. Esta es la segunda.
+#
+# POR QUE UN CRON Y NO UN GATE: un gate mira cuando alguien publica; esto tiene que mirar cuando NADIE
+# ha hecho nada, porque el cambio ocurre en la infraestructura de un tercero. Es DETECCION, no
+# prevencion: la ventana de exposicion es este intervalo, y conviene decirlo asi.
+#
+# ESTADO: la comparacion y la deteccion estan probadas de punta a punta contra un servidor real -- ver
+# `validador/tests/test_comprobar_mcp.py` --. Lo que NO esta probado aqui es la lectura de la boveda:
+# la demo no tiene HashiCorp Vault, asi que el paso que la lee esta cableado pero no ejercitado, y sin
+# `VAULT_ADDR` la comprobacion informa SIN_COMPROBAR en vez de dar nada por bueno.
+
+on:
+  schedule:
+    # Cada seis horas. El intervalo ES la ventana de exposicion: bajarlo reduce el riesgo y sube el
+    # coste en una consulta por servidor, que es despreciable.
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+# SIN SECRETOS DE GITHUB. `id-token` es para pedir el token OIDC con el que la boveda nos identifica;
+# las credenciales de los MCP viven ahi y se leen en el momento, con vida de minutos.
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: comprobar-mcp
+  cancel-in-progress: false
+
+env:
+  VERSION_PYTHON: "3.12"
+  RUTA_LINEA_BASE: linea-base-mcp.json
+
+jobs:
+  comprobar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el estandar
+        uses: actions/checkout@v4
+
+      - name: Preparar Python ${{ env.VERSION_PYTHON }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.VERSION_PYTHON }}
+
+      - name: Instalar el validador, que aporta el calculo del digest
+        shell: bash
+        run: pip install --quiet ./validador
+
+      # LA LINEA BASE SALE DEL PREDICADO FIRMADO, nunca del repositorio: el `METADATA.json` es
+      # editable, asi que cualquiera con escritura podria ajustar el digest para que coincidiera con un
+      # servidor ya envenenado y la comprobacion diria que todo esta en orden.
+      #
+      # PENDIENTE DE CABLEAR: quien sabe verificar atestaciones es el indice, y replicarlo aqui seria
+      # una segunda implementacion del mismo trato con la firma. Hasta que se exponga como comando
+      # reutilizable, este paso deja una linea base VACIA -- y una linea base vacia produce «no hay
+      # ningun mcp que comprobar», que es cierto y visible, no un falso conforme.
+      - name: Reunir la linea base atestada
+        shell: bash
+        run: |
+          printf '%s\n' '{"mcps": []}' > "$RUTA_LINEA_BASE"
+
+      # La boveda valida el token OIDC contra los claims del rol -- repositorio, rama y
+      # `job_workflow_ref` --, asi que la credencial solo la obtiene ESTE archivo de workflow en esta
+      # rama: ni otro workflow del mismo repositorio, ni una rama distinta, ni un fork.
+      #
+      # `VAULT_ADDR` y el rol son VARIABLES y no secretos: no lo son, y tenerlos como secreto
+      # esconderia la configuracion sin proteger nada.
+      - name: Credenciales de los mcp, leidas de la boveda en el momento
+        if: vars.VAULT_ADDR != ''
+        uses: hashicorp/vault-action@v3
+        with:
+          url: ${{ vars.VAULT_ADDR }}
+          method: jwt
+          role: ${{ vars.VAULT_ROLE_COMPROBAR_MCP }}
+          exportToken: true
+
+      # El codigo 3 significa «hay algo que atender» y se distingue del 1, que es «me rompi»: se
+      # atienden de forma distinta y mezclarlos haria que un fallo de ejecucion pareciera un hallazgo.
+      - name: Comparar lo atestado con lo que declara cada servidor
+        id: comparar
+        shell: bash
+        run: |
+          set +e
+          python -m validador_agentico.comprobar_mcp \
+            --linea-base "$RUTA_LINEA_BASE" \
+            --resumen "$GITHUB_STEP_SUMMARY" > deriva.json
+          codigo=$?
+          set -e
+          echo "exige_atencion=$([ "$codigo" -eq 3 ] && echo si || echo no)" >> "$GITHUB_OUTPUT"
+          [ "$codigo" -ne 1 ] || { echo "::error::la comprobacion no se pudo ejecutar"; exit 1; }
+
+      # UN MCP SIN COMPROBAR NO ES UN MCP EN ORDEN, y esa distincion es el fallo que hay que evitar:
+      # si faltar la credencial se leyera como «todo bien», un servidor sin vigilancia pasaria por
+      # vigilado indefinidamente.
+      #
+      # NO SE VUELCA EL TEXTO de las descripciones: lo escribe un tercero, y en un issue seria
+      # inyeccion dirigida a quien lo lea -- o a un agente que revise issues --. El programa reporta
+      # digests y NOMBRES; el aviso remite al resumen del run.
+      - name: Avisar de lo que exige atencion
+        if: steps.comparar.outputs.exige_atencion == 'si'
+        shell: bash
+        run: |
+          echo "::warning::hay servidores MCP con DERIVA o SIN COMPROBAR. Revisa la tabla del resumen de este run: un mcp sin comprobar NO es un mcp en orden."
+          exit 1

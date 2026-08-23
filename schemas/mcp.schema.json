@@ -190,7 +190,8 @@
               "type": "string"
             },
             "secret_ref": {
-              "type": "string"
+              "type": "string",
+              "description": "DONDE vive la credencial, nunca su valor: la ruta en la boveda de la organizacion -- p. ej. `secret/agentico/mcp/<id>` en HashiCorp Vault --. Tiene DOS consumidores: el desarrollador, que asi sabe de donde sacarla una vez concedida; y la comprobacion periodica del `tools_digest`, que necesita conectarse al servidor para listar sus herramientas y con esto sabe que leer sin que nadie cablee rutas a mano en un workflow. UNA RUTA POR MCP, no una compartida: si se filtra la de un servidor, no debe abrir la de otro. Y LA CREDENCIAL QUE HAYA AHI DEBE PODER SOLO LISTAR -- la comprobacion nunca invoca una herramienta, solo pide `tools/list` --: acotarla a eso convierte una fuga en «se conocen los nombres de las herramientas» en vez de «se puede hacer todo lo que las herramientas hacen». Custodiar bien una credencial demasiado amplia no arregla que sea demasiado amplia."
             }
           },
           "required": [
