@@ -11,6 +11,17 @@ verdad sobre el mismo artefacto -- el problema que el sello existe para eliminar
 UN FALLO AQUI NO DESHACE LA PUBLICACION. El release y las atestaciones ya existen y son
 inmutables; la ficha es la vitrina. Si Port no responde, se avisa y se sigue: el artefacto YA es
 instalable y el catalogo se pone al dia en la siguiente publicacion.
+
+LA FICHA SE VALIDA CONTRA EL BLUEPRINT ANTES DE ENVIARLA, y esto corrige una asimetria de nuestro
+propio diseno: las dos proyecciones del marketplace se validan contra su esquema ANTES de escribirse
+-- «publicar un indice que algun cliente no sabra instalar es peor que no publicar» -- y la ficha, en
+cambio, se enviaba a ciegas. Un payload malformado lo descubria la API de Port, con un HTTP 4xx en el
+ultimo paso de la publicacion y un mensaje escrito por un tercero. Validar aqui convierte eso en un
+fallo nuestro, dicho en nuestros terminos, antes de la llamada.
+
+Y NO HACE FALTA UN ESQUEMA NUEVO: el blueprint YA lleva dentro el fragmento que describe las
+propiedades, en vocabulario de JSON Schema. Escribir un segundo esquema para lo mismo seria la
+duplicacion que G2 prohibe, y divergiria del blueprint en la primera modificacion.
 """
 from __future__ import annotations
 
@@ -22,7 +33,20 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from jsonschema import Draft202012Validator
+
+# El logging se configura con el registro del validador, que este job ya tiene instalado -- la accion
+# hace `pip install` del paquete antes de llegar aqui --. Era la SEXTA copia de la misma funcion en el
+# repositorio: cuatro dentro del validador (ya unificadas), una en el indice y esta.
+from validador_agentico.adaptadores import registro
+
 log = logging.getLogger(__name__)
+
+# El blueprint vive en el repositorio del estandar, tres niveles por encima de esta accion. Es la misma
+# forma de referencia que usa el `pip install` de la accion, asi que la topologia ya es parte del
+# contrato de este directorio y no se introduce nada nuevo.
+_BLUEPRINT_DEL_CATALOGO = Path(__file__).resolve().parents[3] / "port" / \
+    "blueprint-artefacto-agentico.json"
 
 # Cuanto se cita del cuerpo de una respuesta de error: lo justo para diagnosticar sin volcar
 # una pagina de HTML al log.
@@ -138,6 +162,34 @@ def _custodia_de_la_credencial(veredicto: dict) -> dict:
             "access_request_url": propiedad.get("access_request_url", "")}
 
 
+def _validador_del_blueprint() -> Draft202012Validator | None:
+    """El validador de las propiedades de una ficha, sacado del propio blueprint.
+
+    `None` si el blueprint no se puede leer. Es degradacion deliberada y NO un error: este script
+    corre despues de que el release y las atestaciones ya existan, asi que abortar aqui no protegeria
+    nada -- el artefacto ya es instalable -- y dejaria el catalogo desactualizado por un problema de
+    lectura de archivo. Se avisa, que es lo que hace el resto del modulo ante un fallo de vitrina.
+    """
+    try:
+        blueprint = json.loads(_BLUEPRINT_DEL_CATALOGO.read_text(encoding="utf-8"))
+    except OSError as fallo:
+        log.warning("no se pudo leer el blueprint (%s): las fichas se envian sin validar", fallo)
+        return None
+    except json.JSONDecodeError as fallo:
+        log.warning("el blueprint no es JSON valido (%s): las fichas se envian sin validar", fallo)
+        return None
+    return Draft202012Validator(blueprint["schema"])
+
+
+def _defectos_de_forma(entidad: dict, validador: Draft202012Validator | None) -> list[str]:
+    """Los defectos de las propiedades de la ficha, ya legibles. Lista vacia = conforme."""
+    if validador is None:
+        return []
+    return [f"{'.'.join(str(t) for t in fallo.path) or '(raiz)'}: {fallo.message}"
+            for fallo in sorted(validador.iter_errors(entidad["properties"]),
+                                key=lambda f: list(f.path))]
+
+
 def _publicar(entidad: dict, token: str) -> str:
     peticion = urllib.request.Request(
         API_PORT + _RUTA_ENTIDADES,
@@ -167,16 +219,9 @@ def _parsear_argumentos() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _configurar_logging(verboso: bool) -> None:
-    manejador = logging.StreamHandler(sys.stderr)
-    manejador.setFormatter(logging.Formatter("%(levelname)-8s %(message)s"))
-    logging.getLogger().setLevel(logging.DEBUG if verboso else logging.INFO)
-    logging.getLogger().addHandler(manejador)
-
-
 def main() -> int:
     argumentos = _parsear_argumentos()
-    _configurar_logging(verboso=argumentos.verbose)
+    registro.configurar(verboso=argumentos.verbose)
     veredicto = json.loads(argumentos.veredicto.read_text(encoding="utf-8"))
     artefactos = veredicto.get("artefactos") or []
 
@@ -184,9 +229,19 @@ def main() -> int:
         log.info("el predicado no declara artefactos: no hay ficha que publicar")
         return 0
 
+    validador = _validador_del_blueprint()
     fallos = 0
     for artefacto in artefactos:
-        resultado = _publicar(_entidad(artefacto, veredicto, argumentos), argumentos.token)
+        entidad = _entidad(artefacto, veredicto, argumentos)
+        defectos = _defectos_de_forma(entidad, validador)
+        if defectos:
+            # NO se envia: Port lo rechazaria igual, y el mensaje vendria de su API en vez de decir
+            # que campo de NUESTRA ficha esta mal.
+            for defecto in defectos:
+                log.error("ficha %s no cumple el blueprint — %s", artefacto["id"], defecto)
+            fallos += 1
+            continue
+        resultado = _publicar(entidad, argumentos.token)
         log.info("ficha %-50s %s", artefacto["id"], resultado)
         if not resultado.startswith("HTTP 2"):
             fallos += 1
