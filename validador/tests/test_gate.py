@@ -264,3 +264,63 @@ def test_un_frontmatter_valido_no_produce_ese_error(tmp_path):
     resultado = ejecutar(_repositorio_minimo(tmp_path),
                          comprobador_oficial=ComprobadorFalso(Resultado.CONFORME))
     assert not any("YAML" in h.mensaje for h in resultado.veredicto.errores)
+
+
+# ── el gate CON los esquemas de verdad ─────────────────────────────────────────────────────
+# Los esquemas del propio repositorio, no una copia: si divergen de lo que el gate espera, es un
+# defecto real y estas pruebas tienen que verlo.
+_ESQUEMAS_REALES = Path(__file__).resolve().parent.parent.parent / "schemas"
+
+
+def test_el_gate_ejecuta_los_esquemas_cuando_se_le_pasan(tmp_path):
+    # HUECO DE COBERTURA MEDIDO: TODAS las demas pruebas de este archivo omiten
+    # `directorio_de_esquemas`, y con `None` la comprobacion de forma devuelve [] y no se ejecuta. O
+    # sea que el camino que valida contra los esquemas -- el que decide si un artefacto publica -- no
+    # tenia ninguna prueba de punta a punta. Se noto al mover una funcion de capa: 216 pruebas en
+    # VERDE y el gate reventaba con AttributeError en esa misma funcion al correrlo de verdad.
+    resultado = ejecutar(_repositorio_minimo(tmp_path),
+                         comprobador_oficial=ComprobadorFalso(Resultado.CONFORME),
+                         directorio_de_esquemas=_ESQUEMAS_REALES)
+    assert resultado.conforme, [h.mensaje for h in resultado.veredicto.errores]
+
+
+# Un skill cuyo unico defecto es de FORMA: `allowed-tools` como lista YAML cuando la especificacion
+# exige una cadena separada por espacios (hallazgo 20 del activo). Es el canario de que los esquemas
+# se ejecutan: si el camino del esquema estuviera muerto, este mensaje no aparece.
+_SKILL_CON_ALLOWED_TOOLS_COMO_LISTA = """---
+name: validar-algo
+description: Comprueba algo concreto y se usa cuando alguien lo pide.
+allowed-tools:
+  - Read
+  - Bash
+metadata:
+  id: demo.sdlc.ejemplo
+  owner_team: squad-sdlc
+  owner_contact: squad-sdlc@ejemplo.dev
+  status: draft
+  version: 1.0.0
+  data_classification: internal
+  standard_version: 7.0.0
+---
+
+# Validar algo
+"""
+
+# El prefijo con que el gate marca un defecto que vino del ESQUEMA y no de una regla. Se comprueba
+# literalmente a proposito: la version anterior de esta prueba aceptaba «forma invalida» O
+# «allowed-tools», y el segundo lo produce tambien la regla -- asi que habria pasado con el camino del
+# esquema muerto, que es exactamente lo que esta prueba existe para detectar.
+_MARCA_DE_DEFECTO_DE_ESQUEMA = "forma invalida"
+
+
+def test_un_campo_del_tipo_equivocado_lo_atrapa_el_ESQUEMA(tmp_path):
+    directorio = tmp_path / "skills" / "validar-algo"
+    directorio.mkdir(parents=True)
+    (directorio / "SKILL.md").write_text(_SKILL_CON_ALLOWED_TOOLS_COMO_LISTA, encoding="utf-8")
+
+    resultado = ejecutar(tmp_path, comprobador_oficial=ComprobadorFalso(Resultado.CONFORME),
+                         directorio_de_esquemas=_ESQUEMAS_REALES)
+
+    mensajes = [h.mensaje for h in resultado.veredicto.errores]
+    assert not resultado.conforme
+    assert any(_MARCA_DE_DEFECTO_DE_ESQUEMA in m for m in mensajes), mensajes

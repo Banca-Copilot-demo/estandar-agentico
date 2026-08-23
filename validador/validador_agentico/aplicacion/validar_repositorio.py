@@ -6,6 +6,35 @@ secundarios son explicitos).
 
 Los adaptadores llegan como argumentos con un default sobreescribible, de modo que una prueba
 pueda inyectar dobles sin tocar disco.
+
+────────────────────────────────────────────────────────────────────────────────────────────────
+POR QUE ESTE MODULO PASA DE ~300 LINEAS SIN DIVIDIRSE (tripwire de G1)
+
+El umbral es un disparador de revision, no un limite, y la regla real es la cohesion. Aplicados los
+dos tests que el estandar exige:
+
+TEST DE LA CONJUNCION. Describir este archivo NO necesita «y»: aplica las reglas del dominio al
+contenido leido y agrega los hallazgos. Eso es una sola frase. Lo que parece una lista de
+responsabilidades -- revisa el plugin, el gobierno, los skills, los prompts... -- es la lista de
+REGLAS, y las reglas viven cada una en su modulo de `dominio/`. Aqui no hay ni una decision de
+negocio: cada `_revisar_*` traduce la forma de `ContenidoRepositorio` a la firma que su regla espera
+y devuelve lo que esta responde.
+
+TEST DE GRUPOS TEMATICOS. Las 19 funciones caen en UN grupo -- despacho de reglas -- salvo dos
+ayudantes de tres lineas (`_prefijar`, `_hallazgo_de_formato`) que solo sirven a ese despacho.
+
+Y YA SE EXTRAJO LO QUE SI ERA OTRA COSA: la proyeccion del contenido hacia el inventario, las fichas
+y la custodia se fue a `aplicacion/proyeccion.py` cuando el modulo cruzo el umbral la primera vez.
+Ese si era un segundo grupo. Lo que queda es el despacho, y partirlo por familias de regla --
+«validar_artefactos.py», «validar_configuracion.py» -- seria dividir por la METRICA y no por el
+significado, que es lo que G3 advierte: obligaria a que `validar()` llamara a dos orquestadores para
+recomponer un unico veredicto, y el orden de agregacion -- que es lo unico que este modulo decide de
+verdad -- quedaria repartido en tres sitios.
+
+LO QUE SI JUSTIFICARIA DIVIDIRLO, para quien lo lea despues: que alguna de estas funciones deje de
+ser un despacho y empiece a decidir algo. Ahi habria una regla mal colocada, y su sitio es
+`dominio/`, no un modulo nuevo aqui.
+────────────────────────────────────────────────────────────────────────────────────────────────
 """
 from __future__ import annotations
 
@@ -27,7 +56,7 @@ from validador_agentico.dominio import reglas_credenciales, reglas_layout, regla
 from validador_agentico.dominio import reglas_instructions, reglas_recursos
 from validador_agentico.dominio import reglas_higiene, reglas_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
-from validador_agentico.dominio import ensamblado
+from validador_agentico.dominio import ensamblado, forma_frontmatter
 from validador_agentico.dominio.especificacion import RUTAS_MANIFIESTO
 from validador_agentico.dominio.hallazgo import (
     Hallazgo,
@@ -323,7 +352,7 @@ def _revisar_forma_contra_esquemas(contenido: ContenidoRepositorio,
                 # ensamblar y repetirlo daria dos hallazgos por el mismo defecto.
                 continue
             objeto = ensamblado.ensamblar(
-                adaptador_frontmatter.solo_lo_declarado(artefacto.frontmatter), None, kind)
+                forma_frontmatter.solo_lo_declarado(artefacto.frontmatter), None, kind)
             try:
                 defectos = esquema.incumplimientos(objeto, nombre_esquema, directorio)
             except esquema.EsquemasNoDisponiblesError as fallo:

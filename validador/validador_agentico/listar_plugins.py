@@ -22,6 +22,7 @@ import logging
 import sys
 from pathlib import Path
 
+from validador_agentico.adaptadores import registro
 from validador_agentico.dominio.especificacion import RUTAS_MANIFIESTO
 from validador_agentico.dominio.reglas_layout import raices_de_plugin
 
@@ -77,13 +78,6 @@ def listar(raiz: Path) -> list[tuple[str, str, str]]:
     return encontrados
 
 
-def _configurar_logging(verboso: bool) -> None:
-    manejador = logging.StreamHandler(sys.stderr)
-    manejador.setFormatter(logging.Formatter("%(levelname)-8s %(name)s - %(message)s"))
-    logging.getLogger().setLevel(logging.DEBUG if verboso else logging.INFO)
-    logging.getLogger().addHandler(manejador)
-
-
 def _parsear_argumentos() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -95,7 +89,7 @@ def _parsear_argumentos() -> argparse.Namespace:
 
 def main() -> int:
     argumentos = _parsear_argumentos()
-    _configurar_logging(verboso=argumentos.verbose)
+    registro.configurar(verboso=argumentos.verbose)
     for fila in listar(argumentos.raiz):
         print(_SEPARADOR.join(fila))
     return 0

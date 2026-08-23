@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import re
 
-from validador_agentico.adaptadores.frontmatter import (
+from validador_agentico.dominio.forma_frontmatter import (
     OBSERVACION_MODEL_ARRAY,
     observacion,
 )

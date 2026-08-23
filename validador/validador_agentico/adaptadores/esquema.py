@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+from functools import lru_cache
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker
@@ -50,8 +51,15 @@ class EsquemasNoDisponiblesError(FileNotFoundError):
     comprobar y calla es indistinguible de uno que comprobo y aprobo."""
 
 
+@lru_cache(maxsize=None)
 def cargar(directorio: Path = DIRECTORIO_POR_DEFECTO) -> Registry:
-    """El registro con todos los esquemas, indexado por su `$id`."""
+    """El registro con todos los esquemas, indexado por su `$id`. UNA sola lectura por directorio.
+
+    La cache esta AQUI y no solo en `_validador_de` porque el registro es el recurso COMPARTIDO: los
+    tres esquemas de artefacto lo necesitan igual, y sin memoizar `cargar` se construia uno por
+    esquema -- tres lecturas completas del directorio en vez de una --. Se vio en el log: al arreglar
+    solo la capa de arriba, «8 esquema(s) cargados» bajo de seis veces a tres, no a una.
+    """
     recursos = []
     for ruta in sorted(directorio.glob(_PATRON_ESQUEMAS)):
         try:
@@ -73,12 +81,21 @@ def cargar(directorio: Path = DIRECTORIO_POR_DEFECTO) -> Registry:
     return Registry().with_resources(recursos)
 
 
-def incumplimientos(objeto: dict, nombre_del_esquema: str,
-                    directorio: Path = DIRECTORIO_POR_DEFECTO) -> list[str]:
-    """Los defectos de FORMA del objeto, ya legibles. Lista vacia = conforme.
+@lru_cache(maxsize=None)
+def _validador_de(nombre_del_esquema: str, directorio: Path) -> Draft202012Validator:
+    """El validador de un esquema, construido UNA vez por (esquema, directorio).
 
-    Cada mensaje lleva la ruta dentro del objeto, porque un «is not of type 'string'» sin decir de
-    que campo obliga a adivinar.
+    POR QUE SE MEMOIZA, y como se detecto. `incumplimientos` llamaba a `cargar` en CADA invocacion, o
+    sea que releia y reparseaba los OCHO esquemas de disco por cada artefacto validado. Se vio en el
+    log al ejecutar el gate con `--verbose`: «8 esquema(s) cargados» aparecia SEIS veces en una sola
+    corrida sobre cuatro plugins. A escala de BCP -- 33 skills mas agentes y prompts, en 6-10 plugins
+    -- son mas de cuarenta relecturas completas del directorio para obtener siempre lo mismo.
+
+    Es cache de PROCESO, no estado de modulo: no se puebla al importar (P5), y se llena solo cuando
+    alguien valida algo. Los esquemas no cambian mientras el gate corre -- vienen fijados por SHA
+    desde el repositorio del estandar -- asi que releerlos no aporta frescura, solo I/O.
+
+    `directorio` es un `Path`, que es hashable, asi que sirve de clave sin convertirlo.
     """
     registro = cargar(directorio)
     ruta = directorio / nombre_del_esquema
@@ -86,9 +103,17 @@ def incumplimientos(objeto: dict, nombre_del_esquema: str,
         esquema = json.loads(ruta.read_text(encoding="utf-8"))
     except OSError as fallo:
         raise EsquemasNoDisponiblesError(f"no se pudo leer {ruta}: {fallo}") from fallo
+    return Draft202012Validator(esquema, registry=registro, format_checker=FormatChecker())
 
-    validador = Draft202012Validator(esquema, registry=registro,
-                                     format_checker=FormatChecker())
+
+def incumplimientos(objeto: dict, nombre_del_esquema: str,
+                    directorio: Path = DIRECTORIO_POR_DEFECTO) -> list[str]:
+    """Los defectos de FORMA del objeto, ya legibles. Lista vacia = conforme.
+
+    Cada mensaje lleva la ruta dentro del objeto, porque un «is not of type 'string'» sin decir de
+    que campo obliga a adivinar.
+    """
+    validador = _validador_de(nombre_del_esquema, directorio)
     fallos = sorted(validador.iter_errors(objeto), key=lambda f: list(f.path))
 
     # SE SUPRIME EL «unevaluated» CUANDO HAY OTROS FALLOS, y es una decision de legibilidad con un

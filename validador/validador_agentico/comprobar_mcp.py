@@ -25,7 +25,7 @@ import logging
 import sys
 from pathlib import Path
 
-from validador_agentico.adaptadores import mcp_cliente
+from validador_agentico.adaptadores import mcp_cliente, registro
 from validador_agentico.dominio.deriva_mcp import Comprobacion, Resultado, comparar, resumir
 from validador_agentico.dominio.herramientas_mcp import (
     CAMPO_NOMBRE,
@@ -90,13 +90,6 @@ def _como_dato(comprobacion: Comprobacion) -> dict:
     }
 
 
-def _configurar_logging(verboso: bool) -> None:
-    manejador = logging.StreamHandler(sys.stderr)
-    manejador.setFormatter(logging.Formatter("%(levelname)-8s %(name)s - %(message)s"))
-    logging.getLogger().setLevel(logging.DEBUG if verboso else logging.INFO)
-    logging.getLogger().addHandler(manejador)
-
-
 def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(
         prog="comprobar-mcp",
@@ -114,7 +107,7 @@ def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     argumentos = _parsear_argumentos(argv)
-    _configurar_logging(argumentos.verbose)
+    registro.configurar(argumentos.verbose)
 
     try:
         datos = json.loads(argumentos.linea_base.read_text(encoding="utf-8"))

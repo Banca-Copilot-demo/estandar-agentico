@@ -20,33 +20,66 @@ from validador_agentico.dominio.hallazgo import Hallazgo, aviso, error
 
 
 class ClaseAprobador(str, Enum):
-    """Quien tiene que firmar, por tipo de artefacto. Son las tres clases del estandar y no una
-    lista de nombres: los nombres concretos viven en CODEOWNERS, que es lo que GitHub exige."""
+    """Quien tiene que firmar, por tipo de artefacto. Son las clases del estandar y no una lista de
+    nombres: los nombres concretos viven en CODEOWNERS, que es lo que GitHub exige.
+
+    ARQUITECTURA se quedo SIN NINGUNA RUTA que la exija cuando `instructions` dejo de ser un tipo
+    gobernado. Se conserva el miembro porque la matriz de aprobadores del estandar la sigue nombrando
+    y borrarla obligaria a reintroducirla en cuanto haya un tipo que la necesite; lo que se quito es
+    la ruta que la disparaba.
+    """
 
     SEGURIDAD = "seguridad"
     ARQUITECTURA = "arquitectura"
     DOMINIO = "dominio"
 
 
-# Cada prefijo o nombre de archivo con la clase que su cambio EXIGE. El orden importa: se toma la
-# primera coincidencia, asi que lo mas especifico va primero.
-_CLASE_POR_RUTA = (
+# Cada nombre de archivo o SEGMENTO de directorio con la clase que su cambio EXIGE. El orden importa:
+# se toma la primera coincidencia, asi que lo mas especifico va primero.
+#
+# `instructions` YA NO ESTA, y es una correccion medida: seguia mapeada a ARQUITECTURA despues de que
+# el estandar dejara de gobernarla, asi que un pull request que tocara un skill y un archivo de
+# instrucciones se BLOQUEABA con un error -- «mezcla firmantes distintos» -- por un tipo que
+# deliberadamente decidimos no gobernar. Un gate que bloquea por algo que el estandar no exige es peor
+# que uno que no comprueba: manda a la gente a partir pull requests sin motivo.
+_CLASE_POR_ARCHIVO = (
     (".mcp.json", ClaseAprobador.SEGURIDAD),
     ("hooks.json", ClaseAprobador.SEGURIDAD),
-    ("hooks/", ClaseAprobador.SEGURIDAD),
-    (".instructions.md", ClaseAprobador.ARQUITECTURA),
-    ("instructions/", ClaseAprobador.ARQUITECTURA),
-    ("skills/", ClaseAprobador.DOMINIO),
-    ("agents/", ClaseAprobador.DOMINIO),
-    ("commands/", ClaseAprobador.DOMINIO),
 )
+_CLASE_POR_DIRECTORIO = (
+    ("hooks", ClaseAprobador.SEGURIDAD),
+    ("skills", ClaseAprobador.DOMINIO),
+    ("agents", ClaseAprobador.DOMINIO),
+    ("commands", ClaseAprobador.DOMINIO),
+)
+
+_SEPARADOR_DE_RUTA = "/"
+
+# Cuantas rutas de ejemplo se muestran por clase en el mensaje. Es un tope de LEGIBILIDAD, no de
+# analisis: la regla mira todas. Cuando se recorta, el mensaje DICE cuantas quedan -- un «y 4 mas» --
+# porque una lista truncada en silencio se lee como la lista completa.
+_MAX_RUTAS_EN_EL_MENSAJE = 3
+_MIN_CLASES_PARA_MEZCLA = 2
 
 
 def clase_de(ruta: str) -> ClaseAprobador | None:
     """La clase de aprobador que exige cambiar esa ruta, o `None` si no exige ninguna -- un README,
-    un `.gitignore`: cambiarlos no requiere un firmante especifico."""
-    for patron, clase in _CLASE_POR_RUTA:
-        if ruta.endswith(patron) or patron in ruta:
+    un `.gitignore`: cambiarlos no requiere un firmante especifico.
+
+    LOS DIRECTORIOS SE COMPARAN POR SEGMENTO, no por subcadena, y esto es un defecto MEDIDO: con
+    `patron in ruta` y el patron `hooks/`, la ruta `plugins/mis-hooks/skills/x/SKILL.md` daba
+    SEGURIDAD -- porque `mis-hooks/` contiene `hooks/` --. Consecuencia real: cualquier plugin cuyo
+    nombre acabe en `-hooks` exigia firma de seguridad para TODOS sus skills, y arrastraba a seguridad
+    a revisar lo que no le toca. Partir la ruta en segmentos lo resuelve sin excepciones.
+    """
+    segmentos = ruta.split(_SEPARADOR_DE_RUTA)
+    nombre = segmentos[-1]
+    for sufijo, clase in _CLASE_POR_ARCHIVO:
+        if nombre.endswith(sufijo):
+            return clase
+    directorios = set(segmentos[:-1])
+    for directorio, clase in _CLASE_POR_DIRECTORIO:
+        if directorio in directorios:
             return clase
     return None
 
@@ -54,25 +87,32 @@ def clase_de(ruta: str) -> ClaseAprobador | None:
 def revisar_mezcla_de_aprobadores(archivos_cambiados: tuple[str, ...]) -> list[Hallazgo]:
     """Un pull request no mezcla tipos que exigen firmantes distintos.
 
-    `mcp`, `hooks` e `instructions` van SOLOS. No es una regla de comodidad: es lo unico que
-    mantiene la aprobacion atribuible a lo que se aprobo.
+    `mcp` y `hooks` van SOLOS. No es una regla de comodidad: es lo unico que mantiene la aprobacion
+    atribuible a lo que se aprobo.
     """
-    clases = {}
+    clases: dict[ClaseAprobador, list[str]] = {}
     for ruta in archivos_cambiados:
         clase = clase_de(ruta)
         if clase is not None:
             clases.setdefault(clase, []).append(ruta)
 
-    if len(clases) < 2:
+    if len(clases) < _MIN_CLASES_PARA_MEZCLA:
         return []
 
-    detalle = " | ".join(
-        f"{clase.value}: {', '.join(sorted(rutas)[:3])}" for clase, rutas in sorted(clases.items())
-    )
+    detalle = " | ".join(f"{clase.value}: {_muestra(rutas)}"
+                         for clase, rutas in sorted(clases.items()))
     return [error(
         "el pull request",
         "mezcla artefactos que exigen firmantes DISTINTOS, asi que la aprobacion no seria "
         f"atribuible a lo que se aprobo. Sepáralo en varios pull requests -- {detalle}")]
+
+
+def _muestra(rutas: list[str]) -> str:
+    """Hasta `_MAX_RUTAS_EN_EL_MENSAJE` rutas, diciendo cuantas se dejaron fuera."""
+    ordenadas = sorted(rutas)
+    visibles = ", ".join(ordenadas[:_MAX_RUTAS_EN_EL_MENSAJE])
+    restantes = len(ordenadas) - _MAX_RUTAS_EN_EL_MENSAJE
+    return f"{visibles} y {restantes} mas" if restantes > 0 else visibles
 
 
 def revisar_equipo_resoluble(donde: str, equipo: str | None,

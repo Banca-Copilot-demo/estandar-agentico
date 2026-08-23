@@ -27,10 +27,6 @@ inputs:
       GITHUB_TOKEN del repositorio del indice NO sirve: esta acotado a su propio repositorio y no
       puede ver los releases de los dominios cuando son privados.
     required: true
-  version-python:
-    description: Version de Python con la que corre el generador.
-    required: false
-    default: "3.12"
 
 outputs:
   indexados:
@@ -40,10 +36,12 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Preparar Python ${{ inputs.version-python }}
+    # La version sale de `.python-version` del estandar: un solo archivo como fuente de verdad. Ver
+    # el motivo completo en `.github/actions/validar/action.yml`.
+    - name: Preparar Python (version del estandar)
       uses: actions/setup-python@v5
       with:
-        python-version: ${{ inputs.version-python }}
+        python-version-file: ${{ github.action_path }}/../../../.python-version
 
     - name: Instalar el generador del indice
       shell: bash

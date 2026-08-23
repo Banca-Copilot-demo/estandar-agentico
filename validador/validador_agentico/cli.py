@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -18,6 +17,7 @@ from validador_agentico.adaptadores import (
     gh_skill,
     informe,
     organizacion,
+    registro,
 )
 from validador_agentico.aplicacion.ejecutar_gate import ejecutar
 
@@ -25,21 +25,6 @@ log = logging.getLogger(__name__)
 
 SALIDA_CONFORME = 0
 SALIDA_NO_CONFORME = 1
-FORMATO_CI = "%(levelname)-8s %(name)s - %(message)s"
-FORMATO_LOCAL = "%(asctime)s %(levelname)-8s %(name)s - %(message)s"
-FORMATO_HORA = "%H:%M:%S"
-
-
-def _configurar_logging(verboso: bool) -> None:
-    """El logging va a stderr; el informe a stdout (L8). En CI el formato es plano para que los
-    logs sean parseables (L9). La deteccion del entorno ocurre aqui y en ningun modulo de libreria."""
-    en_ci = os.getenv("CI") == "true"
-    manejador = logging.StreamHandler(sys.stderr)
-    manejador.setFormatter(logging.Formatter(
-        fmt=FORMATO_CI if en_ci else FORMATO_LOCAL, datefmt=FORMATO_HORA))
-    raiz = logging.getLogger()
-    raiz.setLevel(logging.DEBUG if verboso else logging.INFO)
-    raiz.addHandler(manejador)
 
 
 def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
@@ -78,7 +63,7 @@ def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     argumentos = _parsear_argumentos(argv)
-    _configurar_logging(argumentos.verbose)
+    registro.configurar(argumentos.verbose)
     raiz = argumentos.raiz.resolve()
     if not raiz.is_dir():
         log.error("la raiz no existe o no es un directorio: %s", raiz)

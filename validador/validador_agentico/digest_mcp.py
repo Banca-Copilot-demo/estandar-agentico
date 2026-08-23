@@ -22,7 +22,7 @@ import logging
 import os
 import sys
 
-from validador_agentico.adaptadores import mcp_cliente
+from validador_agentico.adaptadores import mcp_cliente, registro
 from validador_agentico.dominio.herramientas_mcp import (
     CAMPO_DESCRIPCION,
     CAMPO_NOMBRE,
@@ -40,13 +40,6 @@ VARIABLE_CREDENCIAL = "MCP_CREDENCIAL"
 # Cuanto se muestra de cada descripcion en el listado legible. Lo justo para reconocerla sin volcar
 # parrafos de texto que escribio un tercero.
 _MAX_DESCRIPCION_MOSTRADA = 90
-
-
-def _configurar_logging(verboso: bool) -> None:
-    manejador = logging.StreamHandler(sys.stderr)
-    manejador.setFormatter(logging.Formatter("%(levelname)-8s %(message)s"))
-    logging.getLogger().setLevel(logging.DEBUG if verboso else logging.INFO)
-    logging.getLogger().addHandler(manejador)
 
 
 def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
@@ -67,7 +60,7 @@ def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     argumentos = _parsear_argumentos(argv)
-    _configurar_logging(argumentos.verbose)
+    registro.configurar(argumentos.verbose)
 
     credencial = os.environ.get(VARIABLE_CREDENCIAL) or None
     if credencial is None:

@@ -4,19 +4,20 @@ description: >
   asi el workflow reutilizable NO tiene que clonar el repositorio del estandar, que con un
   GITHUB_TOKEN acotado al repo del llamador es imposible cuando el estandar es privado.
 
-inputs:
-  version-python:
-    description: Version de Python con la que corre el validador.
-    required: false
-    default: "3.12"
-
 runs:
   using: composite
   steps:
-    - name: Preparar Python ${{ inputs.version-python }}
+    # LA VERSION SALE DE `.python-version` DEL ESTANDAR, no de un literal ni de un input con default.
+    # Motivo (Y2): "3.12" estaba escrito en SEIS sitios -- tres workflows y el default de las tres
+    # composite actions -- y tres defaults independientes divergen en la primera actualizacion que
+    # alguien haga con prisa. Un `uses:` relativo a una accion compartida no sirve aqui: estas
+    # acciones se invocan CROSS-REPO (`owner/repo/.github/actions/validar@main`) y la ruta relativa
+    # se resolveria contra el repositorio del llamador. `python-version-file` es la via que si
+    # funciona en los dos casos, y deja UN archivo como fuente de verdad.
+    - name: Preparar Python (version del estandar)
       uses: actions/setup-python@v5
       with:
-        python-version: ${{ inputs.version-python }}
+        python-version-file: ${{ github.action_path }}/../../../.python-version
 
     # EL CONTRATO ES EL IMPORT, NO LA RUTA. Antes se invocaba el script con
     # `python ${{ github.action_path }}/../../../validador/validar.py`, y ese `../../../` era

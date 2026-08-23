@@ -30,7 +30,6 @@ def test_cada_tipo_cae_en_la_clase_de_firmante_que_le_toca():
         ".mcp.json": ClaseAprobador.SEGURIDAD,
         "hooks.json": ClaseAprobador.SEGURIDAD,
         "hooks/auditoria.json": ClaseAprobador.SEGURIDAD,
-        "docs/api.instructions.md": ClaseAprobador.ARQUITECTURA,
         "skills/validar/SKILL.md": ClaseAprobador.DOMINIO,
         "agents/migrador.agent.md": ClaseAprobador.DOMINIO,
         "commands/migrar.prompt.md": ClaseAprobador.DOMINIO,
@@ -69,10 +68,32 @@ def test_el_mensaje_dice_QUE_archivos_causan_la_mezcla():
     assert "skills/uno/SKILL.md" in _mensajes(errores)
 
 
-def test_instructions_con_un_skill_tambien_es_mezcla():
-    # Distinta clase: arquitectura frente a dominio.
-    assert _errores(revisar_mezcla_de_aprobadores(
-        ("docs/api.instructions.md", "skills/uno/SKILL.md")))
+def test_un_archivo_de_instructions_no_exige_firmante_ni_causa_mezcla():
+    # MEDIDO al auditar: `instructions/` seguia mapeada a ARQUITECTURA despues de que el estandar
+    # dejara de gobernarla, asi que un PR con un skill y un archivo de instrucciones se BLOQUEABA por
+    # «mezcla de firmantes» por un tipo que decidimos NO gobernar. Bloquear por algo que el estandar
+    # no exige manda a partir pull requests sin motivo.
+    assert clase_de("docs/api.instructions.md") is None
+    assert revisar_mezcla_de_aprobadores(
+        ("docs/api.instructions.md", "skills/uno/SKILL.md")) == []
+
+
+def test_un_plugin_cuyo_nombre_acaba_en_hooks_no_exige_firma_de_seguridad():
+    # MEDIDO al auditar: la comparacion era por SUBCADENA, asi que el patron `hooks/` casaba con
+    # `mis-hooks/` y devolvia SEGURIDAD para un SKILL. Cualquier plugin llamado `*-hooks` exigia
+    # revisor de seguridad para todos sus artefactos, y ademas contaba como mezcla contra otro plugin.
+    assert clase_de("plugins/mis-hooks/skills/x/SKILL.md") is ClaseAprobador.DOMINIO
+    assert clase_de("plugins/git-hooks/commands/y.prompt.md") is ClaseAprobador.DOMINIO
+    # Y el hooks de verdad sigue exigiendola:
+    assert clase_de("plugins/p/hooks/auditoria.json") is ClaseAprobador.SEGURIDAD
+
+
+def test_el_mensaje_dice_cuantas_rutas_deja_fuera():
+    # Un tope de legibilidad que truncara en silencio se lee como la lista completa: el autor separa
+    # el PR creyendo que son tres archivos y se encuentra con siete.
+    cambios = tuple(f"skills/s{i}/SKILL.md" for i in range(7)) + (".mcp.json",)
+    mensaje = _mensajes(_errores(revisar_mezcla_de_aprobadores(cambios)))
+    assert "y 4 mas" in mensaje, mensaje
 
 
 def test_solo_archivos_sin_clase_no_produce_mezcla():

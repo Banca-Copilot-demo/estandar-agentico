@@ -39,7 +39,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  VERSION_PYTHON: "3.12"
   RUTA_LINEA_BASE: linea-base-mcp.json
 
 jobs:
@@ -49,10 +48,10 @@ jobs:
       - name: Descargar el estandar
         uses: actions/checkout@v4
 
-      - name: Preparar Python ${{ env.VERSION_PYTHON }}
+      - name: Preparar Python (version del estandar)
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.VERSION_PYTHON }}
+          python-version-file: .python-version
 
       - name: Instalar el validador, que aporta el calculo del digest
         shell: bash

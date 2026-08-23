@@ -21,6 +21,15 @@ from pathlib import Path
 
 import yaml
 
+from validador_agentico.dominio.forma_frontmatter import (
+    CLAVE_METADATA,
+    CLAVE_OBSERVACIONES,
+    OBSERVACION_ALLOWED_TOOLS_LISTA,
+    OBSERVACION_MODEL_ARRAY,
+    OBSERVACION_SKILLS_REFERENCE,
+    observar,
+)
+
 log = logging.getLogger(__name__)
 
 _DELIMITADO = re.compile(r"^---\r?\n(.*?)\r?\n---\r?\n", re.S)
@@ -50,38 +59,10 @@ def es_yaml_valido(ruta: Path) -> str | None:
     return None
 
 
-# LAS TRES OBSERVACIONES DE FORMA van bajo esta clave y no al nivel de las claves declaradas, y el
-# motivo se MIDIO al ejecutar los esquemas por primera vez: mezcladas arriba, el esquema del skill las
-# rechazaba como «propiedades no evaluadas» en los cinco artefactos reales de la demo. Y con razon: no
-# son claves del frontmatter, son cosas que se OBSERVAN de su YAML -- que `allowed-tools` se escribio
-# como lista, que `model` es un array, que hay un `skillsReference` --. Separarlas deja que el objeto
-# ensamblado contenga solo lo que el artefacto declara de verdad.
-CLAVE_OBSERVACIONES = "_forma"
-CLAVE_METADATA = "metadata"
-
-# Las tres claves cuyo TIPO delata una forma mal escrita.
-_CLAVE_ALLOWED_TOOLS = "allowed-tools"
-_CLAVE_MODEL = "model"
-_CLAVE_SKILLS_REFERENCE = "skillsReference"
-
-OBSERVACION_ALLOWED_TOOLS_LISTA = "allowed_tools_es_lista"
-OBSERVACION_MODEL_ARRAY = "model_es_array"
-OBSERVACION_SKILLS_REFERENCE = "tiene_skills_reference"
-
-
-def observacion(frontmatter: dict, cual: str) -> bool:
-    """Lee una observacion de forma. Se expone como funcion para que las reglas no tengan que saber
-    donde se guardan: si mañana cambia la clave, cambia aqui y no en cada regla."""
-    return bool((frontmatter.get(CLAVE_OBSERVACIONES) or {}).get(cual))
-
-
-def solo_lo_declarado(frontmatter: dict) -> dict:
-    """El frontmatter SIN las observaciones de forma: solo lo que el artefacto declara de verdad.
-
-    Es lo que se valida contra el esquema. Vive aqui y no en el dominio porque el dominio no tiene que
-    saber que este adaptador añade nada: quien lo añade, lo quita.
-    """
-    return {c: v for c, v in frontmatter.items() if c != CLAVE_OBSERVACIONES}
+# LAS OBSERVACIONES DE FORMA y la clave `metadata` viven en `dominio/forma_frontmatter`, no aqui, y el
+# motivo es la regla de dependencia: dos modulos de `dominio/` las necesitan, y si viven en este
+# adaptador el dominio tiene que importar hacia fuera -- lo que G5 prohibe --. Este modulo las importa
+# hacia dentro, que es la direccion correcta, y se limita a lo suyo: leer el archivo y parsear.
 
 
 def leer(ruta: Path) -> dict | None:
@@ -113,7 +94,7 @@ def leer(ruta: Path) -> dict | None:
     return {
         **{c: v for c, v in analizado.items() if c != CLAVE_METADATA},
         CLAVE_METADATA: metadata if isinstance(metadata, dict) else {},
-        CLAVE_OBSERVACIONES: _observaciones(analizado),
+        CLAVE_OBSERVACIONES: observar(analizado),
     }
 
 
@@ -145,19 +126,6 @@ def _analizar(bloque: str) -> dict | None:
         log.debug("frontmatter con YAML invalido, se extrae de forma degradada: %s", fallo)
         return None
     return analizado if isinstance(analizado, dict) else None
-
-
-def _observaciones(analizado: dict) -> dict[str, bool]:
-    """Las tres formas mal escritas, vistas sobre la estructura ya parseada.
-
-    Antes se detectaban por expresiones regulares sobre el texto. Con el parser, son comprobaciones de
-    TIPO -- que es lo que de verdad se quiere saber -- y no de como se escribio.
-    """
-    return {
-        OBSERVACION_ALLOWED_TOOLS_LISTA: isinstance(analizado.get(_CLAVE_ALLOWED_TOOLS), list),
-        OBSERVACION_MODEL_ARRAY: isinstance(analizado.get(_CLAVE_MODEL), list),
-        OBSERVACION_SKILLS_REFERENCE: _CLAVE_SKILLS_REFERENCE in analizado,
-    }
 
 
 def _observaciones_por_regex(bloque: str) -> dict[str, bool]:

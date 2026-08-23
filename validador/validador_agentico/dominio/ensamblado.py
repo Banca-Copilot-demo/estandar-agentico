@@ -21,7 +21,8 @@ frontmatter estaria describiendo un artefacto que no existe.
 """
 from __future__ import annotations
 
-CLAVE_METADATA = "metadata"
+from validador_agentico.dominio.forma_frontmatter import CLAVE_METADATA
+
 CLAVE_KIND = "kind"
 
 
