@@ -7,6 +7,12 @@ from __future__ import annotations
 
 import re
 
+from validador_agentico.adaptadores.frontmatter import (
+    OBSERVACION_ALLOWED_TOOLS_LISTA,
+    OBSERVACION_MODEL_ARRAY,
+    OBSERVACION_SKILLS_REFERENCE,
+    observacion,
+)
 from validador_agentico.dominio.especificacion import (
     CAMPOS_ENVELOPE,
     ESTADO_EN_AUTORIA,
@@ -74,7 +80,7 @@ def revisar_skill(donde: str, nombre_directorio: str, frontmatter: dict,
                   lineas_cuerpo: int) -> list[Hallazgo]:
     """Un skill: lo que la especificacion Agent Skills exige, mas el envelope del estandar."""
     hallazgos: list[Hallazgo] = []
-    if frontmatter.get("allowed_tools_es_lista"):
+    if observacion(frontmatter, OBSERVACION_ALLOWED_TOOLS_LISTA):
         hallazgos.append(error(donde, "`allowed-tools` es una lista YAML; la especificacion exige "
                                       "una CADENA separada por espacios"))
     hallazgos += _revisar_nombre(donde, frontmatter.get("name"), nombre_directorio)
@@ -111,11 +117,11 @@ def revisar_prompt(donde: str, frontmatter: dict) -> list[Hallazgo]:
     """Un prompt: punto de entrada con enrutamiento. Las dos primeras comprobaciones salen de
     defectos MEDIDOS en el activo del cliente (hallazgos 10 y 21)."""
     hallazgos: list[Hallazgo] = []
-    if frontmatter.get("model_es_array"):
+    if observacion(frontmatter, OBSERVACION_MODEL_ARRAY):
         hallazgos.append(error(donde, "`model` es un array de nombres fijos. Declara un modelo y "
                                       "deja la lista en el `model_allowlist` del plugin: si no, "
                                       "cada rotacion del catalogo obliga a tocar todos los archivos"))
-    if frontmatter.get("tiene_skills_reference"):
+    if observacion(frontmatter, OBSERVACION_SKILLS_REFERENCE):
         hallazgos.append(error(donde, "`skillsReference` no es un campo estandar. Usa "
                                       "`dependencies` por `id`: una ruta de sistema de archivos "
                                       "no resuelve en la maquina de otra persona"))

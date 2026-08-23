@@ -65,6 +65,11 @@ def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--rama-base", metavar="REF",
                         help="rama base del pull request. Activa la regla de que un PR no mezcle "
                              "artefactos con firmantes distintos. Sin esto, la regla no aplica")
+    parser.add_argument("--esquemas", type=Path, metavar="RUTA",
+                        help="directorio con los esquemas JSON contra los que comprobar la FORMA de "
+                             "cada artefacto. Sin este flag esa comprobacion no se ejecuta, y el "
+                             "informe lo dice: un gate que no comprueba y calla es indistinguible de "
+                             "uno que comprobo y aprobo.")
     parser.add_argument("--sin-comprobacion-oficial", action="store_true",
                         help="no invoca `gh skill publish --dry-run`. La comprobacion se declara "
                              "`no aplica` con su motivo: nunca se da por buena en silencio")
@@ -86,7 +91,8 @@ def main(argv: list[str] | None = None) -> int:
 
     resultado = ejecutar(raiz, comprobador_oficial=gh_skill,
                          con_comprobacion_oficial=not argumentos.sin_comprobacion_oficial,
-                         equipos_conocidos=equipos, archivos_cambiados=cambios)
+                         equipos_conocidos=equipos, archivos_cambiados=cambios,
+                         directorio_de_esquemas=argumentos.esquemas)
     if argumentos.anotaciones:
         # Antes del informe: los comandos de workflow los recoge el runner de stdout, y asi quedan
         # arriba en el registro, no sepultados bajo el detalle.

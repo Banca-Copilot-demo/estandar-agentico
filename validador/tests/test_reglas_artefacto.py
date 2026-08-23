@@ -83,7 +83,7 @@ def test_name_distinto_del_directorio_es_error():
 def test_allowed_tools_como_lista_es_error():
     # La forma natural de escribirlo en YAML es una lista, y la especificacion exige una CADENA.
     errores = _errores(revisar_skill("x", "mi-skill",
-                                     _skill(allowed_tools_es_lista=True), 10))
+                                     _skill(_forma={"allowed_tools_es_lista": True}), 10))
     assert "CADENA" in _mensajes(errores)
 
 
@@ -114,12 +114,12 @@ def test_prompt_conforme_no_produce_hallazgos():
 
 def test_model_como_array_es_error():
     # Defecto medido en el activo del cliente: la misma lista de 4 modelos repetida en 13 archivos.
-    errores = _errores(revisar_prompt("x", _prompt(model_es_array=True)))
+    errores = _errores(revisar_prompt("x", _prompt(_forma={"model_es_array": True})))
     assert "model_allowlist" in _mensajes(errores)
 
 
 def test_skills_reference_es_error_porque_no_es_estandar():
     # Defecto medido: el campo lo invento el equipo, y contenia una ruta del escritorio de un
     # desarrollador que no resuelve en ninguna otra maquina.
-    errores = _errores(revisar_prompt("x", _prompt(tiene_skills_reference=True)))
+    errores = _errores(revisar_prompt("x", _prompt(_forma={"tiene_skills_reference": True})))
     assert "dependencies" in _mensajes(errores)

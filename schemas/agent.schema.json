@@ -113,12 +113,9 @@
       "description": "Herramientas que el agente puede usar. `tools` y no `allowed_tools`: es la clave que Copilot lee para un agente, y un agente real de BCP ya la declara asi. Nota: para un SKILL la clave equivalente es `allowed-tools` y su valor es una cadena separada por espacios — mismo concepto, dos formas segun el tipo, y no las unificamos porque las fija el cliente."
     },
     "model": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
+      "type": "string",
       "x-read-from": "frontmatter",
-      "description": "Modelos con los que el agente se probo. Lo declaran 17 artefactos reales."
+      "description": "UNA CADENA, no un array, y esto es una divergencia CORREGIDA: el esquema pedia un array y la regla del gate trata el array como ERROR. Gana la regla, y su motivo esta medido en artefactos reales -- un array de nombres fijos obliga a tocar todos los archivos en cada rotacion del catalogo de modelos --. La lista de modelos admitidos va en el `model_allowlist` del plugin, en un solo sitio. Texto libre con AVISO si no esta en una lista conocida: fijar un enum aqui caducaria cada vez que el proveedor publica un modelo."
     },
     "evals": {
       "type": "object",

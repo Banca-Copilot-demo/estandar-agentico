@@ -117,6 +117,11 @@
           "description": "Motivo de la exencion. PENDIENTE DE DECISION: hoy la exencion vive dentro del artefacto, asi que la escribe quien la pide. Un ledger de gobierno externo seria mejor sitio."
         }
       }
+    },
+    "license": {
+      "type": "string",
+      "x-read-from": "frontmatter",
+      "description": "Uno de los SEIS campos que la especificacion Agent Skills admite en el frontmatter, y estaba sin declarar: el esquema rechazaba como «propiedad no evaluada» un campo OFICIAL que los cinco skills reales de la demo llevan. Se descubrio al ejecutar los esquemas por primera vez. Se recomienda un identificador SPDX, pero no se impone un enum: un artefacto interno puede llevar `Proprietary`, que no es SPDX."
     }
   },
   "unevaluatedProperties": false,

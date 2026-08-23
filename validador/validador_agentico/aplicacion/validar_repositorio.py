@@ -13,6 +13,7 @@ import logging
 from dataclasses import replace
 from pathlib import Path
 
+from validador_agentico.adaptadores import esquema
 from validador_agentico.adaptadores import frontmatter as adaptador_frontmatter
 from validador_agentico.adaptadores import repositorio as adaptador_repositorio
 from validador_agentico.adaptadores.repositorio import (
@@ -26,6 +27,7 @@ from validador_agentico.dominio import reglas_credenciales, reglas_layout, regla
 from validador_agentico.dominio import reglas_instructions, reglas_recursos
 from validador_agentico.dominio import reglas_higiene, reglas_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
+from validador_agentico.dominio import ensamblado
 from validador_agentico.dominio.especificacion import RUTAS_MANIFIESTO
 from validador_agentico.dominio.hallazgo import (
     Hallazgo,
@@ -40,7 +42,8 @@ log = logging.getLogger(__name__)
 def validar(raiz: Path, *, lector=adaptador_frontmatter,
             repositorio=adaptador_repositorio,
             equipos_conocidos: frozenset[str] | None = None,
-            archivos_cambiados: tuple[str, ...] | None = None) -> Veredicto:
+            archivos_cambiados: tuple[str, ...] | None = None,
+            directorio_de_esquemas: Path | None = None) -> Veredicto:
     """`equipos_conocidos` y `archivos_cambiados` llegan como DATOS y no como adaptadores: son
     contexto que el composition root resuelve una sola vez. Los dos admiten `None`, que significa
     «no se pudo averiguar» y produce un aviso -- nunca un pase silencioso."""
@@ -74,6 +77,7 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
             *_revisar_yaml(contenido),
             *_revisar_recursos(contenido),
             *_revisar_duenos(contenido, equipos_conocidos),
+            *_revisar_forma_contra_esquemas(contenido, directorio_de_esquemas),
         ])
         artefactos += proyeccion.listar_artefactos(contenido, raiz_plugin)
         publicado = proyeccion.plugin_publicado(contenido, raiz_plugin, raiz)
@@ -278,6 +282,55 @@ def _revisar_solapamiento_de_instructions(contenido: ContenidoRepositorio) -> li
     ]
     return reglas_instructions.revisar_solapamiento(
         [(donde, ambito) for donde, ambito in declaradas if ambito])
+
+
+# Que esquema valida cada coleccion de artefactos, y con que `kind` se ensambla.
+_ESQUEMA_POR_COLECCION = (
+    ("skills", "skill", "skill.schema.json"),
+    ("prompts", "prompt", "prompt.schema.json"),
+    ("agentes_leidos", "agent", "agent.schema.json"),
+)
+
+
+def _revisar_forma_contra_esquemas(contenido: ContenidoRepositorio,
+                                   directorio: Path | None) -> list[Hallazgo]:
+    """G1 sobre los ESQUEMAS: que cada artefacto tenga la forma que su tipo declara.
+
+    POR QUE ESTO Y LAS REGLAS A LA VEZ, sin duplicarse. El esquema valida la FORMA -- que los campos
+    esten, que sean del tipo correcto, que los enums tengan un valor admitido, que no haya claves
+    inventadas -- y es declarativo. Las reglas validan lo que un esquema NO PUEDE: que una fecha no
+    haya vencido, que un equipo resuelva contra la organizacion, que una ruta exista en el arbol. Son
+    comprobaciones contra el MUNDO, no contra la forma.
+
+    POR QUE HACIA FALTA. Los esquemas eran documentos que ningun codigo ejecutaba, asi que decian una
+    cosa y las reglas otra. Al ejecutarlos por primera vez aparecieron tres divergencias en los
+    artefactos REALES de la demo: el esquema del prompt pedia `model` como array y la regla trata el
+    array como error; exigia un `produces` que ningun prompt tenia; y el del skill rechazaba
+    `license`, que es uno de los SEIS campos oficiales de la especificacion.
+
+    SIN ESQUEMAS ES ERROR, no silencio: un gate que no puede comprobar y calla es indistinguible de
+    uno que comprobo y aprobo. `directorio=None` significa «no se pidio esta comprobacion» -- para que
+    una prueba de otra cosa no tenga que llevarse los esquemas detras --, y eso si es legitimo.
+    """
+    if directorio is None:
+        return []
+
+    hallazgos: list[Hallazgo] = []
+    for coleccion, kind, nombre_esquema in _ESQUEMA_POR_COLECCION:
+        for artefacto in getattr(contenido, coleccion):
+            if artefacto.frontmatter is None:
+                # La ausencia de frontmatter ya la senala la regla del tipo; aqui no hay objeto que
+                # ensamblar y repetirlo daria dos hallazgos por el mismo defecto.
+                continue
+            objeto = ensamblado.ensamblar(
+                adaptador_frontmatter.solo_lo_declarado(artefacto.frontmatter), None, kind)
+            try:
+                defectos = esquema.incumplimientos(objeto, nombre_esquema, directorio)
+            except esquema.EsquemasNoDisponiblesError as fallo:
+                return [error(str(directorio), f"no se pudo comprobar la forma: {fallo}")]
+            hallazgos += [error(artefacto.ruta_relativa, f"forma invalida — {defecto}")
+                          for defecto in defectos]
+    return hallazgos
 
 
 def _revisar_yaml(contenido: ContenidoRepositorio) -> list[Hallazgo]:

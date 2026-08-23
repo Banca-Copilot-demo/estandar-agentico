@@ -60,6 +60,8 @@ runs:
           git fetch --quiet --depth=1 origin "${GITHUB_BASE_REF}"
           base="--rama-base origin/${GITHUB_BASE_REF}"
         fi
-        python -m validador_agentico.cli .           --organizacion "${GITHUB_REPOSITORY_OWNER}"           $base           --anotaciones           --escribir-resumen "$GITHUB_STEP_SUMMARY"           --verbose
+        # `--esquemas` apunta a los esquemas DEL ESTANDAR, no del repositorio validado: el contrato
+        # lo publica la plataforma, y dejar que cada dominio traiga los suyos permitiria relajarlos.
+        python -m validador_agentico.cli .           --organizacion "${GITHUB_REPOSITORY_OWNER}"           --esquemas "${{ github.action_path }}/../../../schemas"           $base           --anotaciones           --escribir-resumen "$GITHUB_STEP_SUMMARY"           --verbose
       env:
         GH_TOKEN: ${{ github.token }}

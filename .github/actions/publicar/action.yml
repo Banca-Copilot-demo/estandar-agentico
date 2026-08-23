@@ -82,7 +82,11 @@ runs:
       id: veredicto
       shell: bash
       run: |
-        python -m validador_agentico.cli . --formato json > veredicto.json
+        # CON LOS ESQUEMAS, igual que el gate del pull request. Sin ellos aqui se sellaria un
+        # artefacto cuya FORMA no se comprobo, y el veredicto firmado diria «conforme» sobre algo que
+        # el gate de la PR si habria rechazado: las dos comprobaciones tienen que ser la misma.
+        python -m validador_agentico.cli . --formato json \
+          --esquemas "${{ github.action_path }}/../../../schemas" > veredicto.json
         cat veredicto.json
 
     # DE QUE PLUGIN ES ESTA ETIQUETA. Un repositorio de dominio puede alojar varios, y entonces la

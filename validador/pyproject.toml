@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "Validador de artefactos agenticos: gates G1, G3 y G4."
 requires-python = ">=3.11"
 # Solo para comprobar que el frontmatter es YAML VALIDO. La extraccion no lo usa.
-dependencies = ["pyyaml>=6"]
+# `jsonschema` porque el gate valida la FORMA de cada artefacto contra su esquema, en vez de
+# reimplementar en Python lo que el esquema ya declara. Sin eso habia dos fuentes de verdad sobre el
+# mismo contrato, y divergieron.
+dependencies = ["pyyaml>=6", "jsonschema>=4.21"]
 
 [project.scripts]
 validar-artefactos = "validador_agentico.cli:main"
