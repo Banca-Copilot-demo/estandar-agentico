@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Entry point: imprime los PLUGINS del repositorio, uno por linea.
 
-`<ruta relativa>TAB<nombre>TAB<version>`, con `.` cuando el plugin es la raiz del repositorio.
+`<ruta relativa>TAB<nombre>TAB<version>TAB<etiqueta>`, con `.` de ruta cuando la unidad es la
+raiz del repositorio. La ETIQUETA se emite calculada -- no la construye el consumidor -- porque su
+forma depende de si el repositorio publica una unidad o varias, y eso solo se sabe aqui.
 
 POR QUE EXISTE. Un repositorio de dominio puede alojar varios plugins bajo `plugins/<nombre>/`,
 y entonces el etiquetado y el empaquetado necesitan saber cuales son y donde. Y necesitan
@@ -30,6 +32,7 @@ from validador_agentico.adaptadores.repositorio import (
     RUTA_GOBIERNO,
     RUTA_MCP,
 )
+from validador_agentico.dominio import reglas_etiquetas
 from validador_agentico.dominio.especificacion import RUTAS_MANIFIESTO
 from validador_agentico.dominio.reglas_layout import unidades_publicables
 
@@ -121,18 +124,26 @@ def listar(raiz: Path) -> list[tuple[str, str, str]]:
     El caso de UN SOLO plugin en la raiz sigue dando `.` sin nombre propio: ahi el repositorio entero
     ES el plugin y su manifiesto ya lo nombra.
     """
-    encontrados = []
+    identificadas = []
     for unidad in unidades_publicables(raiz, RUTAS_MANIFIESTO,
                                         _DIRECTORIOS_DE_ARTEFACTOS, _ARCHIVOS_DE_ARTEFACTOS):
         identidad = _identidad_de(unidad, raiz)
         if identidad is None:
             continue
-        relativa = unidad.relative_to(raiz).as_posix() or "."
-        encontrados.append((relativa, *identidad))
+        identificadas.append((unidad.relative_to(raiz).as_posix() or ".", *identidad))
 
-    if not encontrados:
+    if not identificadas:
         log.info("%s no tiene plugin ni gobierno con version: no hay nada que publicar", raiz)
-    return encontrados
+        return []
+
+    # LA ETIQUETA SE CALCULA AQUI Y SE EMITE, en vez de dejar que el etiquetado la construya. Estaba
+    # en tres lineas de bash dentro del workflow, donde ninguna prueba la alcanzaba, y se equivoco al
+    # aparecer el repositorio mixto: la condicion era «subruta `.` -> forma corta», y en un repo con
+    # plugins eso produjo un `v1.0.0` que significaba «todo excepto los plugins». Con la etiqueta como
+    # columna, el consumidor no decide nada y la regla tiene pruebas.
+    unica = len(identificadas) == 1
+    return [(ruta, nombre, version, reglas_etiquetas.etiqueta_de(nombre, version, unica))
+            for ruta, nombre, version in identificadas]
 
 
 def _identidad_de(unidad: Path, raiz: Path) -> tuple[str, str] | None:

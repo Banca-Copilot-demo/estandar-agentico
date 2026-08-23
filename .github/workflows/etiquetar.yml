@@ -168,16 +168,25 @@ jobs:
           # El separador se construye con printf: un tabulador literal dentro del YAML es
           # fragil, porque los editores y los formateadores lo convierten en espacios.
           TAB="$(printf '\t')"
-          while IFS="$TAB" read -r ruta nombre version; do
+          # LA ETIQUETA LLEGA CALCULADA, en una cuarta columna, y este bash ya no la construye. Se
+          # decidia aqui con «si la subruta es . entonces vX.Y.Z», y se equivoco en cuanto aparecio el
+          # repositorio MIXTO: el conjunto suelto tiene subruta `.` y NO esta solo, asi que en
+          # `agentes-sdlc` se creo un `v1.0.0` conviviendo con cuatro etiquetas nombradas --
+          # significando «todo excepto los plugins», una definicion por resta que nadie deduce --. La
+          # forma depende de si el REPOSITORIO publica una unidad o varias, un dato que este bucle no
+          # tiene.
+          #
+          # Es el contrato mas caro de equivocar de toda la cadena: con releases inmutables una
+          # etiqueta mal puesta NO SE BORRA. Ahora la decide `dominio.reglas_etiquetas`, con pruebas.
+          while IFS="$TAB" read -r ruta nombre version etiqueta; do
             [ -n "$nombre" ] || continue
             if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
               echo "::error::la version de $ruta no es SemVer: $version"
               exit 1
             fi
-            if [ "$ruta" = "." ]; then
-              etiqueta="v${version}"
-            else
-              etiqueta="${nombre}--v${version}"
+            if [ -z "$etiqueta" ]; then
+              echo "::error::el descubrimiento no emitio etiqueta para $nombre: no se etiqueta a ciegas"
+              exit 1
             fi
             if git rev-parse -q --verify "refs/tags/${etiqueta}" >/dev/null; then
               echo "| \`$nombre\` | $version | \`$etiqueta\` | ya existia, la version no subio |" >> "$GITHUB_STEP_SUMMARY"

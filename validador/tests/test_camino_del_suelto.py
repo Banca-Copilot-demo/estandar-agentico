@@ -85,7 +85,8 @@ def test_un_repositorio_de_sueltos_ES_una_unidad_publicable(tmp_path):
     # El defecto: aqui se devolvia [] y por eso no habia etiqueta, ni release, ni atestacion, ni ficha.
     _repositorio_suelto(tmp_path)
 
-    assert listar(tmp_path) == [(".", "demo.sdlc.sueltos", "1.0.0")]
+    # Etiqueta CORTA: es la unica unidad, asi que `v1.0.0` se refiere al repositorio sin ambiguedad.
+    assert listar(tmp_path) == [(".", "demo.sdlc.sueltos", "1.0.0", "v1.0.0")]
 
 
 def test_sin_version_en_el_gobierno_no_hay_nada_que_etiquetar(tmp_path):
@@ -109,9 +110,12 @@ def test_un_repositorio_MIXTO_publica_el_plugin_Y_el_conjunto_suelto(tmp_path):
 
     unidades = listar(tmp_path)
 
+    # LAS DOS ETIQUETAS VAN NOMBRADAS. Es el defecto que se midio en `agentes-sdlc`: la etiqueta del
+    # conjunto suelto salio `v1.0.0` conviviendo con cuatro nombradas, y ahi significaba «todo excepto
+    # los plugins» -- una definicion por resta que nadie deduce leyendola --.
     assert unidades == [
-        ("plugins/uno", "demo.sdlc.uno", "2.0.0"),
-        (".", "demo.sdlc.sueltos", "1.0.0"),
+        ("plugins/uno", "demo.sdlc.uno", "2.0.0", "demo.sdlc.uno--v2.0.0"),
+        (".", "demo.sdlc.sueltos", "1.0.0", "demo.sdlc.sueltos--v1.0.0"),
     ], unidades
 
 
@@ -141,7 +145,7 @@ def test_UN_plugin_en_la_raiz_no_se_etiqueta_DOS_veces(tmp_path):
     (tmp_path / "GOVERNANCE.json").write_text(json.dumps(
         {**_GOBIERNO, "id": "demo.sdlc.solo"}), encoding="utf-8")
 
-    assert listar(tmp_path) == [(".", "demo.sdlc.solo", "3.0.0")]
+    assert listar(tmp_path) == [(".", "demo.sdlc.solo", "3.0.0", "v3.0.0")]
 
 
 # ── el gate: la version sobra con plugin y falta sin el ────────────────────────────────────
