@@ -31,12 +31,6 @@ SUFIJO_AGENTE = "*.agent.md"
 SUFIJO_PROMPT = "*.prompt.md"
 SUFIJO_INSTRUCTIONS = "*.instructions.md"
 RUTA_MCP = ".mcp.json"
-# La metadata de gobierno del `mcp` NO va dentro del `.mcp.json`: ese archivo es la configuracion que
-# lee el CLIENTE y no admite frontmatter ni claves nuestras. Toda su metadata vive en este hermano.
-# MEDIDO con un `mcp` real: el gate exigia `credentials` dentro del `.mcp.json`, justo donde el
-# esquema dice que no debe estar -- habria obligado a meter campos de gobierno en un archivo que
-# consumen los clientes.
-RUTA_METADATA_MCP = "METADATA.json"
 DIRECTORIO_VALIDADOR = "validador"
 
 
@@ -79,9 +73,6 @@ class ContenidoRepositorio:
     # El `.mcp.json` LEIDO, no solo contado: hay reglas que se aplican sobre lo que declara -- que
     # sus referencias esten FIJADAS a una version, por ejemplo -- y para eso hace falta su contenido.
     mcp: ArchivoJson | None = None
-    # Su `METADATA.json` hermano: ahi vive TODA la metadata de gobierno del `mcp`, porque el
-    # `.mcp.json` es configuracion del cliente y no admite claves nuestras.
-    metadata_mcp: ArchivoJson | None = None
     skills: tuple[Artefacto, ...] = ()
     prompts: tuple[Artefacto, ...] = ()
     # Se LEEN, no solo se cuentan: sin frontmatter no hay gate que aplicarles.
@@ -221,10 +212,6 @@ def leer(raiz: Path, lector) -> ContenidoRepositorio:
         gobierno=_leer_json(raiz, gobierno) if gobierno.exists() else None,
         hooks=_leer_json(raiz, hooks) if hooks else None,
         mcp=_leer_json(raiz, raiz / RUTA_MCP) if (raiz / RUTA_MCP).is_file() else None,
-        # Solo se lee si hay `mcp`: un `METADATA.json` sin `.mcp.json` al lado no gobierna nada.
-        metadata_mcp=(_leer_json(raiz, raiz / RUTA_METADATA_MCP)
-                      if (raiz / RUTA_MCP).is_file() and (raiz / RUTA_METADATA_MCP).is_file()
-                      else None),
         skills=_leer_artefactos_por_directorio(raiz, lector),
         prompts=_leer_prompts(raiz, lector),
         agentes=len(agentes_leidos),

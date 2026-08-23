@@ -9,6 +9,7 @@ red, ni parchear modulos.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from validador_agentico.aplicacion.ejecutar_gate import NOMBRE_COMPROBACION_PROPIA, ejecutar
@@ -159,19 +160,35 @@ def test_desactivarla_no_la_invoca_y_deja_su_motivo_escrito(tmp_path):
 _MCP_FIJADO = '{"mcpServers": {"catalogo": {"command": "uvx", "args": ["paquete-mcp@0.4.1"]}}}'
 
 
-def _crear_mcp(raiz, gobierno: str | None = None) -> None:
-    """Un `mcp` se declara con DOS archivos: la configuracion que lee el cliente y el `METADATA.json`
-    hermano donde vive nuestro gobierno. `gobierno=None` simula el hermano ausente."""
+def _crear_mcp(raiz, credenciales: dict | None = None) -> None:
+    """Un `mcp` se declara con DOS archivos: el `.mcp.json` que lee el CLIENTE -- al que no se le
+    añade ninguna clave nuestra -- y el bloque `mcp` del `GOVERNANCE.json`, donde vive el gobierno.
+
+    `credenciales=None` simula que el gobierno no declara el bloque `mcp`.
+    """
     (raiz / ".mcp.json").write_text(_MCP_FIJADO, encoding="utf-8")
-    if gobierno is not None:
-        (raiz / "METADATA.json").write_text(gobierno, encoding="utf-8")
+    # EL GOBIERNO SE ESCRIBE COMPLETO, no solo el bloque `mcp`. Al vivir el gobierno del mcp aqui, un
+    # `GOVERNANCE.json` a medias activa las reglas del PLUGIN y la prueba fallaria por `owner.team`
+    # vacio en vez de por lo que mide -- asi se descubrio, y por eso este helper es explicito.
+    gobierno = {
+        "id": "demo.x.y",
+        "domain": "x",
+        "owner": {"team": "squad-x", "contact": "squad-x@ejemplo.dev"},
+        "status": "draft",
+        "data_classification": "internal",
+        "standard_version": "7.0.0",
+        "artifacts": {"skills": 1, "agents": 0, "prompts": 0, "mcps": 1, "instructions": 0},
+    }
+    if credenciales is not None:
+        gobierno["mcp"] = {"credentials": credenciales}
+    (raiz / "GOVERNANCE.json").write_text(json.dumps(gobierno), encoding="utf-8")
 
 
 def test_un_mcp_sin_custodia_declarada_bloquea_el_gate(tmp_path):
     """Defecto medido: ninguna prueba del arnes tenia un `.mcp.json`, asi que el cableado del
     adaptador no estaba cubierto y un fallo al leerlo pasaba las 84 pruebas en verde."""
     raiz = _repositorio_minimo(tmp_path)
-    _crear_mcp(raiz, '{"credentials": {"mechanism": "secret-ref"}}')
+    _crear_mcp(raiz, {"mechanism": "secret-ref"})
 
     resultado = ejecutar(raiz, comprobador_oficial=ComprobadorFalso(Resultado.CONFORME))
 
@@ -183,24 +200,25 @@ def test_un_mcp_sin_custodia_declarada_bloquea_el_gate(tmp_path):
 
 def test_un_mcp_con_oauth_no_pide_custodia(tmp_path):
     raiz = _repositorio_minimo(tmp_path)
-    _crear_mcp(raiz, '{"credentials": {"mechanism": "oauth"}}')
+    _crear_mcp(raiz, {"mechanism": "oauth"})
 
     resultado = ejecutar(raiz, comprobador_oficial=ComprobadorFalso(Resultado.CONFORME))
 
     assert resultado.conforme
 
 
-def test_un_mcp_sin_su_METADATA_hermano_bloquea_el_gate(tmp_path):
-    """Defecto MEDIDO con un `mcp` real: el gobierno se leia del propio `.mcp.json`, que es justo
-    donde el esquema dice que NO va -- es configuracion del cliente y no admite claves nuestras --.
-    Sin el hermano, el `mcp` no declara dueno, ni credencial, ni aprobacion."""
+def test_un_mcp_sin_su_bloque_en_el_gobierno_bloquea_el_gate(tmp_path):
+    """Defecto MEDIDO con un `mcp` real: el gobierno se leia del propio `.mcp.json`. Ese archivo lo
+    consume el CLIENTE -- los plugins reales lo llevan con una sola clave, `mcpServers` -- asi que
+    meter campos nuestros nos haria depender de lo estricto que sea cada cliente. El gobierno vive en
+    `GOVERNANCE.json`, y sin su bloque `mcp` el servidor no tiene dueno de credencial ni aprobacion."""
     raiz = _repositorio_minimo(tmp_path)
-    _crear_mcp(raiz, gobierno=None)
+    _crear_mcp(raiz, credenciales=None)
 
     resultado = ejecutar(raiz, comprobador_oficial=ComprobadorFalso(Resultado.CONFORME))
 
     assert not resultado.conforme
-    assert "METADATA.json" in " ".join(h.mensaje for h in resultado.veredicto.errores)
+    assert "GOVERNANCE.json" in " ".join(h.donde for h in resultado.veredicto.errores)
 
 
 def test_un_mcp_con_referencia_movil_bloquea_el_gate(tmp_path):

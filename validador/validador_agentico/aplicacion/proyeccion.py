@@ -139,35 +139,44 @@ def mcp_publicado(contenido: ContenidoRepositorio, raiz: Path) -> ArtefactoPubli
     """El `mcp` como artefacto del predicado, o `None` si no hay o no esta gobernado.
 
     Va aparte de los demas porque su metadata NO esta en un frontmatter -- un `.mcp.json` es
-    configuracion del cliente y no admite uno -- sino en el `METADATA.json` hermano, y sus campos van
-    en la raiz de ese archivo en vez de bajo una clave `metadata`.
+    configuracion del cliente y no admite uno -- sino en el `GOVERNANCE.json` del plugin, bajo la
+    clave `mcp`.
+
+    HEREDA EL ENVELOPE DEL PLUGIN: dueno, clasificacion y version del estandar salen del gobierno, no
+    de una declaracion propia. Un `mcp` es uno por plugin, asi que declararlos aparte serian cinco
+    campos duplicados -- y duplicarlos es pedir que divergan. Lo unico que declara por su cuenta es la
+    custodia de la CREDENCIAL, que es de otro equipo.
 
     EL `sha256` ES DEL `.mcp.json`, que es el archivo que puede cambiar sin que cambie nada mas. Y
     `tools_digest` se copia de lo declarado: es la referencia contra la que la comprobacion periodica
     detecta que el servidor cambio sus herramientas, y aqui viaja FIRMADA.
     """
-    if contenido.mcp is None or contenido.metadata_mcp is None:
+    if contenido.mcp is None or contenido.gobierno is None:
         return None
-    if not contenido.metadata_mcp.es_legible:
+    if not contenido.gobierno.es_legible:
         return None
-    metadata = contenido.metadata_mcp.contenido
-    if not metadata.get("id"):
+    gobierno = contenido.gobierno.contenido
+    bloque = gobierno.get("mcp")
+    if not isinstance(bloque, dict) or not gobierno.get("id"):
         return None
+    dueno = gobierno.get("owner") or {}
     return ArtefactoPublicado(
-        id=str(metadata["id"]),
+        # El `mcp` no tiene id propio: es una capacidad DEL plugin, asi que se identifica con el suyo
+        # mas el tipo. Un id inventado aparte seria un segundo nombre para la misma cosa.
+        id=f"{gobierno['id']}.{TIPO_MCP}",
         tipo=TIPO_MCP,
         ruta=contenido.mcp.ruta_relativa,
-        owner_team=metadata.get("owner_team", ""),
-        owner_contact=metadata.get("owner_contact", ""),
-        version=str(metadata.get("version", "")),
-        data_classification=metadata.get("data_classification", ""),
-        standard_version=str(metadata.get("standard_version", "")),
+        owner_team=dueno.get("team", ""),
+        owner_contact=dueno.get("contact", ""),
+        version=str(gobierno.get("standard_version", "")),
+        data_classification=gobierno.get("data_classification", ""),
+        standard_version=str(gobierno.get("standard_version", "")),
         sha256=digesto.sha256_de(raiz / contenido.mcp.ruta_relativa),
-        tools_digest=_digest_de_herramientas_declarado(metadata),
+        tools_digest=_digest_de_herramientas_declarado(bloque),
     )
 
 
-def _digest_de_herramientas_declarado(metadata: dict) -> str:
+def _digest_de_herramientas_declarado(gobierno_del_mcp: dict) -> str:
     """El `tools_digest` declarado, cuando TODOS los servidores declaran el mismo.
 
     Con un solo servidor -- el caso normal -- es el suyo. Con varios, se concatenan en orden de
@@ -175,7 +184,7 @@ def _digest_de_herramientas_declarado(metadata: dict) -> str:
     artefacto, no uno por servidor. Vacio si ninguno lo declara, que es legitimo cuando todos son
     descargables y fijados.
     """
-    servidores = metadata.get("mcp_servers") or []
+    servidores = gobierno_del_mcp.get("servers") or []
     declarados = sorted(
         str(s.get("tools_digest")) for s in servidores
         if isinstance(s, dict) and s.get("tools_digest"))

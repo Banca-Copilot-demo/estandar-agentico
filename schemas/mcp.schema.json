@@ -1,160 +1,141 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/mcp.schema.json",
-  "title": "MCP — configuracion de un servidor que EXPONE HERRAMIENTAS al cliente",
-  "description": "El unico tipo que anade capacidades ejecutables desde fuera de la organizacion, y el unico que CADUCA SOLO: su aprobacion llega a su `review_by`, o el proveedor cambia las herramientas sin avisar. Un `.mcp.json` es un archivo de configuracion y no admite frontmatter, asi que TODA su metadata vive en el METADATA.json hermano. Esta extension es aportacion propia casi por completo: no encontramos ninguna convencion previa que gobierne MCP. Donde se pudo, se toma el vocabulario del registro oficial (`packages[].registryType/identifier/version` y `remotes[].url`) para que un dia sea interoperable.",
-  "allOf": [
-    {
-      "$ref": "envelope.schema.json"
-    }
-  ],
-  "required": [
-    "mcp_servers",
-    "credentials",
-    "approval"
-  ],
-  "properties": {
-    "name": {
-      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-      "description": "El gate exige que el ultimo segmento del `id` coincida con la carpeta que contiene el `.mcp.json`."
-    },
-    "mcp_servers": {
-      "type": "array",
-      "minItems": 1,
-      "x-read-from": "METADATA.json",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "name",
-          "source",
-          "transport"
-        ],
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "source": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "kind",
-              "ref",
-              "version_pin"
-            ],
-            "description": "De donde sale el servidor. Equivale a `packages[]` del registro oficial: `kind` es su `registryType`, `ref` su `identifier`, `version_pin` su `version`.",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "npm",
-                  "pypi",
-                  "oci",
-                  "git",
-                  "remote"
-                ]
+  "title": "MCP — las piezas de gobierno de un servidor de contexto",
+  "description": "El unico tipo que anade capacidades EJECUTABLES desde fuera de la organizacion, y el unico que se degrada SOLO: su aprobacion llega a su `review_by`, o el proveedor cambia las herramientas sin avisar y nadie se entera.\n\nESTE ARCHIVO NO DESCRIBE UN ARTEFACTO CON ENVELOPE, y ese cambio es deliberado. El gobierno del `mcp` vive en `GOVERNANCE.json`, bajo la clave `mcp`, asi que aqui solo estan las PIEZAS que ese archivo referencia con `$ref`. Dos razones, las dos medidas contra plugins reales:\n  1. `.mcp.json` es la configuracion que lee el CLIENTE. Los plugins oficiales de AWS la llevan con UNA sola clave de primer nivel -- `mcpServers` -- y ningun archivo de metadata al lado. Meter claves nuestras ahi nos haria depender de lo estricto que sea cada cliente, y ese fallo lo descubre el desarrollador al instalar, no el gate.\n  2. Un `mcp` es UNO POR PLUGIN, igual que el manifiesto y el gobierno. Los skills son muchos -- cada uno con su carpeta, donde un hermano es inequivoco --; un hermano en la raiz del plugin tendria nombre generico y competiria con `GOVERNANCE.json`.\n\nCONSECUENCIA: el `mcp` HEREDA del plugin el dueno, la clasificacion, el estado y la version del estandar. Antes los declaraba por su cuenta y eran cinco campos duplicados; duplicarlos es pedir que divergan. Lo unico que declara aparte es la custodia de la CREDENCIAL, que es de otro equipo -- quien publica el plugin no es quien concede el acceso --.\n\nSOBRE `server.json`: el registro oficial de MCP define ese formato para PUBLICAR un servidor en el registro. Aqui no se publica, se CONSUME desde un plugin, asi que no aplica -- y ninguno de los plugins reales que consumen un MCP lleva uno.\n\nAlineado a: el registro oficial de MCP (`packages[]` -> `source`, `remotes[].url` -> `endpoint`), y CVE-2025-54136 / taxonomia MCP-38 para el `tools_digest`.",
+  "$defs": {
+    "servidorGobernado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "source",
+        "transport"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "ref",
+            "version_pin"
+          ],
+          "description": "De donde sale el servidor. Equivale a `packages[]` del registro oficial: `kind` es su `registryType`, `ref` su `identifier`, `version_pin` su `version`.",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "npm",
+                "pypi",
+                "oci",
+                "git",
+                "remote"
+              ]
+            },
+            "ref": {
+              "type": "string"
+            },
+            "version_pin": {
+              "type": "string",
+              "not": {
+                "const": "latest"
               },
-              "ref": {
-                "type": "string"
-              },
-              "version_pin": {
-                "type": "string",
-                "not": {
-                  "const": "latest"
-                },
-                "description": "Version FIJADA. `latest` esta prohibido y el registro oficial tambien lo rechaza: sin fijar, el contenido que se aprobo y el que se ejecuta pueden ser distintos y nadie lo nota."
-              },
-              "integrity": {
-                "type": "string",
-                "description": "Digest del paquete, cuando el origen lo publica."
-              }
+              "description": "Version FIJADA. `latest` esta prohibido y el registro oficial tambien lo rechaza: sin fijar, el contenido que se aprobo y el que se ejecuta pueden ser distintos y nadie lo nota."
+            },
+            "integrity": {
+              "type": "string",
+              "description": "Digest del paquete, cuando el origen lo publica."
             }
-          },
-          "transport": {
-            "type": "string",
-            "enum": [
-              "stdio",
-              "http",
-              "sse"
-            ]
-          },
-          "endpoint": {
-            "type": "string",
-            "description": "Solo para http y sse. Equivale a `remotes[].url` del registro oficial."
-          },
-          "write_operations": {
-            "type": "boolean",
-            "description": "Si alguna herramienta MODIFICA algo fuera del cliente. Es el unico indicador de RIESGO que se declara, porque es el que decide quien tiene que aprobar. Deliberadamente NO se pide la lista de herramientas PERMITIDAS ni los alcances de la credencial: el control efectivo lo ejerce la credencial, no este archivo, y un campo que parece un control sin serlo da falsa confianza. Eso NO alcanza a `tools_digest`, que es otra cosa: no autoriza nada, DETECTA que la superficie declarada cambio. Autorizar y detectar son problemas distintos y se resuelven en sitios distintos."
-          },
-          "tools_digest": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$",
-            "description": "sha256 de las herramientas que el servidor declaraba CUANDO SE APROBO: nombre, descripcion y esquema de entrada de cada una, en forma canonica. Se registra al aprobar y una comprobacion periodica lo recalcula; si difiere, la superficie cambio sin pasar por revision. QUE ATAQUE CIERRA: el *rug pull* -- CVE-2025-54136, taxonomia MCP-38 --, en el que un servidor de confianza cambia la descripcion de una herramienta despues de ser aprobado. Y la descripcion de una herramienta es una INSTRUCCION PARA EL MODELO, asi que cambiarla es inyeccion de prompt sin tocar el codigo del plugin. El protocolo MCP no ofrece ninguna primitiva contra esto -- sin firma, sin version que el cliente deba fijar, sin notificacion que los clientes honren -- y ningun cliente avisa cuando una definicion cambia. LIMITE: DETECTA, no previene; la ventana es el intervalo de comprobacion. NO entra en el digest nada mas que esos tres campos ni el orden en que el servidor las devuelva, porque un digest que cambia por ruido se vuelve una alarma que se aprende a ignorar."
-          },
-          "tools_digest_date": {
-            "type": "string",
-            "format": "date",
-            "description": "Cuando se registro el digest. Sin esta fecha no se sabe si la comprobacion periodica compara contra algo reciente o contra algo de hace un año."
           }
         },
-        "allOf": [
-          {
-            "if": {
-              "properties": {
-                "transport": {
-                  "enum": [
-                    "http",
-                    "sse"
-                  ]
-                }
-              },
-              "required": [
-                "transport"
-              ]
+        "transport": {
+          "type": "string",
+          "enum": [
+            "stdio",
+            "http",
+            "sse"
+          ]
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "Solo para http y sse. Equivale a `remotes[].url` del registro oficial."
+        },
+        "write_operations": {
+          "type": "boolean",
+          "description": "Si alguna herramienta MODIFICA algo fuera del cliente. Es el unico indicador de RIESGO que se declara, porque es el que decide quien tiene que aprobar. Deliberadamente NO se pide la lista de herramientas PERMITIDAS ni los alcances de la credencial: el control efectivo lo ejerce la credencial, no este archivo, y un campo que parece un control sin serlo da falsa confianza. Eso NO alcanza a `tools_digest`, que es otra cosa: no autoriza nada, DETECTA que la superficie declarada cambio. Autorizar y detectar son problemas distintos y se resuelven en sitios distintos."
+        },
+        "tools_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "sha256 de las herramientas que el servidor declaraba CUANDO SE APROBO: nombre, descripcion y esquema de entrada de cada una, en forma canonica. Se registra al aprobar y una comprobacion periodica lo recalcula; si difiere, la superficie cambio sin pasar por revision. QUE ATAQUE CIERRA: el *rug pull* -- CVE-2025-54136, taxonomia MCP-38 --, en el que un servidor de confianza cambia la descripcion de una herramienta despues de ser aprobado. Y la descripcion de una herramienta es una INSTRUCCION PARA EL MODELO, asi que cambiarla es inyeccion de prompt sin tocar el codigo del plugin. El protocolo MCP no ofrece ninguna primitiva contra esto -- sin firma, sin version que el cliente deba fijar, sin notificacion que los clientes honren -- y ningun cliente avisa cuando una definicion cambia. LIMITE: DETECTA, no previene; la ventana es el intervalo de comprobacion. NO entra en el digest nada mas que esos tres campos ni el orden en que el servidor las devuelva, porque un digest que cambia por ruido se vuelve una alarma que se aprende a ignorar."
+        },
+        "tools_digest_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Cuando se registro el digest. Sin esta fecha no se sabe si la comprobacion periodica compara contra algo reciente o contra algo de hace un año."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "transport": {
+                "enum": [
+                  "http",
+                  "sse"
+                ]
+              }
             },
-            "then": {
-              "required": [
-                "endpoint"
-              ],
-              "description": "Con transporte remoto, DONDE conecta es parte del gobierno: es el destino al que sale el dato. Con stdio no hay endpoint que declarar."
-            }
+            "required": [
+              "transport"
+            ]
           },
-          {
-            "if": {
-              "properties": {
-                "source": {
-                  "properties": {
-                    "kind": {
-                      "const": "remote"
-                    }
-                  },
-                  "required": [
-                    "kind"
-                  ]
-                }
-              },
-              "required": [
-                "source"
-              ]
-            },
-            "then": {
-              "required": [
-                "tools_digest",
-                "tools_digest_date"
-              ],
-              "description": "UN SERVIDOR REMOTO NO SE APRUEBA SIN EL DIGEST DE SUS HERRAMIENTAS. En los demas origenes el codigo se descarga y `version_pin` lo fija: ese paquete exacto es inmutable, y cambiarlo exige subir la version y pasar por un pull request. Un remoto corre en la infraestructura de otro y NO HAY VERSION QUE FIJAR -- su dueño puede cambiar mañana lo que sus herramientas declaran, y las descripciones son instrucciones para el modelo --. Ahi el digest no es un refuerzo: es el UNICO control que existe, y aprobar un remoto sin el es confianza ciega en un tercero. En los origenes descargables el digest es opcional porque `version_pin` ya cubre lo esencial."
-            }
+          "then": {
+            "required": [
+              "endpoint"
+            ],
+            "description": "Con transporte remoto, DONDE conecta es parte del gobierno: es el destino al que sale el dato. Con stdio no hay endpoint que declarar."
           }
-        ]
-      }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "kind": {
+                    "const": "remote"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "required": [
+              "tools_digest",
+              "tools_digest_date"
+            ],
+            "description": "UN SERVIDOR REMOTO NO SE APRUEBA SIN EL DIGEST DE SUS HERRAMIENTAS. En los demas origenes el codigo se descarga y `version_pin` lo fija: ese paquete exacto es inmutable, y cambiarlo exige subir la version y pasar por un pull request. Un remoto corre en la infraestructura de otro y NO HAY VERSION QUE FIJAR -- su dueño puede cambiar mañana lo que sus herramientas declaran, y las descripciones son instrucciones para el modelo --. Ahi el digest no es un refuerzo: es el UNICO control que existe, y aprobar un remoto sin el es confianza ciega en un tercero. En los origenes descargables el digest es opcional porque `version_pin` ya cubre lo esencial."
+          }
+        }
+      ]
     },
-    "credentials": {
+    "credenciales": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "mechanism"
       ],
-      "x-read-from": "METADATA.json",
+      "x-read-from": "GOVERNANCE.json",
       "description": "APORTACION NETA: el `server.json` del registro oficial declara que una credencial es necesaria y secreta, pero NO su dueno; y Backstage no tiene anotacion de «como se solicita el acceso». Es el unico campo del que no encontre equivalente en ningun origen.",
       "properties": {
         "mechanism": {
@@ -221,7 +202,7 @@
         }
       ]
     },
-    "approval": {
+    "aprobacion": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -230,7 +211,7 @@
         "review_by",
         "security_review"
       ],
-      "x-read-from": "METADATA.json",
+      "x-read-from": "GOVERNANCE.json",
       "description": "Obligatorio porque un `mcp` es el unico tipo cuyo estado se degrada SIN QUE NADIE TOQUE NADA. `review_by` no es burocracia: es la fecha en que la aprobacion vence y el artefacto vuelve a revision.",
       "properties": {
         "approved_by": {
@@ -252,6 +233,5 @@
         }
       }
     }
-  },
-  "unevaluatedProperties": false
+  }
 }

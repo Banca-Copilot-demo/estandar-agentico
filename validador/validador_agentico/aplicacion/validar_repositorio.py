@@ -15,7 +15,11 @@ from pathlib import Path
 
 from validador_agentico.adaptadores import frontmatter as adaptador_frontmatter
 from validador_agentico.adaptadores import repositorio as adaptador_repositorio
-from validador_agentico.adaptadores.repositorio import ArchivoJson, ContenidoRepositorio
+from validador_agentico.adaptadores.repositorio import (
+    RUTA_GOBIERNO,
+    ArchivoJson,
+    ContenidoRepositorio,
+)
 from validador_agentico.aplicacion import proyeccion
 from validador_agentico.dominio import reglas_agente_instructions, reglas_aprobacion
 from validador_agentico.dominio import reglas_credenciales, reglas_layout, reglas_mcp
@@ -201,11 +205,12 @@ def _revisar_mcp(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     """El `mcp`, que se gobierna con DOS archivos y hay que revisar los dos.
 
     El `.mcp.json` es la configuracion que lee el CLIENTE: de ahi sale si sus referencias estan
-    fijadas a una version. El `METADATA.json` hermano es donde vive nuestro gobierno -- la custodia
-    de la credencial y la aprobacion --, porque un archivo de configuracion no admite claves nuestras.
+    fijadas a una version, y NO se le añade ninguna clave nuestra -- los plugins reales lo llevan con
+    una sola, `mcpServers`, y meter mas nos haria depender de lo estricto que sea cada cliente --.
 
-    MEDIDO con un `mcp` real: la custodia se leia del `.mcp.json`, que es justo donde el esquema dice
-    que NO va. Habria obligado a meter campos de gobierno en un archivo que consumen los clientes.
+    El gobierno vive en `GOVERNANCE.json`, bajo la clave `mcp`. Un `mcp` es UNO POR PLUGIN, igual que
+    el manifiesto y el gobierno, asi que no necesita archivo propio: los skills son muchos y por eso
+    ellos si llevan hermano en su carpeta.
     """
     if contenido.mcp is None:
         return []
@@ -215,17 +220,23 @@ def _revisar_mcp(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     hallazgos = reglas_mcp.revisar_servidores(
         contenido.mcp.ruta_relativa, contenido.mcp.contenido.get("mcpServers"))
 
-    if contenido.metadata_mcp is None:
-        return [*hallazgos, error(f"{contenido.mcp.ruta_relativa} (hermano)",
-                                 "falta el `METADATA.json` junto al `.mcp.json`: un archivo de "
-                                 "configuracion no admite metadata, asi que sin el hermano el `mcp` "
-                                 "no declara dueno, ni credencial, ni aprobacion")]
-    if not contenido.metadata_mcp.es_legible:
-        return [*hallazgos, *_hallazgo_de_formato(contenido.metadata_mcp)]
+    gobierno_del_mcp = _gobierno_del_mcp(contenido)
+    if gobierno_del_mcp is None:
+        return [*hallazgos, error(RUTA_GOBIERNO,
+                                 "hay un `.mcp.json` pero el gobierno no declara `mcp`: sin eso el "
+                                 "servidor no tiene dueno de la credencial ni aprobacion, y el "
+                                 "`.mcp.json` no puede llevarlos porque lo consume el cliente")]
 
     return [*hallazgos, *reglas_credenciales.revisar_credenciales(
-        contenido.metadata_mcp.ruta_relativa,
-        contenido.metadata_mcp.contenido.get("credentials"))]
+        RUTA_GOBIERNO, gobierno_del_mcp.get("credentials"))]
+
+
+def _gobierno_del_mcp(contenido: ContenidoRepositorio) -> dict | None:
+    """El bloque `mcp` del gobierno del plugin, o `None` si no lo declara."""
+    if contenido.gobierno is None or not contenido.gobierno.es_legible:
+        return None
+    bloque = contenido.gobierno.contenido.get("mcp")
+    return bloque if isinstance(bloque, dict) else None
 
 
 def _revisar_agentes(contenido: ContenidoRepositorio) -> list[Hallazgo]:

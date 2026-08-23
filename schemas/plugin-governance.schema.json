@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://ejemplo.dev/track-agentico/schemas/plugin-governance.schema.json",
+  "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/plugin-governance.schema.json",
   "title": "Manifiesto de gobierno del plugin agentico — Track Agentico",
   "description": "Contrato de `GOVERNANCE.json`, en la raiz DEL PLUGIN — que no siempre es la raiz del repositorio: un repositorio de dominio puede alojar varios plugins bajo `plugins/<nombre>/`, y entonces cada uno lleva el suyo junto a su propio `plugin.json`. IMPORTANTE — LO QUE ESTE ARCHIVO NO ES: no es el manifiesto del plugin. El manifiesto es `plugin.json` conforme a Agent Plugins 1.0 (https://agent-plugins.org/schemas/1.0.0/plugin.schema.json), especificacion abierta y neutral de proveedor que define empaquetado, layout, instalacion y marketplaces; ese archivo admite SOLO diez campos de primer nivel ($schema, name, version, description, author, homepage, repository, license, keywords, extensions), asi que el gobierno de la organizacion NO cabe ahi. Este archivo lo complementa y se referencia desde `plugin.json` en `extensions['com.ejemplo.gobierno'].governance`, usando el mecanismo de namespace DNS-inverso que la propia especificacion define para datos especificos de un cliente. DIVISION DE RESPONSABILIDADES: la industria define el formato y la distribucion (Agent Plugins 1.0 + Agent Skills); la organizacion define aprobacion, trazabilidad, ciclo de vida y catalogo — que es lo que ninguna de las dos especificaciones cubre (no tienen modelo de confianza, ni verificacion de firma, ni atestacion). Alineado a: SemVer 2.0.0 (version), SPDX (license en plugin.json), SLSA/in-toto (attestation), NIST AI RMF (ciclo de vida y decommissioning).",
   "type": "object",
@@ -151,6 +151,33 @@
         },
         "publish_inventory": { "type": "boolean", "description": "Si la ficha del catalogo publica el inventario por tipo (12 skills, 3 agentes, ...). POR QUE EL INVENTARIO Y NO UN NUMERO DE TOKENS: el coste de contexto real depende del tokenizador del modelo, asi que cualquier cifra que publicaramos seria una ESTIMACION — y el cliente ya muestra un 'Context cost' propio al instalar. Publicar los dos daria dos verdades. El inventario es EXACTO, el gate G1 ya lo compara contra el arbol real, y transmite la misma senal de tamano sin inventar una cifra que va a discrepar con la del cliente. El coste de contexto sigue siendo el CRITERIO para dimensionar la granularidad del plugin; no es un campo publicado." }
       }
+    },
+
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Gobierno del servidor MCP que este plugin consume, si consume alguno. VIVE AQUI Y NO EN UN ARCHIVO HERMANO, y la razon esta MEDIDA en los plugins reales: `.mcp.json` es la configuracion que lee el CLIENTE, y los plugins oficiales de AWS la llevan con UNA sola clave de primer nivel -- `mcpServers` -- y ningun archivo de metadata al lado. Meter claves nuestras ahi nos haria depender de lo estricto que sea cada cliente, y ese fallo lo descubre el desarrollador al instalar, no el gate. Y un hermano en la raiz del plugin tendria nombre generico y competiria con este archivo. DIFERENCIA CON LOS SKILLS: un plugin tiene MUCHOS skills -- cada uno con su carpeta, donde un hermano es inequivoco -- y UN solo `.mcp.json`, igual que un solo manifiesto y un solo gobierno. NOTA SOBRE `server.json`: el registro oficial de MCP define ese formato para PUBLICAR un servidor, no para consumirlo desde un plugin; aqui se consume, asi que no aplica.",
+      "properties": {
+        "servers": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Un elemento por servidor declarado en `mcpServers`. El gate contrasta esta lista contra el `.mcp.json` real: si declaran cosas distintas, el PR se bloquea.",
+          "items": { "$ref": "mcp.schema.json#/$defs/servidorGobernado" }
+        },
+        "credentials": { "$ref": "mcp.schema.json#/$defs/credenciales" },
+        "approval": { "$ref": "mcp.schema.json#/$defs/aprobacion" }
+      },
+      "required": ["servers", "credentials", "approval"]
+    },
+
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Gobierno de los hooks del plugin, si los lleva. AQUI NO SE DECLARAN LOS EVENTOS a proposito: son las claves del propio `hooks.json` -- `PostToolUse` y compañia --, asi que el gate los LEE de ahi. Una lista paralela al archivo se queda rancia porque nada la obliga a coincidir, que es el mismo motivo por el que se retiro la lista de carpetas admitidas. Lo unico que no esta en el archivo, y por tanto lo unico que se declara, es QUIEN lo aprobo. MEDIDO en los plugins oficiales de AWS: su `hooks/hooks.json` lleva UNA clave, `hooks`, y ninguna metadata -- no existe registro de hooks ni formato de la industria para esto, asi que donde poner el gobierno es enteramente decision nuestra.",
+      "properties": {
+        "approval": { "$ref": "mcp.schema.json#/$defs/aprobacion" }
+      },
+      "required": ["approval"]
     },
 
     "x_extensions": {
