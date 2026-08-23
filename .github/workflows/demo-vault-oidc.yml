@@ -80,22 +80,40 @@ jobs:
           }
           POLITICA
 
+          # `bound_claims` es un MAPA, asi que el CLI lo quiere como JSON y no como `clave=valor`.
+          # MEDIDO: con la forma `clave=valor` Vault responde 400 «error converting input ... for
+          # field bound_claims». Se pasa el rol entero por stdin, que es lo que admite un mapa.
+          #
           # El rol legitimo: atado a ESTE archivo de workflow, en esta rama.
-          ./vault write auth/jwt/role/${ROL_CORRECTO} \
-            role_type="jwt" user_claim="actor" \
-            bound_audiences="https://github.com/${GITHUB_REPOSITORY_OWNER}" \
-            bound_claims_type="string" \
-            bound_claims="job_workflow_ref=${GITHUB_REPOSITORY}/.github/workflows/demo-vault-oidc.yml@refs/heads/main" \
-            policies="solo-leer-mcp" ttl="10m"
+          ./vault write auth/jwt/role/${ROL_CORRECTO} - <<ROL_LEGITIMO
+          {
+            "role_type": "jwt",
+            "user_claim": "actor",
+            "bound_audiences": "https://github.com/${GITHUB_REPOSITORY_OWNER}",
+            "bound_claims_type": "string",
+            "bound_claims": {
+              "job_workflow_ref": "${GITHUB_REPOSITORY}/.github/workflows/demo-vault-oidc.yml@refs/heads/main"
+            },
+            "policies": "solo-leer-mcp",
+            "ttl": "10m"
+          }
+          ROL_LEGITIMO
 
-          # El rol AJENO: mismo repositorio, otro archivo de workflow. Sirve para comprobar que el
-          # token de este job NO le vale.
-          ./vault write auth/jwt/role/${ROL_AJENO} \
-            role_type="jwt" user_claim="actor" \
-            bound_audiences="https://github.com/${GITHUB_REPOSITORY_OWNER}" \
-            bound_claims_type="string" \
-            bound_claims="job_workflow_ref=${GITHUB_REPOSITORY}/.github/workflows/otro.yml@refs/heads/main" \
-            policies="solo-leer-mcp" ttl="10m"
+          # El rol AJENO: mismo repositorio, otro archivo de workflow. Existe solo para comprobar que
+          # el token de este job NO le vale.
+          ./vault write auth/jwt/role/${ROL_AJENO} - <<ROL_AJENO
+          {
+            "role_type": "jwt",
+            "user_claim": "actor",
+            "bound_audiences": "https://github.com/${GITHUB_REPOSITORY_OWNER}",
+            "bound_claims_type": "string",
+            "bound_claims": {
+              "job_workflow_ref": "${GITHUB_REPOSITORY}/.github/workflows/otro.yml@refs/heads/main"
+            },
+            "policies": "solo-leer-mcp",
+            "ttl": "10m"
+          }
+          ROL_AJENO
 
       - name: Guardar una credencial de juguete en la ruta del mcp
         shell: bash
