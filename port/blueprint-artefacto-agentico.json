@@ -8,13 +8,12 @@
       "tipo": {
         "type": "string",
         "title": "Tipo",
-        "description": "Uno de los seis tipos que el estandar gobierna.",
+        "description": "Uno de los CINCO tipos que el estandar gobierna. `instructions` estaba en la lista y se retiro: dejo de ser un tipo gobernado porque no hay canal que la distribuya. Son mas que el `kind` del envelope -- que solo cubre skill, agent y prompt -- porque el catalogo si publica ficha del `mcp` y de los `hooks`: su gobierno vive en el GOVERNANCE.json del plugin, no en un frontmatter, y aun asi son capacidades que alguien tiene que poder encontrar y auditar.",
         "enum": [
           "skill",
           "agent",
           "prompt",
           "mcp",
-          "instructions",
           "hooks"
         ]
       },
@@ -113,7 +112,7 @@
       "sha256_archivo": {
         "type": "string",
         "title": "sha256 del archivo",
-        "description": "Digesto del ARCHIVO, firmado dentro del predicado. Es lo que permite verificar un prompt o unas instructions que se copiaron fuera del paquete."
+        "description": "Digesto del ARCHIVO, firmado dentro del predicado. Es lo que permite verificar un artefacto suelto -- un skill instalado con `gh skill install`, o un archivo que alguien copio fuera del paquete -- comparando su contenido con lo que se atesto."
       },
       "credential_owner": {
         "type": "string",
