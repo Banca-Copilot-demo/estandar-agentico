@@ -23,13 +23,24 @@ import sys
 from pathlib import Path
 
 from validador_agentico.adaptadores import registro
-from validador_agentico.adaptadores.repositorio import RUTA_GOBIERNO
+from validador_agentico.adaptadores.repositorio import (
+    DIRECTORIO_AGENTES,
+    DIRECTORIO_PROMPTS,
+    DIRECTORIO_SKILLS,
+    RUTA_GOBIERNO,
+    RUTA_MCP,
+)
 from validador_agentico.dominio.especificacion import RUTAS_MANIFIESTO
-from validador_agentico.dominio.reglas_layout import raices_de_plugin
+from validador_agentico.dominio.reglas_layout import unidades_publicables
 
 log = logging.getLogger(__name__)
 
 _SEPARADOR = "\t"
+
+# Donde viven los artefactos dentro de una unidad. Se pasan como dato a la regla de layout, que es de
+# dominio y no tiene que saber como se llaman los directorios en disco (G5).
+_DIRECTORIOS_DE_ARTEFACTOS = (DIRECTORIO_SKILLS, DIRECTORIO_AGENTES, DIRECTORIO_PROMPTS)
+_ARCHIVOS_DE_ARTEFACTOS = (RUTA_MCP,)
 
 
 def _manifiesto_de(raiz: Path) -> Path | None:
@@ -96,36 +107,55 @@ def _identidad_del_gobierno(raiz: Path) -> tuple[str, str] | None:
 def listar(raiz: Path) -> list[tuple[str, str, str]]:
     """Las unidades publicables del repositorio como `(ruta, nombre, version)`.
 
-    Son los PLUGINS cuando los hay, y el REPOSITORIO ENTERO cuando no: un repositorio de artefactos
-    sueltos es su propia unidad de publicacion, con la version declarada en su `GOVERNANCE.json`. En
-    los dos casos el consumidor recibe lo mismo -- una ruta, un nombre y una version -- porque lo que
-    el etiquetado y el empaquetado necesitan saber no cambia.
+    LAS DOS CLASES DE UNIDAD, y un repositorio de dominio puede tener las dos a la vez:
+
+      - cada PLUGIN anidado, con su nombre y version del manifiesto;
+      - el CONJUNTO SUELTO -- los artefactos de la raiz, fuera de todo plugin -- con el `id` y la
+        `version` del `GOVERNANCE.json` de la raiz.
+
+    El conjunto suelto se emite con `.` como ruta y CON NOMBRE, igual que un plugin, para que su
+    etiqueta diga QUE publica. La alternativa era reservarle la forma corta `vX.Y.Z`, y se descarto:
+    en un repositorio mixto esa etiqueta significaria «todo excepto los plugins», una definicion por
+    resta que nadie deduce leyendola. Con nombre, todas las etiquetas del repositorio se leen igual.
+
+    El caso de UN SOLO plugin en la raiz sigue dando `.` sin nombre propio: ahi el repositorio entero
+    ES el plugin y su manifiesto ya lo nombra.
     """
     encontrados = []
-    for raiz_plugin in raices_de_plugin(raiz, RUTAS_MANIFIESTO):
-        manifiesto = _manifiesto_de(raiz_plugin)
-        if manifiesto is None:
-            continue
-        identidad = _identidad(manifiesto)
+    for unidad in unidades_publicables(raiz, RUTAS_MANIFIESTO,
+                                        _DIRECTORIOS_DE_ARTEFACTOS, _ARCHIVOS_DE_ARTEFACTOS):
+        identidad = _identidad_de(unidad, raiz)
         if identidad is None:
             continue
-        relativa = raiz_plugin.relative_to(raiz).as_posix() or "."
+        relativa = unidad.relative_to(raiz).as_posix() or "."
         encontrados.append((relativa, *identidad))
 
-    if encontrados:
-        return encontrados
-
-    # SIN NINGUN PLUGIN, el repositorio entero es la unidad. Se pregunta DESPUES de recorrer los
-    # plugins y no antes: un repositorio con plugins tiene su propio `GOVERNANCE.json` en cada uno, y
-    # preguntar primero por la raiz habria hecho que un repositorio multiplugin se etiquetara ademas
-    # como si fuera un suelto -- dos etiquetas para el mismo commit, y con releases inmutables no se
-    # borran.
-    del_gobierno = _identidad_del_gobierno(raiz)
-    if del_gobierno is None:
+    if not encontrados:
         log.info("%s no tiene plugin ni gobierno con version: no hay nada que publicar", raiz)
-        return []
-    log.info("sin plugin: se publica el repositorio como paquete suelto %s v%s", *del_gobierno)
-    return [(".", *del_gobierno)]
+    return encontrados
+
+
+def _identidad_de(unidad: Path, raiz: Path) -> tuple[str, str] | None:
+    """`(nombre, version)` de una unidad: del MANIFIESTO si lo tiene, del gobierno si es el suelto.
+
+    EL ORDEN DE LAS FUENTES ES LO QUE EVITA ETIQUETAR DOS VECES EL MISMO CONTENIDO, y se aprendio
+    rompiendolo: al preguntar primero por el gobierno, un repositorio de UN plugin en la raiz se
+    etiquetaba con la version del `GOVERNANCE.json` -- 1.0.0 -- en vez de la del `plugin.json` --
+    3.0.0 --, porque en ese layout los dos archivos describen el MISMO paquete (el gate exige que su
+    `id` coincida con el `name`). Con el manifiesto primero, cada unidad tiene una sola identidad y la
+    del gobierno solo se usa cuando no hay manifiesto, que es exactamente el conjunto suelto.
+    """
+    manifiesto = _manifiesto_de(unidad)
+    if manifiesto is not None:
+        return _identidad(manifiesto)
+    if unidad != raiz:
+        # Una unidad anidada sin manifiesto no deberia existir -- se descubren POR el manifiesto --
+        # pero si apareciera, no se inventa su identidad.
+        return None
+    del_gobierno = _identidad_del_gobierno(raiz)
+    if del_gobierno is not None:
+        log.info("el conjunto suelto se publica como %s v%s", *del_gobierno)
+    return del_gobierno
 
 
 def _parsear_argumentos() -> argparse.Namespace:

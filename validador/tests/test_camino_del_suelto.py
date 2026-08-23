@@ -25,11 +25,11 @@ from validador_agentico.aplicacion.validar_repositorio import validar
 from validador_agentico.dominio.hallazgo import Severidad
 from validador_agentico.listar_plugins import listar
 
-_SKILL = """---
-name: revisar-jql
-description: Revisa una consulta JQL y senala lo que degrada su rendimiento. Usalo al escribir una.
+_PLANTILLA_SKILL = """---
+name: {nombre}
+description: Hace algo concreto y se usa cuando alguien lo pide por su nombre en una conversacion.
 metadata:
-  id: demo.sdlc.revisar-jql
+  id: {identificador}
   owner_team: squad-sdlc
   owner_contact: squad-sdlc@ejemplo.dev
   status: draft
@@ -38,8 +38,15 @@ metadata:
   standard_version: "8.0.0"
 ---
 
-# Revisar una consulta JQL
+# {nombre}
 """
+
+
+def _skill(base: Path, nombre: str, identificador: str) -> None:
+    directorio = base / "skills" / nombre
+    directorio.mkdir(parents=True, exist_ok=True)
+    (directorio / "SKILL.md").write_text(
+        _PLANTILLA_SKILL.format(nombre=nombre, identificador=identificador), encoding="utf-8")
 
 _GOBIERNO = {
     "id": "demo.sdlc.sueltos",
@@ -58,10 +65,8 @@ def _errores(raiz: Path) -> list[str]:
 
 
 def _repositorio_suelto(raiz: Path, gobierno: dict | None = _GOBIERNO) -> Path:
-    """Un repositorio con un skill y SIN plugin. `gobierno=None` para omitir el GOVERNANCE.json."""
-    directorio = raiz / "skills" / "revisar-jql"
-    directorio.mkdir(parents=True)
-    (directorio / "SKILL.md").write_text(_SKILL, encoding="utf-8")
+    """Un skill en la RAIZ, con el gobierno que lo publica. `gobierno=None` para omitirlo."""
+    _skill(raiz, "revisar-jql", "demo.sdlc.revisar-jql")
     if gobierno is not None:
         (raiz / "GOVERNANCE.json").write_text(json.dumps(gobierno), encoding="utf-8")
     return raiz
@@ -92,16 +97,51 @@ def test_sin_version_en_el_gobierno_no_hay_nada_que_etiquetar(tmp_path):
     assert listar(tmp_path) == []
 
 
-def test_un_repositorio_CON_plugins_no_se_etiqueta_ademas_como_suelto(tmp_path):
-    # Si la raiz se consultara ANTES de recorrer los plugins, un repositorio multiplugin con su propio
-    # GOVERNANCE.json en la raiz produciria DOS etiquetas para el mismo commit -- la del plugin y la
-    # del repositorio -- y con releases inmutables ninguna de las dos se borra.
+def test_un_repositorio_MIXTO_publica_el_plugin_Y_el_conjunto_suelto(tmp_path):
+    """El caso que el estandar recomienda: un repositorio por DOMINIO, con lo que haga falta dentro.
+
+    Antes se emitia SOLO el plugin y los artefactos de la raiz no los publicaba nadie -- ni siquiera
+    se leian --. Ahora son dos unidades, cada una con su etiqueta, y las dos con NOMBRE: `vX.Y.Z` a
+    secas significaria «todo excepto los plugins», una definicion por resta.
+    """
     _con_plugin(tmp_path, "uno")
-    (tmp_path / "GOVERNANCE.json").write_text(json.dumps(_GOBIERNO), encoding="utf-8")
+    _repositorio_suelto(tmp_path)
 
     unidades = listar(tmp_path)
 
-    assert unidades == [("plugins/uno", "demo.sdlc.uno", "2.0.0")], unidades
+    assert unidades == [
+        ("plugins/uno", "demo.sdlc.uno", "2.0.0"),
+        (".", "demo.sdlc.sueltos", "1.0.0"),
+    ], unidades
+
+
+def test_el_gate_VE_los_artefactos_de_las_dos_unidades(tmp_path):
+    """El defecto original: en un repositorio mixto, los artefactos de la raiz no los leia nadie, asi
+    que el inventario los ignoraba y no recibian ficha. Aqui tienen que contar los dos."""
+    _con_plugin(tmp_path, "uno")
+    _skill(tmp_path / "plugins" / "uno", "del-plugin", "demo.sdlc.del-plugin")
+    _repositorio_suelto(tmp_path)
+
+    veredicto = validar(tmp_path)
+    fichas = {a.id for a in veredicto.artefactos}
+
+    assert veredicto.inventario.skills == 2, veredicto.inventario
+    assert fichas == {"demo.sdlc.del-plugin", "demo.sdlc.revisar-jql"}, fichas
+
+
+def test_UN_plugin_en_la_raiz_no_se_etiqueta_DOS_veces(tmp_path):
+    # El riesgo real de mirar tambien la raiz: en el layout de un solo plugin en la raiz, el
+    # `GOVERNANCE.json` y el `plugin.json` describen el MISMO paquete -- el gate exige que su `id`
+    # coincida con el `name` --, asi que emitirlo otra vez daria dos etiquetas para el mismo
+    # contenido. Y con releases inmutables ninguna se borra.
+    manifiesto = tmp_path / ".claude-plugin"
+    manifiesto.mkdir(parents=True)
+    (manifiesto / "plugin.json").write_text(json.dumps(
+        {"name": "demo.sdlc.solo", "version": "3.0.0", "description": "x"}), encoding="utf-8")
+    (tmp_path / "GOVERNANCE.json").write_text(json.dumps(
+        {**_GOBIERNO, "id": "demo.sdlc.solo"}), encoding="utf-8")
+
+    assert listar(tmp_path) == [(".", "demo.sdlc.solo", "3.0.0")]
 
 
 # ── el gate: la version sobra con plugin y falta sin el ────────────────────────────────────

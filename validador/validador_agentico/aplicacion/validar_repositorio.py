@@ -71,6 +71,12 @@ from validador_agentico.dominio.hallazgo import (
 
 log = logging.getLogger(__name__)
 
+# Donde viven los artefactos dentro de una unidad. Se nombran aqui, en el composition root del caso de
+# uso, y se pasan como dato a las reglas de dominio: `reglas_layout` y `reglas_huerfanos` deciden
+# COSAS sobre artefactos sin tener que saber como se llaman sus directorios en disco (G5).
+_DIRECTORIOS_DE_ARTEFACTOS = (DIRECTORIO_SKILLS, DIRECTORIO_AGENTES, DIRECTORIO_PROMPTS)
+_ARCHIVOS_DE_ARTEFACTOS = (RUTA_MCP,)
+
 
 def validar(raiz: Path, *, lector=adaptador_frontmatter,
             repositorio=adaptador_repositorio,
@@ -80,11 +86,14 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
     """`equipos_conocidos` y `archivos_cambiados` llegan como DATOS y no como adaptadores: son
     contexto que el composition root resuelve una sola vez. Los dos admiten `None`, que significa
     «no se pudo averiguar» y produce un aviso -- nunca un pase silencioso."""
-    raices = reglas_layout.raices_de_plugin(raiz, RUTAS_MANIFIESTO)
-    varios = reglas_layout.es_multiplugin(raices, raiz)
+    raices = reglas_layout.unidades_publicables(
+        raiz, RUTAS_MANIFIESTO,
+        directorios_de_artefactos=_DIRECTORIOS_DE_ARTEFACTOS,
+        archivos_de_artefactos=_ARCHIVOS_DE_ARTEFACTOS)
+    varios = reglas_layout.es_multiunidad(raices, raiz)
     if varios:
-        log.info("el repositorio aloja %d plugins: %s", len(raices),
-                 ", ".join(r.name for r in raices))
+        log.info("el repositorio publica %d unidad(es): %s", len(raices),
+                 ", ".join(r.name if r != raiz else "(conjunto suelto)" for r in raices))
 
     # UN veredicto para todo el repositorio, aunque se revise plugin a plugin: la regla de un solo
     # gate y un solo veredicto no cambia porque el layout tenga niveles.
@@ -132,7 +141,7 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
     del_repositorio = repositorio.leer(raiz, lector)
     hallazgos += [*_revisar_higiene(del_repositorio), *_revisar_mezcla(archivos_cambiados),
                   *_revisar_solapamiento_de_instructions(del_repositorio),
-                  *_revisar_huerfanos(raiz, raices)]
+                  *_revisar_sin_unidad(raiz, del_repositorio)]
 
     log.info("%d hallazgo(s) en %s", len(hallazgos), raiz.name)
     return Veredicto(hallazgos=tuple(hallazgos), inventario=inventario,
@@ -312,17 +321,22 @@ def _revisar_instructions(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     return hallazgos
 
 
-def _revisar_huerfanos(raiz: Path, raices: tuple[Path, ...]) -> list[Hallazgo]:
-    """Artefactos en la raiz de un repositorio que aloja plugins: nadie los publica.
+def _revisar_sin_unidad(raiz: Path, contenido_de_la_raiz: ContenidoRepositorio) -> list[Hallazgo]:
+    """Artefactos en la raiz que nadie publica, porque la raiz no declara con que version.
 
-    Las rutas de artefacto se le pasan como DATO desde el adaptador, porque la regla es de dominio y
-    no tiene que saber como se llaman los directorios en disco.
+    Se resuelve aqui si el conjunto suelto se publica -- leyendo el gobierno de la raiz -- y se le
+    pasa a la regla como un booleano: el dominio no tiene que saber en que archivo vive ese dato.
     """
-    huerfanos = reglas_huerfanos.artefactos_huerfanos(
-        raiz, raices,
-        directorios=(DIRECTORIO_SKILLS, DIRECTORIO_AGENTES, DIRECTORIO_PROMPTS),
-        archivos=(RUTA_MCP,))
-    return reglas_huerfanos.revisar_huerfanos(huerfanos)
+    gobierno = contenido_de_la_raiz.gobierno
+    publica = bool(
+        gobierno is not None and gobierno.es_legible and gobierno.contenido.get("version"))
+    rutas = reglas_huerfanos.artefactos_sin_unidad(
+        raiz,
+        hay_plugins=bool(reglas_layout.raices_de_plugin(raiz, RUTAS_MANIFIESTO)),
+        publica_el_conjunto_suelto=publica,
+        directorios=_DIRECTORIOS_DE_ARTEFACTOS,
+        archivos=_ARCHIVOS_DE_ARTEFACTOS)
+    return reglas_huerfanos.revisar_sin_unidad(rutas)
 
 
 def _revisar_solapamiento_de_instructions(contenido: ContenidoRepositorio) -> list[Hallazgo]:

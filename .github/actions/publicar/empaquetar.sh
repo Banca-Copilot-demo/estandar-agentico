@@ -52,6 +52,19 @@ cd "$RAIZ"
 # paquete: un cliente busca el manifiesto en la RAIZ de lo que extrae, no bajo `plugins/<nombre>/`.
 ambito=()
 transformacion=()
+# EL CONJUNTO SUELTO EXCLUYE `plugins/`, y es lo que permite que un repositorio de dominio tenga
+# plugins Y artefactos sueltos a la vez -- que es lo que el estandar recomienda: repositorios por
+# DOMINIO, no repositorios separados segun se empaquete o no --. Sin esta exclusion, el paquete del
+# conjunto suelto CONTENDRIA los plugins, asi que cada artefacto viajaria en dos paquetes distintos y
+# el digesto del suelto cambiaria cada vez que alguien tocara un plugin que no tiene nada que ver.
+#
+# Se aplica solo con `SUBRUTA` en `.` y cuando existe el directorio: un repositorio de puros sueltos no
+# tiene `plugins/` y no hay nada que excluir.
+exclusiones="$EXCLUIDOS"
+if [ "$SUBRUTA" = "." ] && [ -d "plugins" ]; then
+  exclusiones="${EXCLUIDOS}|^plugins/"
+fi
+
 if [ "$SUBRUTA" != "." ]; then
   if [ ! -d "$SUBRUTA" ]; then
     echo "empaquetar: la subruta $SUBRUTA no existe en $RAIZ" >&2
@@ -65,7 +78,7 @@ lista="$(mktemp)"
 trap 'rm -f "$lista"' EXIT
 git ls-files -z -- "${ambito[@]}" \
   | tr '\0' '\n' \
-  | grep -Ev "$EXCLUIDOS" \
+  | grep -Ev "$exclusiones" \
   | LC_ALL=C sort > "$lista"
 
 if [ ! -s "$lista" ]; then

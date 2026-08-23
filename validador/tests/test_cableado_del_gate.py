@@ -144,8 +144,12 @@ def _dos_instrucciones_que_se_solapan(raiz: Path) -> None:
     _escribir_instruccion(raiz, "otra", ambito="**/*.py")
 
 
-def _skill_huerfano_junto_a_un_plugin(raiz: Path) -> None:
-    """Un plugin anidado Y un skill en la raiz: el segundo no pertenece a ninguna unidad publicable."""
+def _skill_en_la_raiz_que_nadie_publica(raiz: Path) -> None:
+    """Un plugin anidado Y un skill en la raiz, pero SIN `version` en el gobierno de la raiz.
+
+    El repositorio mixto es legitimo; lo que no lo es es tener artefactos en la raiz sin declarar con
+    que version se publican, porque entonces no hay etiqueta y nadie los empaqueta.
+    """
     del_plugin = raiz / "plugins" / "uno"
     manifiesto = del_plugin / ".claude-plugin"
     manifiesto.mkdir(parents=True)
@@ -178,8 +182,8 @@ _CABLES = (
      "posible token de GitHub"),
     ("_revisar_solapamiento_de_instructions", _dos_instrucciones_que_se_solapan,
      "su ambito se solapa con"),
-    ("_revisar_huerfanos", _skill_huerfano_junto_a_un_plugin,
-     "NO pertenece a ninguna unidad publicable"),
+    ("_revisar_sin_unidad", _skill_en_la_raiz_que_nadie_publica,
+     "no declara `version`"),
 )
 
 
