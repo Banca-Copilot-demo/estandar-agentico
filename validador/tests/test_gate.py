@@ -324,3 +324,34 @@ def test_un_campo_del_tipo_equivocado_lo_atrapa_el_ESQUEMA(tmp_path):
     mensajes = [h.mensaje for h in resultado.veredicto.errores]
     assert not resultado.conforme
     assert any(_MARCA_DE_DEFECTO_DE_ESQUEMA in m for m in mensajes), mensajes
+
+
+# ── que el gate CABLEE de verdad las reglas que reciben contexto ────────────────────────────
+# POR QUE ESTAS DOS PRUEBAS EXISTEN, y no es teorico: se comprobo por mutacion. Se comentaron las dos
+# invocaciones -- `_revisar_duenos` y `_revisar_mezcla` -- dentro de `validar()`, o sea se
+# DESCONECTARON las reglas del gate, y las 218 pruebas siguieron EN VERDE. Las reglas tienen sus
+# pruebas propias en `test_reglas_aprobacion`, asi que lo que nadie comprobaba era el CABLE: que el
+# gate las llame con el contexto que recibe. Es la misma forma del defecto que dejo sin probar la
+# comprobacion contra esquemas -- parametro opcional, `None` apaga la regla, ninguna prueba lo pasa --
+# y las dos reglas afectadas deciden si algo publica.
+def test_el_gate_cablea_la_regla_de_dueno_resoluble(tmp_path):
+    # `squad-sdlc` es el equipo que declara el skill del fixture; se le pasa un conjunto de equipos
+    # que NO lo contiene, asi que si el cable existe el gate bloquea.
+    resultado = ejecutar(_repositorio_minimo(tmp_path),
+                         comprobador_oficial=ComprobadorFalso(Resultado.CONFORME),
+                         equipos_conocidos=frozenset({"otro-squad"}))
+
+    mensajes = [h.mensaje for h in resultado.veredicto.errores]
+    assert not resultado.conforme
+    assert any("NO existe en la organizacion" in m for m in mensajes), mensajes
+
+
+def test_el_gate_cablea_la_regla_de_mezcla_de_firmantes(tmp_path):
+    # Un cambio que toca un skill y un `.mcp.json`: dos clases de firmante en el mismo pull request.
+    resultado = ejecutar(_repositorio_minimo(tmp_path),
+                         comprobador_oficial=ComprobadorFalso(Resultado.CONFORME),
+                         archivos_cambiados=("skills/validar-algo/SKILL.md", ".mcp.json"))
+
+    mensajes = [h.mensaje for h in resultado.veredicto.errores]
+    assert not resultado.conforme
+    assert any("firmantes DISTINTOS" in m for m in mensajes), mensajes
