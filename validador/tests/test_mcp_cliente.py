@@ -151,6 +151,110 @@ def test_un_servidor_sin_herramientas_devuelve_lista_vacia_y_no_falla():
         apagar()
 
 
+# ── el saludo que el transporte EXIGE ───────────────────────────────────────────────────────
+def _servidor_estricto():
+    """Un servidor que exige lo que exige la especificacion, como el MCP de GitHub.
+
+    Rechaza con 400 si el `Accept` no anuncia los dos tipos, o si se pide `tools/list` sin haber
+    hecho `initialize` antes. Registra lo que recibe para poder afirmarlo.
+    """
+    visto = {"metodos": [], "accept": [], "sesion_en_listar": None}
+    SESION = "sesion-de-prueba-123"
+
+    def responder(handler):
+        cuerpo = handler.cuerpo_recibido
+        metodo = cuerpo.get("method")
+        acepta = handler.headers.get("Accept", "")
+        visto["metodos"].append(metodo)
+        visto["accept"].append(acepta)
+
+        if "application/json" not in acepta or "text/event-stream" not in acepta:
+            _responder_con(400, {"error": "bad request: Accept debe anunciar los dos tipos"})(handler)
+            return
+
+        if metodo == "initialize":
+            datos = json.dumps({"jsonrpc": "2.0", "id": 1,
+                                "result": {"protocolVersion": "2025-06-18"}}).encode("utf-8")
+            handler.send_response(200)
+            handler.send_header("Content-Type", "application/json")
+            handler.send_header("Mcp-Session-Id", SESION)
+            handler.send_header("Content-Length", str(len(datos)))
+            handler.end_headers()
+            handler.wfile.write(datos)
+            return
+
+        if metodo == "tools/list":
+            if "initialize" not in visto["metodos"]:
+                _responder_con(400, {"error": "bad request: falta initialize"})(handler)
+                return
+            visto["sesion_en_listar"] = handler.headers.get("Mcp-Session-Id")
+            _responder_con(200, {"jsonrpc": "2.0", "id": 1,
+                                 "result": {"tools": _HERRAMIENTAS}})(handler)
+            return
+
+        # La notificacion de inicio no espera respuesta.
+        _responder_con(202, {})(handler)
+
+    url, apagar = _servidor(responder)
+    return url, apagar, visto
+
+
+def test_el_Accept_anuncia_los_DOS_tipos_que_exige_la_especificacion():
+    """DEFECTO MEDIDO contra el MCP de GitHub: con `Accept: application/json` a secas responde
+    HTTP 400. El de AWS es permisivo y lo aceptaba igual, y por eso la primera version parecia
+    correcta -- pasaba las pruebas y fallaba contra un servidor estricto."""
+    url, apagar, visto = _servidor_estricto()
+    try:
+        listar_herramientas(url)
+        for acepta in visto["accept"]:
+            assert "application/json" in acepta and "text/event-stream" in acepta
+    finally:
+        apagar()
+
+
+def test_se_llama_a_initialize_ANTES_de_tools_list():
+    url, apagar, visto = _servidor_estricto()
+    try:
+        assert listar_herramientas(url) == _HERRAMIENTAS
+        assert visto["metodos"][0] == "initialize"
+        assert visto["metodos"][-1] == "tools/list"
+    finally:
+        apagar()
+
+
+def test_el_id_de_sesion_que_devuelve_initialize_se_reenvia():
+    """Si no se devolviera, un servidor con sesiones rechazaria `tools/list` y la comprobacion diria
+    SIN_COMPROBAR para siempre sin que nadie supiera por que."""
+    url, apagar, visto = _servidor_estricto()
+    try:
+        listar_herramientas(url)
+        assert visto["sesion_en_listar"] == "sesion-de-prueba-123"
+    finally:
+        apagar()
+
+
+def test_una_respuesta_enmarcada_en_SSE_se_entiende():
+    """El servidor elige el formato aunque se pida JSON. Sin entender el marco `data:`, la respuesta
+    de un servidor que responda por flujo de eventos se leeria como «no es JSON»."""
+    def responder(handler):
+        metodo = handler.cuerpo_recibido.get("method")
+        cuerpo = ({"jsonrpc": "2.0", "id": 1, "result": {"tools": _HERRAMIENTAS}}
+                  if metodo == "tools/list"
+                  else {"jsonrpc": "2.0", "id": 1, "result": {}})
+        datos = f"event: message\ndata: {json.dumps(cuerpo)}\n\n".encode("utf-8")
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/event-stream")
+        handler.send_header("Content-Length", str(len(datos)))
+        handler.end_headers()
+        handler.wfile.write(datos)
+
+    url, apagar = _servidor(responder)
+    try:
+        assert listar_herramientas(url) == _HERRAMIENTAS
+    finally:
+        apagar()
+
+
 # ── la pieza completa: se detecta un rug pull de verdad ─────────────────────────────────────
 def test_cambiar_la_descripcion_en_el_servidor_cambia_el_digest_QUE_SE_CALCULA():
     """La prueba que cierra el circulo: no se compara un valor escrito a mano, se consulta un servidor
