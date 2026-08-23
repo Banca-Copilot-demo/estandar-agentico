@@ -83,14 +83,22 @@ def render_json(veredicto: Veredicto, nombre_repositorio: str) -> str:
         # Una entrada por artefacto, para que la ficha del catalogo se construya de lo SELLADO y no
         # releyendo el repositorio -- que seria una segunda fuente de verdad.
         "artefactos": [
-            # `tools_digest` solo lo lleva el `mcp`. Se omite en los demas en vez de emitirlo vacio:
-            # un campo presente y vacio induce a pensar que ese artefacto tiene herramientas y no se
-            # registraron, cuando lo cierto es que no aplica.
+            # LOS CAMPOS POR TIPO SE OMITEN CUANDO NO APLICAN en vez de emitirse vacios: un campo
+            # presente y vacio induce a pensar que ese artefacto tenia herramientas o scripts y no se
+            # registraron, cuando lo cierto es que no le corresponden.
+            #
+            # ESTA LISTA SE ESCRIBE A MANO, y eso ya costo un defecto: al añadir `scripts` y
+            # `scripts_digest` al dataclass, la ficha de `hooks` los llevaba en memoria -- sus pruebas
+            # pasaban -- y el predicado FIRMADO salia sin ellos, porque aqui no estaban. O sea que el
+            # dato existia en todas partes menos donde importa. Si se añade un campo al dataclass, hay
+            # que añadirlo aqui.
             {"id": a.id, "tipo": a.tipo, "ruta": a.ruta, "owner_team": a.owner_team,
              "owner_contact": a.owner_contact, "version": a.version,
              "data_classification": a.data_classification,
              "standard_version": a.standard_version, "sha256": a.sha256,
-             **({"tools_digest": a.tools_digest} if a.tools_digest else {})}
+             **({"tools_digest": a.tools_digest} if a.tools_digest else {}),
+             **({"scripts": a.scripts} if a.scripts else {}),
+             **({"scripts_digest": a.scripts_digest} if a.scripts_digest else {})}
             for a in veredicto.artefactos
         ],
         # LOS PLUGINS Y SU SUBRUTA. Es el unico sitio donde la subruta sobrevive firmada: el paquete

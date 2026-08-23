@@ -19,6 +19,7 @@ from pathlib import Path
 
 from validador_agentico.adaptadores import digesto
 from validador_agentico.adaptadores.repositorio import ContenidoRepositorio
+from validador_agentico.dominio import scripts_de_hooks
 from validador_agentico.dominio.hallazgo import (
     ArtefactoPublicado,
     Inventario,
@@ -34,6 +35,7 @@ TIPO_POR_COLECCION = (("skills", "skill"), ("prompts", "prompt"), ("agentes_leid
 # El `mcp` no esta en esa tabla porque no es una coleccion de artefactos con frontmatter: es UN
 # archivo de configuracion mas su bloque en el gobierno del plugin. Se proyecta aparte.
 TIPO_MCP = "mcp"
+TIPO_HOOKS = "hooks"
 
 
 
@@ -158,6 +160,9 @@ def listar_artefactos(contenido: ContenidoRepositorio, raiz: Path,
     del_mcp = mcp_publicado(contenido, raiz, prefijo)
     if del_mcp is not None:
         publicados.append(del_mcp)
+    de_hooks = hooks_publicado(contenido, raiz, prefijo)
+    if de_hooks is not None:
+        publicados.append(de_hooks)
     return tuple(publicados)
 
 
@@ -203,6 +208,67 @@ def mcp_publicado(contenido: ContenidoRepositorio, raiz: Path,
         sha256=digesto.sha256_de(raiz / contenido.mcp.ruta_relativa),
         tools_digest=_digest_de_herramientas_declarado(bloque),
     )
+
+
+def hooks_publicado(contenido: ContenidoRepositorio, raiz: Path,
+                     prefijo: str = "") -> ArtefactoPublicado | None:
+    """El `hooks` como artefacto del predicado, con el digesto de sus SCRIPTS.
+
+    POR QUE EXISTE. `hooks` era el unico de los cinco tipos sin ficha: se declaraba en el inventario y
+    se aprobaba en el `GOVERNANCE.json`, pero no llegaba al catalogo ni llevaba digesto propio. O sea
+    que el tipo que EJECUTA CODIGO era el unico cuyo contenido no se podia verificar archivo a archivo,
+    y su integridad dependia solo del digesto del paquete completo.
+
+    DOS NIVELES DE DIGESTO. `sha256` es el del `hooks.json`; `scripts` lleva el de CADA script que ese
+    JSON manda ejecutar; y `scripts_digest` cubre el conjunto -- el JSON y todos sus scripts --. El
+    primero y el tercero responden «cambio algo»; el segundo responde «que cambio». Firmar solo el JSON
+    seria firmar el indice de un libro: el JSON declara comandos y los scripts son los que actuan.
+
+    HEREDA EL ENVELOPE DEL PLUGIN, igual que el `mcp`, y por el mismo motivo: es uno por unidad, asi
+    que declarar dueno y clasificacion aparte serian campos duplicados que acabarian divergiendo.
+    """
+    if contenido.hooks is None or not contenido.hooks.es_legible:
+        return None
+    if contenido.gobierno is None or not contenido.gobierno.es_legible:
+        return None
+    gobierno = contenido.gobierno.contenido
+    if not isinstance(gobierno.get("hooks"), dict) or not gobierno.get("id"):
+        return None
+    dueno = gobierno.get("owner") or {}
+    del_json = digesto.sha256_de(raiz / contenido.hooks.ruta_relativa)
+    por_script = _digestos_de_scripts(contenido.hooks.contenido, raiz)
+    return ArtefactoPublicado(
+        # Como el `mcp`: no tiene id propio, es una capacidad DE la unidad. Un id inventado aparte
+        # seria un segundo nombre para la misma cosa.
+        id=f"{gobierno['id']}.{TIPO_HOOKS}",
+        tipo=TIPO_HOOKS,
+        ruta=f"{prefijo}{contenido.hooks.ruta_relativa}",
+        owner_team=dueno.get("team", ""),
+        owner_contact=dueno.get("contact", ""),
+        version=str(gobierno.get("standard_version", "")),
+        data_classification=gobierno.get("data_classification", ""),
+        standard_version=str(gobierno.get("standard_version", "")),
+        sha256=del_json,
+        # Las rutas de los scripts se publican con el prefijo de la unidad, igual que la del JSON:
+        # quien las consume las resuelve contra la raiz del REPOSITORIO.
+        scripts={f"{prefijo}{ruta}": sha for ruta, sha in por_script.items()},
+        scripts_digest=scripts_de_hooks.digest_del_conjunto(
+            {contenido.hooks.ruta_relativa: del_json, **por_script}),
+    )
+
+
+def _digestos_de_scripts(configuracion: dict, raiz: Path) -> dict[str, str]:
+    """`ruta -> sha256` de cada script que el hook ejecuta y que EXISTE en el arbol.
+
+    Los ausentes se omiten en vez de publicarse con digesto vacio: la regla del gate ya los senala
+    como error, y una ficha con un digesto en blanco invitaria a creer que se verifico algo.
+    """
+    digestos = {}
+    for ruta in scripts_de_hooks.referencias_propias(configuracion):
+        archivo = raiz / ruta
+        if archivo.is_file():
+            digestos[ruta] = digesto.sha256_de(archivo)
+    return digestos
 
 
 def _digest_de_herramientas_declarado(gobierno_del_mcp: dict) -> str:

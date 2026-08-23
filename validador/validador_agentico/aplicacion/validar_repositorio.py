@@ -59,6 +59,7 @@ from validador_agentico.dominio import reglas_agente, reglas_aprobacion
 from validador_agentico.dominio import reglas_credenciales, reglas_layout, reglas_mcp
 from validador_agentico.dominio import reglas_instructions, reglas_recursos
 from validador_agentico.dominio import reglas_higiene, reglas_hooks, reglas_huerfanos
+from validador_agentico.dominio import scripts_de_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
 from validador_agentico.dominio import ensamblado, forma_frontmatter
 from validador_agentico.dominio.especificacion import RUTAS_MANIFIESTO
@@ -114,7 +115,7 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
             *_revisar_prompts(contenido),
             *_revisar_agentes(contenido),
             *_revisar_instructions(contenido),
-            *_revisar_hooks(contenido),
+            *_revisar_hooks(contenido, raiz_plugin),
             *_revisar_mcp(contenido),
             *_revisar_yaml(contenido),
             *_revisar_recursos(contenido),
@@ -222,15 +223,23 @@ def _revisar_prompts(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     return hallazgos
 
 
-def _revisar_hooks(contenido: ContenidoRepositorio) -> list[Hallazgo]:
+def _revisar_hooks(contenido: ContenidoRepositorio, raiz_unidad: Path) -> list[Hallazgo]:
     if contenido.hooks is None:
         return []
     if not contenido.hooks.es_legible:
         return _hallazgo_de_formato(contenido.hooks)
     declarado = ((contenido.gobierno.contenido if contenido.gobierno
                   and contenido.gobierno.es_legible else {}).get("artifacts") or {})
+    # QUE SCRIPTS EXISTEN se resuelve aqui, no en la regla: la regla es de dominio y comprueba que lo
+    # referenciado este presente, pero mirar el disco es I/O y le toca a esta capa. Se comprueba
+    # justo lo referenciado en vez de listar el arbol entero: un `scripts/` con veinte archivos de los
+    # que el hook usa dos no tiene por que declararlos todos.
+    presentes = frozenset(
+        ruta for ruta in scripts_de_hooks.referencias_propias(contenido.hooks.contenido)
+        if (raiz_unidad / ruta).is_file())
     return reglas_hooks.revisar_hooks(contenido.hooks.ruta_relativa,
-                                      contenido.hooks.contenido, declarado)
+                                      contenido.hooks.contenido, declarado,
+                                      scripts_presentes=presentes)
 
 
 def _revisar_higiene(contenido: ContenidoRepositorio) -> list[Hallazgo]:

@@ -88,6 +88,20 @@ class ArtefactoPublicado:
     # editable del repositorio -- cualquiera con escritura podria ajustarlo para que coincidiera con
     # un servidor ya envenenado, y la comprobacion diria que todo esta en orden.
     tools_digest: str = ""
+    # SOLO LO USA `hooks`, por el mismo motivo que `tools_digest`: el predicado es una lista plana.
+    # `scripts` es el nivel POR ARCHIVO -- ruta -> sha256 de cada script que el hook ejecuta -- y
+    # `scripts_digest` el nivel del CONJUNTO, que cubre el `hooks.json` y todos sus scripts a la vez.
+    #
+    # POR QUE DOS NIVELES Y NO UNO. Es lo que hace la industria cuando un manifiesto apunta a archivos
+    # -- el `RECORD` de un wheel, el `MANIFEST.MF` de un JAR firmado, el manifiesto de una imagen OCI
+    # --, y la razon es practica: el digesto del conjunto dice que ALGO cambio y los digestos por
+    # archivo dicen QUE cambio. Medido hoy: con solo el del conjunto, una deriva manda a buscar a mano.
+    #
+    # Y POR QUE HOOKS LO NECESITA MAS QUE NADIE: es el unico tipo que EJECUTA CODIGO, y era el unico
+    # sin digesto propio. Firmar solo el `hooks.json` seria firmar el indice de un libro: el JSON
+    # DECLARA comandos, y los scripts son los que hacen algo.
+    scripts: dict[str, str] = field(default_factory=dict)
+    scripts_digest: str = ""
 
 
 @dataclass(frozen=True)

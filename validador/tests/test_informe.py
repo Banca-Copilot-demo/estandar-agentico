@@ -7,10 +7,17 @@ a quien lo verifique despues.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 
 from validador_agentico.adaptadores import informe
-from validador_agentico.dominio.hallazgo import Hallazgo, Inventario, Severidad, Veredicto
+from validador_agentico.dominio.hallazgo import (
+    ArtefactoPublicado,
+    Hallazgo,
+    Inventario,
+    Severidad,
+    Veredicto,
+)
 
 UN_ERROR = Hallazgo(Severidad.ERROR, "SKILL.md:1", "falta `description`")
 UN_AVISO = Hallazgo(Severidad.AVISO, "SKILL.md", "el cuerpo es largo")
@@ -83,3 +90,44 @@ def test_el_predicado_no_lleva_rutas_de_la_maquina_que_lo_genero():
     ninguna otra maquina."""
     predicado = informe.render_json(_veredicto(UN_ERROR), "agentes-sdlc")
     assert "/home/" not in predicado and "C:\\" not in predicado
+
+
+# ── que TODO campo con dato llegue al predicado firmado ─────────────────────────────────────
+def test_todo_campo_poblado_de_una_ficha_llega_al_JSON():
+    """EL DEFECTO QUE CUBRE, medido. La lista de campos del predicado se escribe A MANO en el
+    adaptador. Al añadir `scripts` y `scripts_digest` al dataclass para la ficha de `hooks`, la ficha
+    los llevaba en memoria -- sus pruebas pasaban -- y el predicado FIRMADO salia sin ellos, porque
+    aqui no estaban. El dato existia en todas partes menos donde importa.
+
+    Recorre los campos del dataclass en vez de comprobar una lista escrita a mano: una lista aqui
+    tendria el mismo problema que la del adaptador, y habria que acordarse de las dos.
+    """
+    # Cada campo con un valor distinto, para que ninguno se cuele por coincidencia.
+    poblada = ArtefactoPublicado(
+        id="demo.x.y", tipo="hooks", ruta="hooks/hooks.json", owner_team="squad-x",
+        owner_contact="squad-x@ejemplo.dev", version="1.0.0", data_classification="internal",
+        standard_version="8.0.0", sha256="a" * 64, tools_digest="b" * 64,
+        scripts={"scripts/x.sh": "c" * 64}, scripts_digest="d" * 64)
+    veredicto = Veredicto(hallazgos=(), inventario=Inventario(), artefactos=(poblada,))
+
+    serializada = json.loads(informe.render_json(veredicto, "repo"))["artefactos"][0]
+
+    ausentes = [c.name for c in dataclasses.fields(poblada) if c.name not in serializada]
+    assert not ausentes, (
+        f"campos del dataclass que NO llegan al predicado firmado: {ausentes}. "
+        f"La lista de campos del adaptador se escribe a mano: añadelos ahi.")
+
+
+def test_un_campo_que_NO_aplica_se_omite_en_vez_de_salir_vacio():
+    """Un campo presente y vacio induce a pensar que ese artefacto tenia scripts o herramientas y no
+    se registraron, cuando lo cierto es que no le corresponden."""
+    un_skill = ArtefactoPublicado(
+        id="demo.x.y", tipo="skill", ruta="skills/x/SKILL.md", owner_team="squad-x",
+        owner_contact="s@e.dev", version="1.0.0", data_classification="internal",
+        standard_version="8.0.0", sha256="a" * 64)
+    veredicto = Veredicto(hallazgos=(), inventario=Inventario(), artefactos=(un_skill,))
+
+    serializada = json.loads(informe.render_json(veredicto, "repo"))["artefactos"][0]
+
+    for campo in ("tools_digest", "scripts", "scripts_digest"):
+        assert campo not in serializada, campo
