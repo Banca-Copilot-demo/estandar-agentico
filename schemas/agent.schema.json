@@ -10,8 +10,9 @@
   ],
   "properties": {
     "name": {
-      "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$",
-      "description": "Minusculas, digitos, guiones y PUNTOS. El gate exige que coincida con el nombre de archivo: `<name>.agent.md`. Medido en artefactos reales: los 5 agentes cumplen la convencion, y `atla.cnf-migrator.analyst` vive en `atla.cnf-migrator.analyst.agent.md`."
+      "type": "string",
+      "minLength": 1,
+      "description": "El identificador del agente: es a esto a lo que apunta el `agent` de un handoff, y la especificacion dice que si se omite se usa el nombre del archivo. SIN PATRON, y esto es una CORRECCION medida: el patron era `^[a-z0-9]+([.-][a-z0-9]+)*$` y rechazaba a 5 de 5 agentes de una poblacion real de BCP -- los de `.github-private`, que se llaman `DeployGo Onboarding` o `CI/CD GitHub Actions Specialist` --. La especificacion de VS Code NO impone restriccion sobre espacios ni mayusculas: el patron era una regla de skills trasplantada a un tipo donde no aplica, y un esquema que rechaza artefactos legales no mide conformidad, mide mi preferencia. La convencion de espacio de nombres de BCP sigue viva como AVISO en el gate, que es el peso que le corresponde."
     },
     "role": {
       "type": "string",
@@ -74,7 +75,8 @@
     "handoffs": {
       "type": "array",
       "x-read-from": "frontmatter",
-      "description": "A que otros agentes puede pasar la tarea. Clave real de Copilot, y la usan 5 agentes reales. `auto_send` por defecto en false a proposito: una cadena que se dispara sola sin que nadie la confirme es una cadena que nadie audita.",
+      "x-portabilidad": "Solo IDE. La documentacion de GitHub dice que `handoffs` y `argument-hint` NO se soportan en el agente en la nube de Copilot en GitHub.com, y que se IGNORAN por compatibilidad. Una cadena de agentes disenada en el IDE pierde sus transferencias en la nube SIN QUE NADA FALLE, que es el modo de fallo mas caro: el agente responde, solo que ya no delega.",
+      "description": "A que otros agentes puede pasar la tarea. Medido en el activo real: 10 handoffs en 5 agentes, y los 10 declaran exactamente `label`, `agent`, `prompt` y `send`. El `agent` apunta al `name` del destino, no a su nombre de archivo.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -92,9 +94,14 @@
           "prompt": {
             "type": "string"
           },
-          "auto_send": {
+          "send": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "description": "Envia el prompt automaticamente al transferir. `send`, y NO `auto_send`: esto estuvo mal y lo destapo medir el activo -- los 10 handoffs reales declaran `send`, y la documentacion de VS Code lo confirma --. Con `auto_send` el esquema rechazaba a los 5 agentes que usan handoffs por una clave que yo mismo habia inventado. El default `false` es de la especificacion, y conviene: una cadena que se dispara sola sin que nadie la confirme es una cadena que nadie audita."
+          },
+          "model": {
+            "type": "string",
+            "description": "Modelo para el agente de destino. Existe en la especificacion; ningun agente de BCP lo usa todavia."
           }
         }
       }
@@ -108,9 +115,72 @@
       "description": "Herramientas que el agente puede usar. `tools` y no `allowed_tools`: es la clave que Copilot lee para un agente, y un agente real de BCP ya la declara asi. Nota: para un SKILL la clave equivalente es `allowed-tools` y su valor es una cadena separada por espacios — mismo concepto, dos formas segun el tipo, y no las unificamos porque las fija el cliente."
     },
     "model": {
+      "x-read-from": "frontmatter",
+      "description": "CADENA O ARRAY, y esto es una segunda correccion medida. La especificacion de VS Code admite las dos formas: un array es una LISTA DE PRIORIDAD -- prueba el primero, cae al siguiente -- no una lista de modelos permitidos. El esquema pedia solo cadena y por tanto rechazaba a los 5 agentes de `atla`, que declaran cuatro modelos en orden. Rechazar por esquema una forma que la especificacion admite es declarar no conforme lo que el cliente ejecuta sin problema. La objecion de BCP al array sigue en pie y es de GOBIERNO, no de forma -- cuatro nombres fijos en cada archivo obligan a tocarlos todos en cada rotacion del catalogo, y la lista deberia vivir una sola vez en el `model_allowlist` del plugin --, asi que baja a AVISO en el gate. Sin enum: fijarlo aqui caducaria cada vez que el proveedor publica un modelo.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "argument-hint": {
       "type": "string",
       "x-read-from": "frontmatter",
-      "description": "UNA CADENA, no un array, y esto es una divergencia CORREGIDA: el esquema pedia un array y la regla del gate trata el array como ERROR. Gana la regla, y su motivo esta medido en artefactos reales -- un array de nombres fijos obliga a tocar todos los archivos en cada rotacion del catalogo de modelos --. La lista de modelos admitidos va en el `model_allowlist` del plugin, en un solo sitio. Texto libre con AVISO si no esta en una lista conocida: fijar un enum aqui caducaria cada vez que el proveedor publica un modelo."
+      "x-portabilidad": "Solo IDE: el agente en la nube lo ignora, igual que `handoffs`.",
+      "description": "Texto de guia en el cuadro de chat."
+    },
+    "agents": {
+      "x-read-from": "frontmatter",
+      "description": "Subagentes que este agente puede invocar. `*` para todos, `[]` para ninguno. NO es lo mismo que `handoffs`: un handoff TRANSFIERE la conversacion al destino, un subagente se invoca y devuelve. Ningun agente de BCP lo usa todavia, y cuando se use hara falta la misma comprobacion de grafo que `handoffs` -- G2 tendra que resolver los dos.",
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "*"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "target": {
+      "type": "string",
+      "enum": [
+        "vscode",
+        "github-copilot"
+      ],
+      "x-read-from": "frontmatter",
+      "description": "Donde corre el agente. Importa para el gobierno mas de lo que parece: `handoffs` y `argument-hint` NO existen en `github-copilot`, asi que un agente con `target: github-copilot` que declare handoffs esta declarando algo que su entorno ignora."
+    },
+    "user-invocable": {
+      "type": "boolean",
+      "default": true,
+      "x-read-from": "frontmatter",
+      "description": "Si aparece en el desplegable para que una persona lo elija."
+    },
+    "disable-model-invocation": {
+      "type": "boolean",
+      "default": false,
+      "x-read-from": "frontmatter",
+      "description": "Impide que otro agente lo invoque como subagente. Con `user-invocable`, sustituye al campo `infer`, que la documentacion marca como RETIRADO."
+    },
+    "mcp-servers": {
+      "x-read-from": "frontmatter",
+      "description": "Servidores MCP acotados a este agente. ATENCION AL GOBIERNO: es una segunda via para introducir un MCP, distinta del `.mcp.json` del plugin, y por tanto se salta el bloque `mcp` del GOVERNANCE.json donde viven la aprobacion y el `tools_digest`. Un servidor declarado aqui es un MCP sin gobierno. Ningun agente de BCP lo usa; el gate debe AVISAR si aparece, y el estandar decidir si se prohibe o si obliga a declararlo arriba."
+    },
+    "hooks": {
+      "type": "object",
+      "x-read-from": "frontmatter",
+      "description": "Hooks acotados a este agente. Funcion en PREVIEW segun la documentacion. Mismo problema de gobierno que `mcp-servers`: es codigo que se ejecuta solo, declarado fuera del `hooks/hooks.json` que la firma de seguridad revisa. El gate debe AVISAR."
     },
     "evals": {
       "type": "object",

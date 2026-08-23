@@ -32,11 +32,53 @@ def test_un_agente_conforme_no_produce_hallazgos():
     assert revisar_agente("agents/migrador.agent.md", "migrador", _agente()) == []
 
 
-def test_el_name_del_agente_debe_coincidir_con_el_archivo():
-    """Si no coinciden el cliente no lo encuentra, exactamente como pasa con un skill y su
-    directorio."""
-    errores = _errores(revisar_agente("agents/migrador.agent.md", "otro", _agente()))
-    assert "no coincide con el archivo" in _mensajes(errores)
+def test_el_name_distinto_del_archivo_es_aviso_y_no_error():
+    # MEDIDO en el activo real de BCP: `atla.cnf-support.consultant.agent.md` declara
+    # `name: atla.cnf-migrator.consultant` y DOS handoffs de otros agentes apuntan al NAME. Si el
+    # archivo mandara, esas transferencias estarian rotas. La regla afirmaba «el cliente no lo
+    # encontrara» y era falso: la especificacion usa el archivo solo cuando se OMITE el `name`.
+    hallazgos = revisar_agente("agents/migrador.agent.md", "otro", _agente())
+    assert _errores(hallazgos) == [], "no debe bloquear: es legal segun la especificacion"
+    assert "no coincide con el archivo" in _mensajes(hallazgos)
+
+
+def test_un_name_con_espacios_es_aviso_y_no_error():
+    # MEDIDO: los 5 agentes de `.github-private` se llaman `DeployGo Onboarding` o
+    # `CI/CD GitHub Actions Specialist`. El patron `^[a-z0-9]+([.-][a-z0-9]+)*$` los rechazaba a los
+    # 5 -- una poblacion entera declarada no conforme por una preferencia nuestra, no por la especificacion.
+    for nombre in ("DeployGo Onboarding", "CI/CD GitHub Actions Specialist"):
+        hallazgos = revisar_agente("a.agent.md", nombre, _agente(name=nombre))
+        assert _errores(hallazgos) == [], nombre
+        assert "convencion" in _mensajes(hallazgos), nombre
+
+
+def test_model_como_array_es_aviso_y_no_error():
+    # MEDIDO dos veces, en direcciones opuestas. Los 5 agentes de `atla` declaran cuatro modelos en
+    # array, y la regla lo trataba como ERROR. La especificacion de VS Code admite el array como lista
+    # de PRIORIDAD, asi que como defecto de FORMA era falso; la objecion real es de gobierno.
+    hallazgos = revisar_agente("a.agent.md", "a", {**_agente(name="a"), "_forma": {"model_es_array": True}})
+    assert _errores(hallazgos) == []
+    assert "model_allowlist" in _mensajes(hallazgos)
+
+
+def test_handoffs_con_target_en_la_nube_avisa_de_que_se_ignoran():
+    # La documentacion de GitHub dice que `handoffs` y `argument-hint` NO se soportan en el agente en
+    # la nube y se IGNORAN por compatibilidad. Nada falla -- y por eso hace falta el aviso: la cadena
+    # de agentes deja de delegar en silencio.
+    hallazgos = revisar_agente("a.agent.md", "a", _agente(
+        name="a", target="github-copilot", handoffs=[{"label": "x", "agent": "b"}]))
+    assert _errores(hallazgos) == []
+    assert "IGNORA" in _mensajes(hallazgos)
+
+
+def test_capacidad_ejecutable_declarada_en_el_agente_avisa():
+    # `mcp-servers` y `hooks` son campos legales del agente, y son una segunda via para introducir un
+    # MCP o codigo automatico ESQUIVANDO el sitio donde vive su gobierno: el bloque del GOVERNANCE.json
+    # y la firma de seguridad sobre `hooks/`.
+    for campo, esperado in (("mcp-servers", "tools_digest"), ("hooks", "firma de seguridad")):
+        hallazgos = revisar_agente("a.agent.md", "a", _agente(name="a", **{campo: {"x": 1}}))
+        assert _errores(hallazgos) == [], campo
+        assert esperado in _mensajes(hallazgos), campo
 
 
 def test_un_agente_sin_description_es_error():
