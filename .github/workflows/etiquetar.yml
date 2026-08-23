@@ -29,6 +29,11 @@ on:
 permissions:
   contents: read
 
+# Un workflow reutilizable no alcanza los archivos de SU repositorio: su checkout es el del llamador.
+# Ver el comentario del paso que la usa.
+env:
+  VERSION_PYTHON: "3.12"
+
 jobs:
   etiquetar:
     runs-on: ubuntu-latest
@@ -107,11 +112,25 @@ jobs:
       # ejecuta `validador_agentico.listar_plugins`, que reutiliza la MISMA regla que el gate: si
       # el etiquetado y el gate discreparan sobre que es un plugin, se crearia una etiqueta para
       # algo que la publicacion no encuentra -- y con releases inmutables esa etiqueta no se borra.
-      - name: Preparar Python (version del estandar)
+      # ESTE WORKFLOW NO PUEDE LEER `.python-version`, y es una restriccion de la plataforma que se
+      # APRENDIO ROMPIENDOLO. Es de doble modo: por `push` corre en el repositorio del estandar --
+      # donde el archivo existe -- y por `workflow_call` corre en el del DOMINIO, cuyo checkout NO lo
+      # contiene. El primer intento apuntaba al archivo, y el etiquetado del dominio murio con «The
+      # specified python version file at: .python-version doesn't exist» mientras las corridas del
+      # propio estandar seguian EN VERDE: el peor reparto posible, porque el fallo aparece solo en el
+      # consumidor y no en quien hizo el cambio.
+      #
+      # Las composite actions NO tienen este problema: resuelven el archivo con `github.action_path`,
+      # que apunta a la accion y no al workspace del llamador.
+      #
+      # Asi que la version vive en el `env` de este workflow. Es el SEGUNDO y ultimo literal en el
+      # repositorio -- el otro es `.python-version`, que cubre los otros cinco sitios -- y es una
+      # variable de nivel de workflow, que es la forma que Y2 pide.
+      - name: Preparar Python ${{ env.VERSION_PYTHON }}
         if: steps.app.outputs.hay == 'si'
         uses: actions/setup-python@v5
         with:
-          python-version-file: .python-version
+          python-version: ${{ env.VERSION_PYTHON }}
 
       - name: Instalar el validador del estandar
         if: steps.app.outputs.hay == 'si'
