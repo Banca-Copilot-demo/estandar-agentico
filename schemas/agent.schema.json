@@ -8,11 +8,6 @@
       "$ref": "envelope.schema.json"
     }
   ],
-  "required": [
-    "role",
-    "inputs",
-    "outputs"
-  ],
   "properties": {
     "name": {
       "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$",
@@ -21,13 +16,13 @@
     "role": {
       "type": "string",
       "x-read-from": "METADATA.json",
-      "description": "Que responsabilidad asume el agente. Obligatorio porque sin el no se puede juzgar si dos agentes se solapan, que es la revision que hace el aprobador de dominio."
+      "description": "Que responsabilidad asume el agente. Obligatorio porque sin el no se puede juzgar si dos agentes se solapan, que es la revision que hace el aprobador de dominio. OPCIONAL para `conformant`. Estuvo como obligatorio y se solto al construir el primer agente real: se lee de un `METADATA.json` hermano que nadie escribe y que el validador no lee, y un agente es un ARCHIVO en un directorio compartido, asi que su hermano tendria nombre ambiguo -- el mismo problema que saco el gobierno del `mcp` de un hermano --. Lo que lo volveria obligatorio: una regla que compare los `role` de dos agentes y avise si se solapan. Hasta entonces, un requisito cuya razon vive en un control futuro es un gate apagado que parece encendido."
     },
     "inputs": {
       "type": "array",
       "minItems": 1,
       "x-read-from": "METADATA.json",
-      "description": "Lo que el agente necesita para empezar. `produced_by` no tiene equivalente en las convenciones conocidas, que se quedan en una lista de cadenas: declarar QUIEN produce cada entrada es lo que permite detectar una cadena de agentes rota antes de ejecutarla.",
+      "description": "Lo que el agente necesita para empezar. `produced_by` no tiene equivalente en las convenciones conocidas, que se quedan en una lista de cadenas: declarar QUIEN produce cada entrada es lo que permite detectar una cadena de agentes rota antes de ejecutarla. OPCIONAL para `conformant`. Estuvo como obligatorio y se solto al construir el primer agente real: se lee de un `METADATA.json` hermano que nadie escribe y que el validador no lee, y un agente es un ARCHIVO en un directorio compartido, asi que su hermano tendria nombre ambiguo -- el mismo problema que saco el gobierno del `mcp` de un hermano --. Lo que lo volveria obligatorio: una regla que recorra la cadena de `produced_by` y detecte un eslabon roto. Hasta entonces, un requisito cuya razon vive en un control futuro es un gate apagado que parece encendido.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -56,7 +51,7 @@
       "type": "array",
       "minItems": 1,
       "x-read-from": "METADATA.json",
-      "description": "Lo que el agente entrega. `format` es aportacion propia: sin el, «devuelve un informe» no se puede comprobar en un eval.",
+      "description": "Lo que el agente entrega. `format` es aportacion propia: sin el, «devuelve un informe» no se puede comprobar en un eval. OPCIONAL para `conformant`. Estuvo como obligatorio y se solto al construir el primer agente real: se lee de un `METADATA.json` hermano que nadie escribe y que el validador no lee, y un agente es un ARCHIVO en un directorio compartido, asi que su hermano tendria nombre ambiguo -- el mismo problema que saco el gobierno del `mcp` de un hermano --. Lo que lo volveria obligatorio: la suite de evals, que es requisito de `certified` y no de `conformant`. Hasta entonces, un requisito cuya razon vive en un control futuro es un gate apagado que parece encendido.",
       "items": {
         "type": "object",
         "additionalProperties": false,

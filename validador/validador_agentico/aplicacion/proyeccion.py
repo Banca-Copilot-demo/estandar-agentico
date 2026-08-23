@@ -26,9 +26,13 @@ from validador_agentico.dominio.hallazgo import (
 )
 
 # Que colecciones del contenido se publican como ficha, y con que `tipo` en el predicado firmado.
-TIPO_POR_COLECCION = (("skills", "skill"), ("prompts", "prompt"))
+TIPO_POR_COLECCION = (("skills", "skill"), ("prompts", "prompt"), ("agentes_leidos", "agent"))
+# `agentes_leidos` FALTABA, y se descubrio al construir el primer plugin con los cinco tipos: el gate
+# validaba el agente pero no llegaba al predicado, asi que no tenia ficha en el catalogo. Un artefacto
+# con envelope, id y dueno que el catalogo no conoce es indistinguible de uno que no existe.
+
 # El `mcp` no esta en esa tabla porque no es una coleccion de artefactos con frontmatter: es UN
-# archivo de configuracion mas su `METADATA.json` hermano. Se proyecta aparte.
+# archivo de configuracion mas su bloque en el gobierno del plugin. Se proyecta aparte.
 TIPO_MCP = "mcp"
 
 

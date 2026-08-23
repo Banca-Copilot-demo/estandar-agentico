@@ -57,6 +57,12 @@ def es_yaml_valido(ruta: Path) -> str | None:
 # como lista, que `model` es un array, que hay un `skillsReference` --. Separarlas deja que el objeto
 # ensamblado contenga solo lo que el artefacto declara de verdad.
 CLAVE_OBSERVACIONES = "_forma"
+CLAVE_METADATA = "metadata"
+
+# Las tres claves cuyo TIPO delata una forma mal escrita.
+_CLAVE_ALLOWED_TOOLS = "allowed-tools"
+_CLAVE_MODEL = "model"
+_CLAVE_SKILLS_REFERENCE = "skillsReference"
 
 OBSERVACION_ALLOWED_TOOLS_LISTA = "allowed_tools_es_lista"
 OBSERVACION_MODEL_ARRAY = "model_es_array"
@@ -86,14 +92,28 @@ def leer(ruta: Path) -> dict | None:
         log.debug("%s no tiene frontmatter delimitado", ruta.name)
         return None
     bloque = delimitado.group(1)
+
+    # SE PARSEA CON EL PARSER DE VERDAD, y solo se cae a las expresiones regulares si el YAML es
+    # invalido -- caso en el que el artefacto YA esta bloqueado por `es_yaml_valido`, asi que lo que
+    # se extraiga solo alimenta mensajes --.
+    #
+    # DEFECTO MEDIDO que obligo a esto: la extraccion era SIEMPRE por expresiones regulares, asi que
+    # una lista YAML -- `tools:` con guiones debajo -- llegaba como cadena VACIA. Al validar el primer
+    # agente real contra su esquema, `tools` y `handoffs` fallaban con «'' is not of type 'array'».
+    # Teniamos el parser delante, usado solo para comprobar sintaxis.
+    analizado = _analizar(bloque)
+    if analizado is None:
+        return {
+            **_claves_planas(bloque),
+            CLAVE_METADATA: _bloque_metadata(bloque),
+            CLAVE_OBSERVACIONES: _observaciones_por_regex(bloque),
+        }
+
+    metadata = analizado.get(CLAVE_METADATA)
     return {
-        **_claves_planas(bloque),
-        "metadata": _bloque_metadata(bloque),
-        CLAVE_OBSERVACIONES: {
-            OBSERVACION_ALLOWED_TOOLS_LISTA: _es_lista_yaml(bloque),
-            OBSERVACION_MODEL_ARRAY: bool(_MODEL_ARRAY.search(bloque)),
-            OBSERVACION_SKILLS_REFERENCE: bool(_SKILLS_REFERENCE.search(bloque)),
-        },
+        **{c: v for c, v in analizado.items() if c != CLAVE_METADATA},
+        CLAVE_METADATA: metadata if isinstance(metadata, dict) else {},
+        CLAVE_OBSERVACIONES: _observaciones(analizado),
     }
 
 
@@ -111,6 +131,43 @@ def leer_cuerpo(ruta: Path) -> str:
 
 def contar_lineas(ruta: Path) -> int:
     return ruta.read_text(encoding="utf-8").count("\n")
+
+
+def _analizar(bloque: str) -> dict | None:
+    """El frontmatter como estructura, o `None` si el YAML no es valido o no es un mapa.
+
+    No es un mapa cuando alguien escribe una lista o un escalar en el frontmatter: es un artefacto
+    roto, y devolver `None` lo manda a la extraccion degradada en vez de reventar aqui.
+    """
+    try:
+        analizado = yaml.safe_load(bloque)
+    except yaml.YAMLError as fallo:
+        log.debug("frontmatter con YAML invalido, se extrae de forma degradada: %s", fallo)
+        return None
+    return analizado if isinstance(analizado, dict) else None
+
+
+def _observaciones(analizado: dict) -> dict[str, bool]:
+    """Las tres formas mal escritas, vistas sobre la estructura ya parseada.
+
+    Antes se detectaban por expresiones regulares sobre el texto. Con el parser, son comprobaciones de
+    TIPO -- que es lo que de verdad se quiere saber -- y no de como se escribio.
+    """
+    return {
+        OBSERVACION_ALLOWED_TOOLS_LISTA: isinstance(analizado.get(_CLAVE_ALLOWED_TOOLS), list),
+        OBSERVACION_MODEL_ARRAY: isinstance(analizado.get(_CLAVE_MODEL), list),
+        OBSERVACION_SKILLS_REFERENCE: _CLAVE_SKILLS_REFERENCE in analizado,
+    }
+
+
+def _observaciones_por_regex(bloque: str) -> dict[str, bool]:
+    """La version degradada, para cuando el YAML no se puede parsear. El artefacto ya esta bloqueado
+    por la regla de sintaxis; esto solo evita que los mensajes salgan vacios."""
+    return {
+        OBSERVACION_ALLOWED_TOOLS_LISTA: _es_lista_yaml(bloque),
+        OBSERVACION_MODEL_ARRAY: bool(_MODEL_ARRAY.search(bloque)),
+        OBSERVACION_SKILLS_REFERENCE: bool(_SKILLS_REFERENCE.search(bloque)),
+    }
 
 
 def _claves_planas(bloque: str) -> dict[str, str]:

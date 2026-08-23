@@ -102,6 +102,11 @@
         "scripts": {
           "type": "integer",
           "minimum": 0
+        },
+        "hooks": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "EXTENSION DE CLIENTE. Declararlo es OBLIGATORIO cuando el plugin trae un `hooks.json`, y el gate lo exige por una razon distinta del resto del inventario: un hook EJECUTA CODIGO en la maquina del desarrollador, asi que no puede entrar por sorpresa. Faltaba en el esquema mientras la regla ya lo exigia, asi que un plugin con hooks no podia ser conforme de ninguna forma -- declararlo lo rechazaba el esquema y no declararlo, la regla --."
         }
       }
     },
