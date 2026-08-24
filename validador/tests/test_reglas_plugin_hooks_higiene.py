@@ -6,8 +6,10 @@ exigen —cada uno tiene su propio control—.
 """
 from __future__ import annotations
 
+import pytest
+
 from validador_agentico.dominio.especificacion import (
-    EVENTO_HOOK_SENSIBLE,
+    EVENTOS_HOOK_SENSIBLES,
     RUTA_MANIFIESTO_UNIFICADA,
     TECHO_TIMEOUT_HOOK_S,
 )
@@ -103,11 +105,16 @@ def test_timeout_por_encima_del_techo_es_error():
     assert "techo" in _mensajes(errores)
 
 
-def test_evento_sensible_avisa_de_que_ve_todo_lo_que_se_escribe():
-    hallazgos = revisar_hooks("hooks.json",
-                              _hooks(EVENTO_HOOK_SENSIBLE, timeoutSec=5), {"hooks": 1})
+@pytest.mark.parametrize("evento", sorted(EVENTOS_HOOK_SENSIBLES))
+def test_evento_sensible_avisa_de_que_ve_todo_lo_que_se_escribe(evento):
+    """LAS DOS GRAFIAS, y tener solo una era un fallo ABIERTO. Copilot llama a este evento
+    `userPromptSubmitted` y Claude Code `UserPromptSubmit`: la constante tenia solo la primera, asi que
+    el aviso NO disparaba en la forma que usan los plugins de Claude -- la del catalogo oficial, con dos
+    apariciones medidas, y la de nuestros propios plugins --."""
+    hallazgos = revisar_hooks("hooks.json", _hooks(evento, timeoutSec=5), {"hooks": 1})
+
     avisos = [h for h in hallazgos if h.severidad is Severidad.AVISO]
-    assert any("canal de salida de datos" in h.mensaje for h in avisos)
+    assert any("canal de salida de datos" in h.mensaje for h in avisos), evento
 
 
 def test_interruptor_de_seguridad_apagado_es_aviso():

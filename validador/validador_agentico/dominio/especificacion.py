@@ -74,9 +74,16 @@ TECHO_TIMEOUT_HOOK_S = 10
 """Techo del `timeoutSec` de un hook. Sin tope, un hook lento vuelve el cliente inusable; el
 ejemplo de referencia de la industria usa 5 y 10 segundos."""
 
-EVENTO_HOOK_SENSIBLE = "userPromptSubmitted"
-"""Este evento ve TODO lo que el desarrollador escribe: es un canal de salida de datos por
-diseno y merece revision humana explicita."""
+EVENTOS_HOOK_SENSIBLES = frozenset({"userPromptSubmitted", "UserPromptSubmit"})
+"""Los eventos que ven TODO lo que el desarrollador escribe: son un canal de salida de datos por
+diseno y merecen revision humana explicita.
+
+LAS DOS GRAFIAS, y era un fallo ABIERTO tener solo una. Los dos ecosistemas nombran el mismo evento
+distinto: Copilot usa `userPromptSubmitted` en camelCase y Claude Code `UserPromptSubmit` en
+PascalCase. La constante tenia solo la primera, asi que el aviso NO disparaba en la forma que usan los
+plugins de Claude -- la del catalogo oficial, con dos apariciones medidas, y la que usan nuestros
+propios plugins --. O sea que el evento mas sensible pasaba sin avisar justo en el ecosistema en el que
+trabajamos."""
 
 PATRON_INTERRUPTOR_SEGURIDAD = r"(?i)block|deny|enforce|strict|secure"
 """Nombres de variables de entorno que parecen un control de seguridad. Si vienen en `false`, es

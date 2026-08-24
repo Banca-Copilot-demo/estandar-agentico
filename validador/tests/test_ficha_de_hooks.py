@@ -27,7 +27,9 @@ _GOBIERNO = {
     "owner": {"team": "squad-sdlc", "contact": "squad-sdlc@ejemplo.dev"},
     "status": "draft",
     "data_classification": "internal",
-    "version": "1.0.0",
+    # SIN `version`: este fixture tiene `plugin.json` -- se le añadio cuando unos hooks sueltos
+    # pasaron a ser error -- y con manifiesto la `version` esta PROHIBIDA en el gobierno, porque la
+    # del paquete es la del manifiesto. Las dos reglas dejan una sola forma valida al fixture.
     "standard_version": "8.0.0",
     "artifacts": {"hooks": 1},
     "hooks": {"approval": {"approved_by": "squad-seguridad", "date": "2026-08-23",
@@ -38,6 +40,15 @@ _GOBIERNO = {
 def _repositorio(raiz: Path, manejador: dict, scripts: dict[str, str] | None = None,
                   gobierno: dict = _GOBIERNO) -> Path:
     """Un repositorio con un `hooks.json` y, si se piden, los scripts que referencia."""
+    # EL MANIFIESTO FORMA PARTE DEL FIXTURE desde que unos `hooks` sueltos son error: van siempre dentro
+    # de un plugin, porque un hook suelto SE SUMA a los demas y no lo quita ninguna capa superior --
+    # solo `enabledPlugins` revoca por artefacto, y solo alcanza a los de un plugin --.
+    manifiesto = raiz / ".claude-plugin"
+    manifiesto.mkdir(parents=True, exist_ok=True)
+    (manifiesto / "plugin.json").write_text(json.dumps(
+        {"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+         "name": "demo.sdlc.x", "version": "1.0.0", "description": "Plugin del fixture de hooks."}),
+        encoding="utf-8")
     directorio = raiz / "hooks"
     directorio.mkdir(parents=True)
     (directorio / "hooks.json").write_text(json.dumps(

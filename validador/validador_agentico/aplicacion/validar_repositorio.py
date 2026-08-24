@@ -234,12 +234,17 @@ def _revisar_hooks(contenido: ContenidoRepositorio, raiz_unidad: Path) -> list[H
     # referenciado este presente, pero mirar el disco es I/O y le toca a esta capa. Se comprueba
     # justo lo referenciado en vez de listar el arbol entero: un `scripts/` con veinte archivos de los
     # que el hook usa dos no tiene por que declararlos todos.
+    # UNOS HOOKS VAN DENTRO DE UN PLUGIN, por el mismo motivo que el `mcp` y con mas fuerza: los hooks
+    # se SUMAN entre capas de ajustes, asi que uno suelto no lo quita ninguna capa superior.
+    hallazgos = reglas_hooks.revisar_que_esta_en_un_plugin(
+        contenido.hooks.ruta_relativa,
+        hay_manifiesto=contenido.manifiesto is not None and contenido.manifiesto.es_legible)
     presentes = frozenset(
         ruta for ruta in scripts_de_hooks.referencias_propias(contenido.hooks.contenido)
         if (raiz_unidad / ruta).is_file())
-    return reglas_hooks.revisar_hooks(contenido.hooks.ruta_relativa,
-                                      contenido.hooks.contenido, declarado,
-                                      scripts_presentes=presentes)
+    return hallazgos + reglas_hooks.revisar_hooks(
+        contenido.hooks.ruta_relativa, contenido.hooks.contenido, declarado,
+        scripts_presentes=presentes)
 
 
 def _revisar_higiene(contenido: ContenidoRepositorio) -> list[Hallazgo]:

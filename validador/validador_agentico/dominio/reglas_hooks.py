@@ -16,7 +16,7 @@ import re
 
 from validador_agentico.dominio import scripts_de_hooks
 from validador_agentico.dominio.especificacion import (
-    EVENTO_HOOK_SENSIBLE,
+    EVENTOS_HOOK_SENSIBLES,
     PATRON_INTERRUPTOR_SEGURIDAD,
     TECHO_TIMEOUT_HOOK_S,
 )
@@ -39,12 +39,48 @@ def revisar_hooks(ruta_relativa: str, configuracion: dict,
         for entrada in entradas if isinstance(entradas, list) else []:
             hallazgos += _revisar_timeout(donde, entrada.get("timeoutSec"))
             hallazgos += _revisar_entorno(donde, entrada.get("env") or {})
-        if evento == EVENTO_HOOK_SENSIBLE:
+        if evento in EVENTOS_HOOK_SENSIBLES:
             hallazgos.append(aviso(donde,
                                    "este evento ve TODO lo que el desarrollador escribe: es un "
                                    "canal de salida de datos por diseno. Revisa si el script "
                                    "accede a la red antes de aprobarlo"))
     return hallazgos
+
+
+def revisar_que_esta_en_un_plugin(donde: str, hay_manifiesto: bool) -> list[Hallazgo]:
+    """Unos `hooks` van SIEMPRE dentro de un plugin. Error, no aviso.
+
+    ES EL MISMO ARGUMENTO QUE PARA EL `mcp`, con la MISMA clave: existe
+    `strictPluginOnlyCustomization.hooks` -- «Lock hooks to plugin and managed sources», ambito
+    Managed -- hermana literal de `strictPluginOnlyCustomization.mcp`. Bajo ese ajuste, unos hooks
+    fuera de un plugin no se ejecutan.
+
+    Y AQUI EL ARGUMENTO ES MAS FUERTE QUE PARA EL `mcp`, por como se combinan las capas de ajustes:
+
+        «Hook entries merge across settings levels rather than replacing each other: user, project,
+         and local settings add their own hooks without removing managed ones, and the
+         `disableAllHooks` setting can't disable managed hooks from outside managed settings.»
+
+    O sea que un hook suelto NO lo quita ninguna capa superior: SE SUMA. Para un `mcp` suelto queda al
+    menos `allowedMcpServers` como plan B; para unos hooks sueltos, el unico control por artefacto es
+    `enabledPlugins`, y solo alcanza a los que estan DENTRO de un plugin. Lo demas es
+    `disableAllHooks`, que es todo o nada. Un hook fuera de un plugin es, en la practica, irrevocable
+    de forma granular.
+
+    MEDIDO en los catalogos publicos: 6 de 6 archivos `hooks.json` de `claude-plugins-official` estan
+    dentro de `plugins/`, y CERO artefactos de los dos catalogos declaran hooks en un `settings.json`
+    o en frontmatter -- sobre 135 manifiestos --. Y el contraejemplo confirma el patron: los 8 hooks de
+    `awesome-copilot` viven fuera de todo plugin porque Copilot no admite otra cosa, y se distribuyen
+    copiando una carpeta a mano, sin version efectiva y sin revocacion.
+    """
+    if hay_manifiesto:
+        return []
+    return [error(donde,
+                  "unos `hooks` van dentro de un PLUGIN, y esta unidad no tiene `plugin.json`. Un hook "
+                  "suelto SE SUMA a los demas y no lo quita ninguna capa superior: el unico control por "
+                  "artefacto es `enabledPlugins`, que solo alcanza a los hooks de un plugin, y lo que "
+                  "queda es `disableAllHooks`, que apaga TODOS. Ademas, con "
+                  "`strictPluginOnlyCustomization.hooks` activado no se ejecutan. Muevelos a un plugin")]
 
 
 def _revisar_scripts_externos(ruta_relativa: str, configuracion: dict) -> list[Hallazgo]:
