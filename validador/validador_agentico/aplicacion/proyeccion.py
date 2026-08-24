@@ -207,7 +207,31 @@ def mcp_publicado(contenido: ContenidoRepositorio, raiz: Path,
         standard_version=str(gobierno.get("standard_version", "")),
         sha256=digesto.sha256_de(raiz / contenido.mcp.ruta_relativa),
         tools_digest=_digest_de_herramientas_declarado(bloque),
+        servidores=_servidores_publicados(bloque),
     )
+
+
+def _servidores_publicados(gobierno_del_mcp: dict) -> tuple:
+    """Un elemento por servidor con lo que la comprobacion de deriva necesita para funcionar.
+
+    `nombre`, `endpoint` y `tools_digest`. El endpoint va porque sin el no hay a donde conectarse, y
+    tiene que ir FIRMADO por el mismo motivo que el digesto: si saliera del `GOVERNANCE.json`, alguien
+    podria apuntar la comprobacion a un servidor limpio mientras el cliente usa otro.
+
+    Se publica el nombre aunque no sea un control de seguridad -- la plataforma lo dice -- porque es lo
+    que una persona reconoce en el catalogo. Lo que identifica al servidor para cualquier decision es su
+    endpoint.
+
+    Los `stdio` se incluyen SIN endpoint: no se les puede consultar la superficie de herramientas, asi
+    que la deriva los marcara «sin comprobar», que es un estado legitimo y visible. Omitirlos daria una
+    lista de servidores que no coincide con la del gobierno.
+    """
+    servidores = gobierno_del_mcp.get("servers") or []
+    return tuple(
+        {"nombre": str(s.get("name", "")),
+         "endpoint": str(s.get("endpoint", "")),
+         "tools_digest": str(s.get("tools_digest", ""))}
+        for s in servidores if isinstance(s, dict))
 
 
 def hooks_publicado(contenido: ContenidoRepositorio, raiz: Path,

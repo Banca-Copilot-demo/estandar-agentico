@@ -107,6 +107,8 @@ def test_todo_campo_poblado_de_una_ficha_llega_al_JSON():
         id="demo.x.y", tipo="hooks", ruta="hooks/hooks.json", owner_team="squad-x",
         owner_contact="squad-x@ejemplo.dev", version="1.0.0", data_classification="internal",
         standard_version="8.0.0", sha256="a" * 64, tools_digest="b" * 64,
+        servidores=({"nombre": "x", "endpoint": "https://x.dev/mcp",
+                     "tools_digest": "e" * 64},),
         scripts={"scripts/x.sh": "c" * 64}, scripts_digest="d" * 64)
     veredicto = Veredicto(hallazgos=(), inventario=Inventario(), artefactos=(poblada,))
 
@@ -129,5 +131,5 @@ def test_un_campo_que_NO_aplica_se_omite_en_vez_de_salir_vacio():
 
     serializada = json.loads(informe.render_json(veredicto, "repo"))["artefactos"][0]
 
-    for campo in ("tools_digest", "scripts", "scripts_digest"):
+    for campo in ("tools_digest", "servidores", "scripts", "scripts_digest"):
         assert campo not in serializada, campo

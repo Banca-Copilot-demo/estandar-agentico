@@ -97,6 +97,7 @@ def render_json(veredicto: Veredicto, nombre_repositorio: str) -> str:
              "data_classification": a.data_classification,
              "standard_version": a.standard_version, "sha256": a.sha256,
              **({"tools_digest": a.tools_digest} if a.tools_digest else {}),
+             **({"servidores": list(a.servidores)} if a.servidores else {}),
              **({"scripts": a.scripts} if a.scripts else {}),
              **({"scripts_digest": a.scripts_digest} if a.scripts_digest else {})}
             for a in veredicto.artefactos

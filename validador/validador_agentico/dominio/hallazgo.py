@@ -88,6 +88,19 @@ class ArtefactoPublicado:
     # editable del repositorio -- cualquiera con escritura podria ajustarlo para que coincidiera con
     # un servidor ya envenenado, y la comprobacion diria que todo esta en orden.
     tools_digest: str = ""
+    # SOLO LO USA EL `mcp`: un elemento por servidor, con `nombre`, `endpoint` y `tools_digest`.
+    #
+    # POR QUE HACE FALTA, y no es coherencia con `hooks`: es lo que DESBLOQUEA la comprobacion
+    # periodica de deriva. Esa comprobacion se conecta a UN endpoint y compara contra UN digesto, y su
+    # linea base debe salir del predicado FIRMADO -- nunca del `GOVERNANCE.json`, que es editable, o
+    # cualquiera con escritura ajustaria el digesto para que cuadrara con un servidor ya envenenado --.
+    # Medido: el predicado no llevaba el endpoint, asi que la linea base no se podia construir de lo
+    # firmado NI CON UN SOLO SERVIDOR. Eso explica por que ese paso seguia pendiente: no era solo que
+    # faltara verificar la atestacion, es que el dato no estaba en lo sellado.
+    #
+    # El `tools_digest` de arriba se mantiene: es el AGREGADO, y sigue sirviendo para responder
+    # «cambio algo» de un vistazo y para no romper a quien ya lo lea.
+    servidores: tuple = ()
     # SOLO LO USA `hooks`, por el mismo motivo que `tools_digest`: el predicado es una lista plana.
     # `scripts` es el nivel POR ARCHIVO -- ruta -> sha256 de cada script que el hook ejecuta -- y
     # `scripts_digest` el nivel del CONJUNTO, que cubre el `hooks.json` y todos sus scripts a la vez.

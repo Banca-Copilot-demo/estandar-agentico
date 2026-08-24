@@ -13,8 +13,11 @@ emparejan por `serverUrl` o `serverCommand`.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
+from validador_agentico.aplicacion.validar_repositorio import validar
 from validador_agentico.dominio.declaracion_mcp import (
     cotejar,
     identidad_configurada,
@@ -32,6 +35,11 @@ _CONFIG_REMOTO = {"type": "http", "url": "https://knowledge-mcp.global.api.aws"}
 _DECLARADO_REMOTO = {"name": "aws-knowledge", "transport": "http",
                      "endpoint": "https://knowledge-mcp.global.api.aws",
                      "write_operations": False,
+                     # El `tools_digest` es OBLIGATORIO para un remoto y el gobierno real lo tiene: sin
+                     # el no hay linea base contra la que detectar deriva, que es lo unico que protege
+                     # a un servidor sin version que fijar.
+                     "tools_digest": "4f6f3424d74ac9a388debfbba81c0e895fcdf846dc83d51911c3c271be7dfe36",
+                     "tools_digest_date": "2026-08-23",
                      "source": {"kind": "remote", "ref": "https://knowledge-mcp.global.api.aws",
                                 "version_pin": "sin-version"}}
 
@@ -148,3 +156,40 @@ def test_un_servidor_cuya_referencia_no_se_reconoce_no_se_declara_ausente():
         ".mcp.json", {"raro": {"command": "servidor-local-sin-args"}}, [])
 
     assert hallazgos == []
+
+
+# ── la ficha publica lo que la deriva necesita ──────────────────────────────────────────────
+def test_la_ficha_publica_endpoint_y_digesto_de_CADA_servidor(tmp_path):
+    """POR QUE ESTA PRUEBA. La comprobacion periodica de deriva se conecta a UN endpoint y compara
+    contra UN digesto, y su linea base debe salir del predicado FIRMADO -- nunca del GOVERNANCE.json,
+    que es editable --. Medido: el predicado no llevaba el endpoint, asi que la linea base no se podia
+    construir de lo sellado NI CON UN SOLO SERVIDOR. Eso explicaba por que ese paso seguia pendiente.
+    """
+    manifiesto = tmp_path / ".claude-plugin"
+    manifiesto.mkdir()
+    (manifiesto / "plugin.json").write_text(json.dumps(
+        {"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+         "name": "demo.sdlc.datos", "version": "1.0.0", "description": "x"}), encoding="utf-8")
+    (tmp_path / ".mcp.json").write_text(json.dumps(
+        {"mcpServers": {"catalogo-datos": _CONFIG_STDIO, "aws-knowledge": _CONFIG_REMOTO}}),
+        encoding="utf-8")
+    (tmp_path / "GOVERNANCE.json").write_text(json.dumps({
+        "id": "demo.sdlc.datos", "domain": "sdlc",
+        "owner": {"team": "squad-sdlc", "contact": "s@e.dev"},
+        "status": "draft", "data_classification": "internal", "standard_version": "8.0.0",
+        "artifacts": {"mcps": 1},
+        "mcp": {"servers": [_DECLARADO_STDIO, _DECLARADO_REMOTO],
+                "credentials": {"mechanism": "none"},
+                "approval": {"approved_by": "sec", "date": "2026-08-23",
+                             "review_by": "2027-02-23", "security_review": True}}}), encoding="utf-8")
+
+    ficha = next(a for a in validar(tmp_path).artefactos if a.tipo == "mcp")
+    por_nombre = {s["nombre"]: s for s in ficha.servidores}
+
+    assert set(por_nombre) == {"catalogo-datos", "aws-knowledge"}
+    # El remoto trae lo que hace falta para consultarlo: a donde y contra que comparar.
+    assert por_nombre["aws-knowledge"]["endpoint"] == "https://knowledge-mcp.global.api.aws"
+    assert por_nombre["aws-knowledge"]["tools_digest"] == _DECLARADO_REMOTO["tools_digest"]
+    # El `stdio` se incluye SIN endpoint: no se le puede consultar la superficie, asi que la deriva lo
+    # marcara «sin comprobar». Omitirlo daria una lista que no coincide con la del gobierno.
+    assert por_nombre["catalogo-datos"]["endpoint"] == ""
