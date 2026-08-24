@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 
-from validador_agentico.dominio import forma_mcp
+from validador_agentico.dominio import declaracion_mcp, forma_mcp
 from validador_agentico.dominio.hallazgo import Hallazgo, aviso, error
 
 # Etiquetas moviles habituales de los registros de paquetes. Ninguna fija nada: el mismo nombre
@@ -73,6 +73,37 @@ def _defecto_de_la_referencia(referencia: str) -> str | None:
     if any(parte in _COMODINES_DE_COMPONENTE for parte in version.split(".")):
         return f"`{version}` lleva un comodin, no fija la version"
     return None
+
+
+def revisar_declaracion(donde: str, configuracion: object,
+                         servidores_declarados: object) -> list[Hallazgo]:
+    """El gobierno declara EXACTAMENTE los servidores que la configuracion ejecuta.
+
+    Se coteja por lo que IDENTIFICA a cada servidor -- la URL para un remoto, la referencia con version
+    para un `stdio` -- y no por su nombre: la plataforma documenta que un `serverName` no es un control
+    de seguridad, porque es la etiqueta que asigna el usuario y puede llamar `github` a cualquier cosa.
+    """
+    configurados = forma_mcp.servidores_de(configuracion)
+    if configurados is None or not isinstance(servidores_declarados, list):
+        # Sin una de las dos partes no hay nada que cotejar, y las reglas que las validan por separado
+        # ya habran dicho lo suyo. Afirmar aqui una discrepancia seria inventarsela.
+        return []
+
+    sin_declarar, sin_configurar = declaracion_mcp.cotejar(configurados, servidores_declarados)
+    hallazgos: list[Hallazgo] = []
+    if sin_declarar:
+        hallazgos.append(error(
+            donde,
+            f"se ejecuta un servidor que el GOVERNANCE.json no declara: {', '.join(sin_declarar)}. "
+            f"La aprobacion no lo cubre, no tiene `tools_digest` con el que detectar deriva y no "
+            f"recibe ficha: se ejecutaria sin gobierno. Declaralo, o quitalo de la configuracion"))
+    if sin_configurar:
+        hallazgos.append(error(
+            donde,
+            f"el GOVERNANCE.json declara un servidor que la configuracion NO tiene: "
+            f"{', '.join(sin_configurar)}. La aprobacion cubre algo que no existe -- suele ser un "
+            f"renombrado a medias -- y deja al aprobador creyendo que reviso lo que se ejecuta"))
+    return hallazgos
 
 
 def revisar_que_esta_en_un_plugin(donde: str, hay_manifiesto: bool) -> list[Hallazgo]:

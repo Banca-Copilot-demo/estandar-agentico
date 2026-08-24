@@ -302,6 +302,10 @@ def _revisar_mcp(contenido: ContenidoRepositorio) -> list[Hallazgo]:
         hay_manifiesto=contenido.manifiesto is not None and contenido.manifiesto.es_legible)
     hallazgos += reglas_mcp.revisar_servidores(
         contenido.mcp.ruta_relativa, contenido.mcp.contenido)
+    # EL COTEJO GOBIERNO <-> CONFIGURACION. Necesita los dos archivos, asi que se despacha aqui.
+    hallazgos += reglas_mcp.revisar_declaracion(
+        contenido.mcp.ruta_relativa, contenido.mcp.contenido,
+        (_gobierno_del_mcp(contenido) or {}).get("servers"))
 
     gobierno_del_mcp = _gobierno_del_mcp(contenido)
     if gobierno_del_mcp is None:
