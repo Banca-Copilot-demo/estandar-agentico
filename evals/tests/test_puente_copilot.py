@@ -45,39 +45,50 @@ class _LanzadorFalso:
     def __init__(self, resultado: _Ejecucion) -> None:
         self.resultado = resultado
         self.orden: list[str] | None = None
+        self.entrada: str | None = None
 
-    def __call__(self, orden, **_kwargs):
+    def __call__(self, orden, **kwargs):
         self.orden = orden
+        # La consulta viaja por ENTRADA ESTANDAR, no en la orden: se registra para poder comprobarla.
+        self.entrada = kwargs.get("input")
         return self.resultado
 
 
 # ── la orden ────────────────────────────────────────────────────────────────────────────────
-def test_la_consulta_viaja_como_argumento_y_no_concatenada():
-    """P10: si el prompt se pegara a un string, una consulta con comillas o espacios romperia la orden
-    -- y las consultas de una suite de activacion son frases enteras del usuario."""
-    consulta = 'dame el "saludo" corporativo; y nada mas'
+def test_la_consulta_NO_va_en_la_orden_sino_por_entrada_estandar():
+    """La orden no debe contener `-p` ni la consulta. Dos razones medidas, y la segunda es la que decide
+    si el JUEZ puede correr sobre la suscripcion de Copilot:
 
-    orden = construir_orden(consulta, _RAIZ, _CLI)
+      - la linea de comandos de Windows tope unos 8191 caracteres, y un prompt de juez -- rubrica MAS la
+        salida completa del artefacto -- lo pasa con facilidad. Al pasarlo, el fallo es cripitco («The
+        system cannot find the file specified»), que parece un problema de instalacion y no de tamaño;
+      - `cmd` parte la orden en el primer salto de linea.
 
-    assert consulta in orden, orden
+    Un pipe no tiene ninguno de los dos problemas.
+    """
+    orden = construir_orden(_RAIZ, _CLI)
+
+    assert "-p" not in orden, "la consulta no va como argumento: va por stdin"
 
 
-def test_una_consulta_de_VARIAS_LINEAS_llega_completa():
+def test_una_consulta_de_VARIAS_LINEAS_llega_INTACTA():
     """REGRESION del defecto mas caro que aparecio montando esto, y aparecio corriendo una suite real.
 
-    En Windows la orden llega al proceso hijo como UNA cadena y `cmd` la parte en el primer salto de
-    linea. Un caso cuya consulta ocupaba dos lineas llegaba SOLO con la primera, el modelo respondia «no
-    has incluido la consulta», y el informe acusaba al ARTEFACTO de un fallo de la HERRAMIENTA. Es el peor
-    tipo de defecto en un arnes de evaluacion.
+    Con `-p <texto>`, en Windows la orden llega al hijo como UNA cadena y `cmd` la parte en el primer
+    salto de linea: un caso de dos lineas llegaba solo con la primera, el modelo respondia «no has
+    incluido la consulta», y el informe acusaba al ARTEFACTO de un fallo de la HERRAMIENTA.
+
+    Hubo un apano intermedio -- colapsar los saltos a espacios -- que funcionaba pero alteraba cualquier
+    entrada con sangrado significativo (codigo, YAML). Por stdin no hace falta: el texto llega TAL CUAL,
+    y esta prueba lo fija comprobando que el salto de linea SOBREVIVE.
     """
     consulta = 'Revisa esta consulta JQL:\nproject = PAGOS AND summary ~ "*pago"'
+    lanzador = _LanzadorFalso(_Ejecucion(stdout="ok"))
 
-    orden = construir_orden(consulta, _RAIZ, _CLI)
-    enviada = orden[orden.index("-p") + 1]
+    responder(consulta, _RAIZ, ejecutar=lanzador)
 
-    assert "\n" not in enviada, "un salto de linea corta la orden en Windows"
-    assert "project = PAGOS" in enviada, "la segunda linea tiene que seguir llegando"
-    assert "Revisa esta consulta JQL:" in enviada
+    assert lanzador.entrada == consulta, "la consulta tiene que llegar sin alterar, saltos incluidos"
+    assert "\n" in lanzador.entrada, "el salto de linea ya no se colapsa"
 
 
 @pytest.mark.parametrize("bandera", ["-s", "--allow-all-tools", "--no-ask-user"])
@@ -85,14 +96,14 @@ def test_las_banderas_del_modo_no_interactivo_estan(bandera):
     """`--allow-all-tools` no es comodidad: la ayuda del CLI dice que es REQUERIDO en modo no
     interactivo. Sin `--no-ask-user` el agente puede quedarse esperando a una persona que no existe, y
     sin `-s` la salida trae estadisticas que el motor leeria como parte de la respuesta."""
-    assert bandera in construir_orden("x", _RAIZ, _CLI)
+    assert bandera in construir_orden(_RAIZ, _CLI)
 
 
 def test_el_directorio_del_proyecto_se_pasa_con_C_y_no_se_cambia_de_directorio():
     """El motor invoca este script desde SU directorio de trabajo, no desde el del artefacto. Si el
     proyecto no se pasara explicitamente, el CLI buscaria los artefactos donde no estan y todos los
     casos fallarian por una razon que no tiene nada que ver con el artefacto."""
-    orden = construir_orden("x", _RAIZ, _CLI)
+    orden = construir_orden(_RAIZ, _CLI)
 
     assert "-C" in orden
     assert orden[orden.index("-C") + 1] == str(_RAIZ)
@@ -174,5 +185,5 @@ def test_la_orden_llega_completa_al_lanzador():
 
     responder("la consulta", _RAIZ, ejecutar=lanzador)
 
-    assert "la consulta" in lanzador.orden
-    assert "-C" in lanzador.orden
+    assert lanzador.entrada == "la consulta", "la consulta llega por stdin"
+    assert "-C" in lanzador.orden, "y el proyecto en la orden"

@@ -104,8 +104,25 @@ def _en_una_linea(consulta: str) -> str:
     return " ".join(consulta.split())
 
 
-def construir_orden(consulta: str, raiz_del_proyecto: Path, cli: str) -> list[str]:
+def construir_orden(raiz_del_proyecto: Path, cli: str) -> list[str]:
     """La orden completa, como LISTA (P10). Pura: se puede comprobar sin ejecutar nada.
+
+    SIN `-p`: LA CONSULTA VA POR ENTRADA ESTANDAR, y ese cambio arregla dos defectos de un golpe y abre
+    la puerta a lo mas importante:
+
+      1. EL TRUNCADO POR SALTOS DE LINEA. Con `-p <texto>`, en Windows la orden llega al hijo como UNA
+         cadena y `cmd` la parte en el primer salto. Un caso de dos lineas llegaba solo con la primera y
+         el informe acusaba al ARTEFACTO de un fallo de la HERRAMIENTA. Habia un apano -- colapsar los
+         saltos a espacios -- que alteraba cualquier entrada con sangrado significativo. Por stdin no hace
+         falta el apano: el texto llega tal cual.
+      2. EL LIMITE DE LONGITUD. La linea de comandos de Windows tope unos 8191 caracteres. Un prompt de
+         JUEZ lleva la rubrica MAS la salida completa del artefacto, asi que lo pasa con facilidad -- y
+         al pasarlo el fallo es cripitco («The system cannot find the file specified»), que parece un
+         problema de instalacion y no de tamaño. Un pipe no tiene ese tope.
+
+      3. Y POR ESO EL JUEZ PUEDE CORRER AQUI. Es la unica razon por la que este cable sirve tambien como
+         proveedor de puntuacion, o sea que TODO -- artefacto y juez -- cabe en la suscripcion de Copilot
+         sin necesitar un segundo proveedor.
 
     `-C` en vez de cambiar de directorio: el CLI lo soporta, y asi el script se invoca desde donde sea
     sin depender del directorio de trabajo de quien lo llama -- que en promptfoo no es el nuestro --.
@@ -114,7 +131,6 @@ def construir_orden(consulta: str, raiz_del_proyecto: Path, cli: str) -> list[st
         *_PREFIJO_DEL_INTERPRETE,
         cli,
         "-C", str(raiz_del_proyecto),
-        "-p", _en_una_linea(consulta),
         "-s",
         "--allow-all-tools",
         "--no-ask-user",
@@ -127,7 +143,7 @@ def responder(consulta: str, raiz_del_proyecto: Path, *, ejecutar=subprocess.run
     `ejecutar` es inyectable con un default sobreescribible (T4): las pruebas sustituyen el lanzador en
     vez de parchear `subprocess`, asi que el cableado esta en la firma y no escondido dentro.
     """
-    hecho = ejecutar(construir_orden(consulta, raiz_del_proyecto, ruta_del_cli()),
+    hecho = ejecutar(construir_orden(raiz_del_proyecto, ruta_del_cli()), input=consulta,
                      capture_output=True, text=True, encoding="utf-8", errors="replace",
                      timeout=_TIEMPO_LIMITE_S)
     if hecho.returncode != 0:
@@ -145,6 +161,22 @@ def raiz_del_proyecto() -> Path:
     """El proyecto cuyos artefactos debe ver el cliente, o el directorio actual si no se declara."""
     declarada = os.getenv(VARIABLE_DE_ENTORNO_PROYECTO)
     return Path(declarada) if declarada else Path.cwd()
+
+
+def call_api(prompt: str, options: dict | None = None, context: dict | None = None) -> dict:
+    """El contrato de PROVEEDOR de promptfoo. El nombre es suyo, no nuestro: lo busca por reflexion.
+
+    POR QUE EXISTE ADEMAS DEL `main()`, y es la pieza que responde a «¿puede el juez correr sobre la
+    suscripcion de Copilot?». Con la forma `exec:` promptfoo invoca el script pasando el prompt como
+    ARGUMENTO, y eso topa con el limite de la linea de comandos de Windows justo en el caso del juez, cuyo
+    prompt lleva la rubrica mas la salida entera del artefacto. Con la forma `file://...py` promptfoo
+    llama a esta funcion y el prompt entra como PARAMETRO: sin shell, sin limite y sin truncados.
+
+    Devuelve `{"output": ...}` siempre, incluso en fallo, porque es lo que el motor espera para poder
+    reportar el caso con su propio formato en vez de reventar la corrida.
+    """
+    del options, context  # Parte del contrato de promptfoo; este proveedor no los necesita.
+    return {"output": responder(prompt, raiz_del_proyecto())}
 
 
 def _configurar_registro() -> None:
