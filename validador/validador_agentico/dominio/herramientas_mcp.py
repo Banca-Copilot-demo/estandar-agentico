@@ -35,7 +35,6 @@ CAMPO_NOMBRE = "name"
 CAMPO_DESCRIPCION = "description"
 CAMPO_ESQUEMA = "inputSchema"
 
-_LONGITUD_SHA256 = 64
 _SIN_VALOR = ""
 
 
@@ -75,10 +74,3 @@ def forma_canonica(herramientas: list[dict]) -> str:
 def digest_de(herramientas: list[dict]) -> str:
     """`sha256` de la forma canonica, en hexadecimal."""
     return hashlib.sha256(forma_canonica(herramientas).encode("utf-8")).hexdigest()
-
-
-def es_digest(valor: object) -> bool:
-    """Si un valor tiene la forma de un `sha256`. Sirve para validar lo DECLARADO sin recalcularlo."""
-    return (isinstance(valor, str)
-            and len(valor) == _LONGITUD_SHA256
-            and all(c in "0123456789abcdef" for c in valor))

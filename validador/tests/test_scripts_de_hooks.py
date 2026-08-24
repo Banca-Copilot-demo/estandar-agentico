@@ -13,11 +13,11 @@ from __future__ import annotations
 
 import pytest
 
+from validador_agentico.dominio.forma_digesto import es_digest
 from validador_agentico.dominio.scripts_de_hooks import (
     VARIABLE_RAIZ_DEL_ARTEFACTO,
     VARIABLE_RAIZ_DEL_CONSUMIDOR,
     digest_del_conjunto,
-    es_digest,
     forma_canonica,
     referencias_externas,
     referencias_propias,

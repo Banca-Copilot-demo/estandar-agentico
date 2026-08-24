@@ -20,6 +20,22 @@ _TAMANO_BLOQUE = 65536
 
 
 def digest(ruta: Path) -> str:
+    """El sha256 del archivo, leyendolo por bloques. LANZA si no se puede leer.
+
+    POR QUE NO SE COMPARTE CON `validador.adaptadores.digesto.sha256_de`, que tiene el mismo cuerpo.
+    Una auditoria de duplicacion marca las dos como copias, y no lo son en lo que importa:
+
+      - EL CONTRATO DE ERROR ES EL OPUESTO, a proposito. Alli un archivo ilegible devuelve cadena
+        vacia, porque perder el digesto de un artefacto no debe tumbar la validacion de los otros
+        cincuenta. Aqui LANZA, porque un paquete cuyo digesto no se puede calcular no puede entrar en
+        el indice: publicarlo sin digesto seria publicar una entrada que nadie puede verificar.
+      - SON DOS DISTRIBUIBLES INDEPENDIENTES. `indice-agentico` no depende de `validador-agentico` ni
+        al contrario, y hacer que dependiera para reutilizar seis lineas de `hashlib` acoplaria dos
+        paquetes que se instalan por separado -- y cada uno arrastraria las dependencias del otro --.
+
+    O sea que lo comun es el idiom de `hashlib`, no una regla del dominio. Extraerlo daria una funcion
+    con un parametro para elegir si lanza, que es el sintoma de haber juntado dos cosas distintas.
+    """
     resumen = hashlib.sha256()
     with ruta.open("rb") as binario:
         for bloque in iter(lambda: binario.read(_TAMANO_BLOQUE), b""):

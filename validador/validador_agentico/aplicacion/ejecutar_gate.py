@@ -27,7 +27,10 @@ from validador_agentico.dominio.comprobacion import (
     ResultadoGate,
 )
 from validador_agentico.dominio.hallazgo import Veredicto
-from validador_agentico.puertos.especificacion_oficial import NOMBRE_COMPROBACION_OFICIAL
+from validador_agentico.puertos.especificacion_oficial import (
+    NOMBRE_COMPROBACION_OFICIAL,
+    ComprobadorOficial,
+)
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +45,7 @@ def _comprobacion_propia(veredicto: Veredicto) -> Comprobacion:
                         f"{len(veredicto.errores)} error(es) que bloquean")
 
 
-def ejecutar(raiz: Path, *, comprobador_oficial=gh_skill,
+def ejecutar(raiz: Path, *, comprobador_oficial: ComprobadorOficial = gh_skill,
              con_comprobacion_oficial: bool = True,
              equipos_conocidos: frozenset[str] | None = None,
              archivos_cambiados: tuple[str, ...] | None = None,

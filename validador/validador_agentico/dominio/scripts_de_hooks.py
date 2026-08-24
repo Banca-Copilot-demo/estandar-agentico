@@ -50,8 +50,6 @@ _CLAVE_HOOKS = "hooks"
 _REFERENCIA_PROPIA = re.compile(
     re.escape(VARIABLE_RAIZ_DEL_ARTEFACTO) + r"/([^\s\"';|&)]+)")
 
-_LONGITUD_SHA256 = 64
-
 
 def referencias_propias(configuracion: dict) -> tuple[str, ...]:
     """Las rutas de script DENTRO del artefacto, relativas a su raiz, sin repetir y en orden.
@@ -99,12 +97,6 @@ def digest_del_conjunto(digestos_por_ruta: dict[str, str]) -> str:
     """
     return hashlib.sha256(forma_canonica(digestos_por_ruta).encode("utf-8")).hexdigest()
 
-
-def es_digest(valor: object) -> bool:
-    """Si un valor tiene la forma de un `sha256`. Sirve para validar lo DECLARADO sin recalcularlo."""
-    return (isinstance(valor, str)
-            and len(valor) == _LONGITUD_SHA256
-            and all(c in "0123456789abcdef" for c in valor))
 
 
 def _textos_de_comando(configuracion: dict) -> list[str]:

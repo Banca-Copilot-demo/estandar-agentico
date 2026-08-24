@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import pytest
 
+from validador_agentico.dominio.forma_digesto import es_digest
 from validador_agentico.dominio.herramientas_mcp import (
     HerramientaSinNombreError,
     digest_de,
-    es_digest,
     forma_canonica,
 )
 

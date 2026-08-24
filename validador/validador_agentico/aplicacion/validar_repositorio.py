@@ -398,6 +398,24 @@ _ESQUEMA_POR_COLECCION = (
     ("agentes_leidos", "agent", "agent.schema.json"),
 )
 
+# Los documentos que se validan COMPLETOS contra su esquema, a diferencia de los artefactos, donde lo
+# que se valida es el objeto ensamblado a partir del frontmatter.
+#
+# EL GOBIERNO FALTABA, y era el mismo defecto que la propia existencia de esta capa vino a cerrar: un
+# esquema publicado como parte del entregable que NINGUN codigo ejecutaba. Se midio auditando el
+# repositorio: `plugins/asistente-autoria/GOVERNANCE.json` declaraba `artifacts.instructions`, que su
+# propio esquema PROHIBE -- `additionalProperties: false`, y la clave no esta entre las seis
+# admitidas --, y el gate lo daba por CONFORME. El esquema decia una cosa, el repositorio otra, y no
+# habia nada que lo notara.
+#
+# Y CABLEAR ESTE ESQUEMA EJECUTA TAMBIEN EL DEL `mcp`: `plugin-governance.schema.json` lo alcanza con
+# tres `$ref` -- `aprobacion`, `credenciales`, `servidorGobernado` --. `mcp.schema.json` no es un
+# esquema de documento suelto y no se valida por separado: es la caja de piezas que el gobierno
+# referencia, que es el motivo por el que no aparecia en ninguna llamada.
+_ESQUEMA_POR_DOCUMENTO = (
+    ("gobierno", "plugin-governance.schema.json"),
+)
+
 
 def _revisar_forma_contra_esquemas(contenido: ContenidoRepositorio,
                                    directorio: Path | None) -> list[Hallazgo]:
@@ -423,6 +441,19 @@ def _revisar_forma_contra_esquemas(contenido: ContenidoRepositorio,
         return []
 
     hallazgos: list[Hallazgo] = []
+    for atributo, nombre_esquema in _ESQUEMA_POR_DOCUMENTO:
+        documento = getattr(contenido, atributo)
+        if documento is None or not documento.es_legible:
+            # Ausente e ilegible ya los senalan sus propias reglas -- una con el aviso de que no hay
+            # gobierno, la otra con el error de formato --, y aqui no hay objeto que validar.
+            continue
+        try:
+            defectos = esquema.incumplimientos(documento.contenido, nombre_esquema, directorio)
+        except esquema.EsquemasNoDisponiblesError as fallo:
+            return [error(str(directorio), f"no se pudo comprobar la forma: {fallo}")]
+        hallazgos += [error(documento.ruta_relativa, f"forma invalida — {defecto}")
+                      for defecto in defectos]
+
     for coleccion, kind, nombre_esquema in _ESQUEMA_POR_COLECCION:
         for artefacto in getattr(contenido, coleccion):
             if artefacto.frontmatter is None:
