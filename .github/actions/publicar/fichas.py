@@ -73,6 +73,34 @@ _RUTA_ENTIDADES = f"/v1/blueprints/{BLUEPRINT}/entities?upsert=true&merge=true"
 _TIPOS_EN_PLUGIN = frozenset({"skill", "agent", "mcp", "hooks"})
 
 
+def plugin_que_contiene(ruta_del_artefacto: str, plugins: list[dict]) -> str:
+    """El nombre del plugin dentro del que vive `ruta_del_artefacto`, o cadena vacia si ninguno.
+
+    EL DEFECTO QUE ESTO ARREGLA, visto mirando el catalogo real y no el codigo: la pista de instalacion
+    se construia con `inventario.nombre_plugin`, que es UN nombre a nivel de REPOSITORIO. En un
+    repositorio con varios plugins ese unico nombre se aplicaba a TODOS los artefactos, asi que cuatro
+    de los cinco quedaban apuntando al plugin equivocado.
+
+    No era un error cosmetico: quien siguiera la pista instalaba OTRO plugin y no obtenia el artefacto
+    que buscaba -- y el comando no falla, porque el plugin al que apunta si existe --. Un fallo asi no se
+    ve en el gate ni en la publicacion; solo se ve leyendo la ficha publicada.
+
+    Se resuelve por PREFIJO DE RUTA porque es el unico dato que relaciona a los dos: el artefacto lleva
+    su `ruta` relativa al repositorio y el plugin su `subruta`. Se toma la coincidencia MAS LARGA, para
+    que un plugin anidado dentro de otro gane sobre el que lo contiene.
+    """
+    candidatos = [
+        p for p in plugins
+        if p.get("subruta") and p["subruta"] != "."
+        and ruta_del_artefacto.startswith(f"{p['subruta']}/")
+    ]
+    if not candidatos:
+        # `.` es el plugin que ocupa el repositorio entero: solo aplica si no hay ninguno anidado.
+        raiz = [p for p in plugins if p.get("subruta") == "."]
+        return str(raiz[0].get("nombre", "")) if raiz else ""
+    return str(max(candidatos, key=lambda p: len(p["subruta"])).get("nombre", ""))
+
+
 def _pista_de_instalacion(artefacto: dict, en_marketplace: bool, repositorio: str,
                           sha: str, etiqueta: str, nombre_plugin: str) -> str:
     """El COMANDO exacto que el consumidor ejecuta. Siempre un comando: una descripcion en prosa
@@ -135,7 +163,9 @@ def _entidad(artefacto: dict, veredicto: dict, argumentos: argparse.Namespace) -
             "digest": argumentos.digest,
             "install_hint": _pista_de_instalacion(
                 artefacto, en_marketplace, argumentos.repositorio, argumentos.sha,
-                argumentos.etiqueta, veredicto["inventario"].get("nombre_plugin", "")),
+                argumentos.etiqueta,
+                # El plugin de ESTE artefacto, no el del repositorio: ver `plugin_que_contiene`.
+                plugin_que_contiene(artefacto["ruta"], veredicto.get("plugins") or [])),
             "verify_hint": _pista_de_verificacion(
                 artefacto, en_marketplace, argumentos.repositorio, artefacto["ruta"]),
             "sha256_archivo": artefacto.get("sha256", ""),
