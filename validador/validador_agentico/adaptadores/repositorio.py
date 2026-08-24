@@ -43,6 +43,13 @@ RUTA_MCP = ".mcp.json"
 RUTAS_MCP = (".mcp.json", "mcp.json")
 DIRECTORIO_VALIDADOR = "validador"
 
+# Las suites de evals van CO-LOCALIZADAS con lo que evaluan -- `<lo-que-sea>/evals/*.eval.json` -- y no
+# en un directorio central del repositorio. El motivo es el mismo por el que el gobierno del `mcp` vive
+# en el plugin: una suite lejos de su artefacto se queda atras cuando el artefacto cambia, y nadie lo
+# nota porque el archivo sigue ahi y sigue pasando.
+DIRECTORIO_EVALS = "evals"
+SUFIJO_EVAL = "*.eval.json"
+
 
 @dataclass(frozen=True)
 class ArchivoJson:
@@ -83,6 +90,9 @@ class ContenidoRepositorio:
     # El `.mcp.json` LEIDO, no solo contado: hay reglas que se aplican sobre lo que declara -- que
     # sus referencias esten FIJADAS a una version, por ejemplo -- y para eso hace falta su contenido.
     mcp: ArchivoJson | None = None
+    suites_de_evals: tuple[ArchivoJson, ...] = ()
+    """Las suites `evals/*.eval.json` de la unidad, LEIDAS. Son varias -- una por artefacto y tipo de
+    evaluacion -- a diferencia del gobierno o el mcp, que son uno por unidad."""
     skills: tuple[Artefacto, ...] = ()
     prompts: tuple[Artefacto, ...] = ()
     # Se LEEN, no solo se cuentan: sin frontmatter no hay gate que aplicarles.
@@ -194,6 +204,43 @@ def _leer_instructions(raiz: Path, lector) -> tuple[Artefacto, ...]:
     )
 
 
+def _leer_suites_de_evals(raiz: Path) -> tuple[ArchivoJson, ...]:
+    """Las suites `*/evals/*.eval.json` de la unidad, a cualquier profundidad.
+
+    A CUALQUIER PROFUNDIDAD, y no en un directorio fijo, porque una suite va co-localizada con lo que
+    evalua: la de un skill esta en `skills/<nombre>/evals/`, y la de un `mcp` -- que es uno por unidad y
+    no tiene carpeta propia -- en `evals/` de la raiz. Un unico patron cubre los dos.
+
+    SE EXCLUYEN LAS SUITES DE PLUGINS ANIDADOS, y la primera version no lo hacia porque razone que
+    «cada unidad se lee con su propia raiz, asi que aqui no hay ninguno debajo». ES FALSO para el
+    CONJUNTO SUELTO de un repositorio mixto: su raiz es la del repositorio, y `plugins/` cuelga de ahi.
+    El sintoma al ejecutarlo fue inequivoco -- la suite del `mcp` aparecio DOS veces, una en su unidad
+    y otra en la del suelto, y en la segunda el cotejo decia «esa unidad no publica ningun artefacto
+    con ese id» listando los ids de la RAIZ --. O sea que una suite correcta producia un error falso, y
+    ademas se contaba dos veces.
+    """
+    encontradas = sorted(
+        archivo for archivo in raiz.rglob(f"{DIRECTORIO_EVALS}/{SUFIJO_EVAL}")
+        if archivo.is_file() and ".git" not in archivo.parts
+        and not _bajo_un_plugin_anidado(raiz, archivo)
+    )
+    return tuple(_leer_json(raiz, archivo) for archivo in encontradas)
+
+
+def _bajo_un_plugin_anidado(raiz: Path, archivo: Path) -> bool:
+    """Si el archivo cuelga de un directorio -- distinto de `raiz` -- que es raiz de otro plugin.
+
+    Se resuelve por la presencia de un manifiesto y no por el nombre `plugins/`, que es solo una
+    convencion: un plugin anidado se reconoce por tener `plugin.json`, no por donde este.
+    """
+    for antepasado in archivo.parents:
+        if antepasado == raiz:
+            return False
+        if any((antepasado / relativa).is_file() for relativa in RUTAS_MANIFIESTO):
+            return True
+    return False
+
+
 def _leer_rutas(raiz: Path) -> frozenset[str]:
     """Todas las rutas versionables del arbol, en POSIX y relativas a la raiz."""
     return frozenset(
@@ -234,6 +281,7 @@ def leer(raiz: Path, lector) -> ContenidoRepositorio:
         gobierno=_leer_json(raiz, gobierno) if gobierno.exists() else None,
         hooks=_leer_json(raiz, hooks) if hooks else None,
         mcp=_leer_json(raiz, _archivo_mcp(raiz)) if _archivo_mcp(raiz) else None,
+        suites_de_evals=_leer_suites_de_evals(raiz),
         skills=_leer_artefactos_por_directorio(raiz, lector),
         prompts=_leer_prompts(raiz, lector),
         agentes=len(agentes_leidos),

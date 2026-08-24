@@ -56,7 +56,7 @@ from validador_agentico.adaptadores.repositorio import (
 )
 from validador_agentico.aplicacion import proyeccion
 from validador_agentico.dominio import reglas_agente, reglas_aprobacion
-from validador_agentico.dominio import reglas_credenciales, reglas_layout, reglas_mcp
+from validador_agentico.dominio import reglas_credenciales, reglas_evals, reglas_layout, reglas_mcp
 from validador_agentico.dominio import reglas_instructions, reglas_recursos
 from validador_agentico.dominio import reglas_higiene, reglas_hooks, reglas_huerfanos
 from validador_agentico.dominio import scripts_de_hooks
@@ -117,6 +117,7 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
             *_revisar_instructions(contenido),
             *_revisar_hooks(contenido, raiz_plugin),
             *_revisar_mcp(contenido),
+            *_revisar_evals(contenido, raiz_plugin, directorio_de_esquemas),
             *_revisar_yaml(contenido),
             *_revisar_recursos(contenido),
             *_revisar_duenos(contenido, equipos_conocidos),
@@ -416,6 +417,11 @@ _ESQUEMA_POR_DOCUMENTO = (
     ("gobierno", "plugin-governance.schema.json"),
 )
 
+# Las suites no van en `_ESQUEMA_POR_DOCUMENTO` porque son VARIAS por unidad, no una: ese recorrido
+# resuelve un atributo con un documento, y las suites necesitan ademas la regla que las coteja contra
+# el arbol. Van por `_revisar_evals`.
+_ESQUEMA_DE_LA_SUITE = "eval-suite.schema.json"
+
 
 def _revisar_forma_contra_esquemas(contenido: ContenidoRepositorio,
                                    directorio: Path | None) -> list[Hallazgo]:
@@ -468,6 +474,44 @@ def _revisar_forma_contra_esquemas(contenido: ContenidoRepositorio,
                 return [error(str(directorio), f"no se pudo comprobar la forma: {fallo}")]
             hallazgos += [error(artefacto.ruta_relativa, f"forma invalida — {defecto}")
                           for defecto in defectos]
+    return hallazgos
+
+
+def _revisar_evals(contenido: ContenidoRepositorio, raiz_plugin: Path,
+                   directorio_de_esquemas: Path | None) -> list[Hallazgo]:
+    """G5: las suites de evals de la unidad, contra su esquema y contra el arbol.
+
+    LAS DOS COMPROBACIONES SON DISTINTAS Y LAS DOS HACEN FALTA. El esquema valida la forma -- que
+    `eval_type` sea uno de los cuatro, que haya tres casos, que al menos uno sea `negative` --; la
+    regla valida contra el arbol que el `artifact` de la suite exista de verdad, que es lo que ningun
+    esquema puede saber.
+
+    UNA SUITE MAL FORMADA ES ERROR Y NO AVISO. Podria parecer que una suite defectuosa solo degrada la
+    evaluacion, pero hace algo peor: su presencia se lee como cobertura. Una suite que apunta a un id
+    inexistente corre, no falla y no evalua nada -- y el artefacto figura como evaluado --.
+
+    QUE NO HACE ESTA FUNCION: ejecutar la suite. Correrla consume modelo y sale a la red, asi que es un
+    paso propio con su propio comando; el gate comprueba que la suite es VALIDA, no que pasa.
+    """
+    if not contenido.suites_de_evals:
+        return []
+    ids_publicados = frozenset(
+        ficha.id for ficha in proyeccion.listar_artefactos(contenido, raiz_plugin))
+    hallazgos: list[Hallazgo] = []
+    for suite in contenido.suites_de_evals:
+        if not suite.es_legible:
+            hallazgos += _hallazgo_de_formato(suite)
+            continue
+        hallazgos += reglas_evals.revisar_suite(suite.ruta_relativa, suite.contenido, ids_publicados)
+        if directorio_de_esquemas is None:
+            continue
+        try:
+            defectos = esquema.incumplimientos(
+                suite.contenido, _ESQUEMA_DE_LA_SUITE, directorio_de_esquemas)
+        except esquema.EsquemasNoDisponiblesError as fallo:
+            return [error(str(directorio_de_esquemas), f"no se pudo comprobar la forma: {fallo}")]
+        hallazgos += [error(suite.ruta_relativa, f"forma invalida — {defecto}")
+                      for defecto in defectos]
     return hallazgos
 
 

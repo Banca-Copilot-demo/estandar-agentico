@@ -160,6 +160,59 @@ def _skill_en_la_raiz_que_nadie_publica(raiz: Path) -> None:
     _escribir_skill(raiz, "en-la-raiz")
 
 
+def _mcp_con_json_corrupto(raiz: Path) -> None:
+    """Un `.mcp.json` que no parsea.
+
+    ES EL UNICO EMISOR de «JSON invalido» para los tres archivos JSON de una unidad -- el manifiesto, el
+    gobierno y el mcp -- y ninguna prueba lo ejercitaba por esa via: un arnes de mutacion lo neutralizo
+    a `[]` y la suite entera siguio verde. O sea que el gate podia dejar de reportar un JSON ilegible
+    sin que nada fallara, y un `GOVERNANCE.json` corrupto se lee como «no hay gobierno».
+    """
+    _escribir_skill(raiz)
+    _escribir_manifiesto(raiz)
+    (raiz / ".mcp.json").write_text('{"mcpServers": {', encoding="utf-8")
+
+
+def _artefacto_con_bytes_que_no_son_utf8(raiz: Path) -> None:
+    """Un `SKILL.md` con un byte invalido en UTF-8.
+
+    NO ES UN CABLE MAS: es la regresion de un bug que ABORTABA EL GATE. `contar_lineas` leia el archivo
+    sin guarda mientras su hermana `leer_cuerpo` degradaba, y se la llama en los cuatro barridos de
+    artefactos, asi que un unico archivo con encoding roto tumbaba la ejecucion con traceback en vez de
+    producir un hallazgo. Un gate que revienta no dice «no conforme»: no dice nada.
+    """
+    _escribir_skill(raiz)
+    directorio = raiz / "skills" / "roto"
+    directorio.mkdir(parents=True)
+    (directorio / "SKILL.md").write_bytes(b"---\nname: roto\n\xff\xfe---\n")
+
+
+def _suite_de_evals_que_apunta_a_nada(raiz: Path) -> None:
+    """Una suite bien formada que evalua un id que la unidad no publica.
+
+    Es el defecto propio de G5 y el peor de los posibles: la suite corre, no falla y no evalua nada,
+    mientras su existencia se lee como cobertura. Se elige este escenario para el cable -- y no una
+    suite mal formada -- porque este solo lo detecta la REGLA, no el esquema.
+    """
+    _escribir_skill(raiz)
+    directorio = raiz / "evals"
+    directorio.mkdir(parents=True)
+    (directorio / "cobertura.eval.json").write_text(json.dumps({
+        "schema_version": "1.0",
+        "artifact": "demo.sdlc.artefacto-que-no-existe",
+        "level": 1,
+        "eval_type": "trigger",
+        "cases": [
+            {"id": "c1", "title": "Se activa ante la consulta esperada.",
+             "category": "happy_path", "query": "revisa la cobertura", "should_trigger": True},
+            {"id": "c2", "title": "Consulta de otro dominio, no debe activarse.",
+             "category": "negative", "query": "reinicia el servidor", "should_trigger": False},
+            {"id": "c3", "title": "Consulta ambigua en el limite del alcance.",
+             "category": "edge_case", "query": "mira los tests", "should_trigger": False},
+        ],
+    }), encoding="utf-8")
+
+
 # (regla que se prueba, como montar el repositorio, fragmento que SOLO esa regla emite)
 _CABLES = (
     ("_revisar_plugin", _sin_plugin,
@@ -184,7 +237,28 @@ _CABLES = (
      "su ambito se solapa con"),
     ("_revisar_sin_unidad", _skill_en_la_raiz_que_nadie_publica,
      "no declara `version`"),
+    ("_revisar_evals", _suite_de_evals_que_apunta_a_nada,
+     "no publica ningun artefacto con ese id"),
+    ("_hallazgo_de_formato", _mcp_con_json_corrupto,
+     "JSON invalido"),
 )
+
+
+def test_un_artefacto_con_bytes_QUE_NO_SON_UTF8_no_tumba_el_gate(tmp_path):
+    """REGRESION de un bug que abortaba la ejecucion, medido con un `SKILL.md` de bytes invalidos.
+
+    `contar_lineas` leia sin guarda mientras `leer_cuerpo` degradaba con el mismo `except`, y se la
+    llama en los cuatro barridos de artefactos. El gate no daba NO CONFORME: reventaba con
+    `UnicodeDecodeError`, que en CI se lee como fallo de infraestructura y no como artefacto defectuoso.
+
+    Lo que se afirma es que el gate TERMINA. Que ese artefacto ademas produzca hallazgos es cosa de las
+    reglas del tipo; aqui lo que se fija es que un archivo ilegible no se lleve por delante a los otros.
+    """
+    _artefacto_con_bytes_que_no_son_utf8(tmp_path)
+
+    veredicto = validar(tmp_path)
+
+    assert veredicto is not None
 
 
 @pytest.mark.parametrize("regla,construir,fragmento", _CABLES, ids=[c[0] for c in _CABLES])

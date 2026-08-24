@@ -40,6 +40,30 @@ _MODEL_ARRAY = re.compile(r"^model:\s*\[", re.M)
 _SKILLS_REFERENCE = re.compile(r"^skillsReference:", re.M)
 
 
+def _texto(ruta: Path) -> str:
+    """El contenido del archivo, o cadena vacia si no se puede leer.
+
+    UN SOLO LECTOR PARA LAS CUATRO FUNCIONES PUBLICAS DEL MODULO, y no lo habia: `leer_cuerpo` degradaba
+    con este mismo `except` y `leer`, `es_yaml_valido` y `contar_lineas` leian a pelo. Consecuencia
+    MEDIDA con un `SKILL.md` de bytes que no son UTF-8: el gate ABORTABA con `UnicodeDecodeError` en vez
+    de reportar el artefacto. Un gate que revienta no dice «no conforme», no dice nada, y en CI se lee
+    como fallo de infraestructura.
+
+    Una auditoria habia señalado solo `contar_lineas`; al ejecutar la prueba de regresion aparecieron
+    las otras dos. Es la diferencia entre leer el codigo y correrlo.
+
+    DEGRADA EN VEZ DE LANZAR porque perder un artefacto ilegible no debe tumbar la validacion de los
+    otros cincuenta, y el artefacto no se cuela: sin contenido no hay frontmatter, y un artefacto sin
+    frontmatter ya lo bloquea su propia regla -- «indescubrible» --. Se registra en WARNING para que el
+    motivo real no quede escondido detras de ese mensaje.
+    """
+    try:
+        return ruta.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as fallo:
+        log.warning("no se pudo leer %s: %s", ruta, fallo)
+        return ""
+
+
 def es_yaml_valido(ruta: Path) -> str | None:
     """Devuelve el motivo si el frontmatter NO es YAML valido, o `None` si lo es.
 
@@ -47,7 +71,7 @@ def es_yaml_valido(ruta: Path) -> str | None:
     seguir funcionando aunque el YAML sea imperfecto; esto responde una sola pregunta, la que decide
     si un cliente podra cargar el artefacto.
     """
-    contenido = ruta.read_text(encoding="utf-8")
+    contenido = _texto(ruta)
     delimitado = _DELIMITADO.match(contenido)
     if delimitado is None:
         return None
@@ -67,7 +91,7 @@ def es_yaml_valido(ruta: Path) -> str | None:
 
 def leer(ruta: Path) -> dict | None:
     """Extrae el frontmatter. Devuelve None si el archivo no lo tiene — ausencia, no error (P7)."""
-    contenido = ruta.read_text(encoding="utf-8")
+    contenido = _texto(ruta)
     delimitado = _DELIMITADO.match(contenido)
     if delimitado is None:
         log.debug("%s no tiene frontmatter delimitado", ruta.name)
@@ -102,16 +126,14 @@ def leer_cuerpo(ruta: Path) -> str:
     """El texto DESPUES del frontmatter. Es donde el artefacto referencia sus recursos, y por eso
     G2 lo necesita: el frontmatter no declara los archivos de apoyo -- ningun estandar tiene campo
     para eso -- asi que la unica pista de que existen son las rutas del cuerpo."""
-    try:
-        contenido = ruta.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return ""
+    contenido = _texto(ruta)
     delimitado = _DELIMITADO.match(contenido)
     return contenido[delimitado.end():] if delimitado else contenido
 
 
 def contar_lineas(ruta: Path) -> int:
-    return ruta.read_text(encoding="utf-8").count("\n")
+    """Las lineas del archivo, o 0 si no se puede leer. Ver `_texto` para el por que de la guarda."""
+    return _texto(ruta).count("\n")
 
 
 def _analizar(bloque: str) -> dict | None:

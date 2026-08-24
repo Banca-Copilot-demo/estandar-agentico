@@ -7,6 +7,13 @@ name: Pruebas del estandar
 # son infraestructura de la que dependen todos los dominios, y los dos fallan en silencio si nadie
 # los prueba -- el empaquetador con especial facilidad: un digest inestable no rompe nada visible,
 # solo hace que la atestacion no pruebe nada.
+# `port/**` ESTABA IGUAL DE AUSENTE, y por la misma razon exacta que `schemas/**`: la prueba del
+# contrato del catalogo lee `port/blueprint-artefacto-agentico.json` del repositorio, o sea que el
+# blueprint es tambien una ENTRADA de la suite. Editar el contrato del catalogo no disparaba la prueba
+# que existe para vigilar precisamente su deriva. Es el mismo defecto que el parrafo de abajo dice
+# haber corregido, reintroducido en el archivo de al lado -- que es lo que pasa cuando la correccion se
+# escribe como comentario y no como regla comprobable --.
+#
 # `schemas/**` ESTA EN LA LISTA, y faltaba. Las pruebas dejaron de ser independientes de los esquemas
 # el dia que empezaron a validar contra los REALES del repositorio -- cuatro archivos de prueba los
 # leen --, asi que un esquema es hoy una ENTRADA de la suite. Sin este filtro, cambiar un esquema no
@@ -19,10 +26,10 @@ name: Pruebas del estandar
 # pull requests y no en `main`, o al contrario.
 on:
   pull_request:
-    paths: ["validador/**", "indice/**", "schemas/**", ".github/actions/publicar/**", "plugins/**"]
+    paths: ["validador/**", "indice/**", "schemas/**", "port/**", ".github/actions/publicar/**", "plugins/**"]
   push:
     branches: [main]
-    paths: ["validador/**", "indice/**", "schemas/**", ".github/actions/publicar/**", "plugins/**"]
+    paths: ["validador/**", "indice/**", "schemas/**", "port/**", ".github/actions/publicar/**", "plugins/**"]
 
 permissions:
   contents: read

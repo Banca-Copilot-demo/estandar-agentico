@@ -60,8 +60,13 @@
     "cases": {
       "type": "array",
       "minItems": 3,
-      "description": "Casos de la suite. Para `mcp_contract` los casos minimos son evidentes y siempre los mismos: la conexion se establece, las herramientas declaradas aparecen, una herramienta NO declarada no aparece, y el texto de las descripciones no cambio. Minimo 3 a proposito: con menos de tres no hay forma de cubrir a la vez el camino feliz, un borde y un caso negativo, y una suite de un solo caso feliz certifica cualquier cosa.",
-      "items": { "$ref": "#/definitions/case" }
+      "description": "Casos de la suite. Para `mcp_contract` los casos minimos son evidentes y siempre los mismos: la conexion se establece, las herramientas declaradas aparecen, una herramienta NO declarada no aparece, y el texto de las descripciones no cambio. Minimo 3 a proposito: con menos de tres no hay forma de cubrir a la vez el camino feliz, un borde y un caso negativo, y una suite de un solo caso feliz certifica cualquier cosa. Y AL MENOS UNO tiene que ser `negative`: la descripcion de `category` ya decia que una suite sin caso negativo no verifica que el artefacto se ABSTENGA cuando debe, pero solo lo decia en prosa y el esquema admitia tres casos felices. Un requisito que se enuncia y no se comprueba es exactamente el hueco que este contrato existe para cerrar.",
+      "items": { "$ref": "#/definitions/case" },
+      "contains": {
+        "type": "object",
+        "required": ["category"],
+        "properties": { "category": { "const": "negative" } }
+      }
     }
   },
   "definitions": {

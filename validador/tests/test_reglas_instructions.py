@@ -44,6 +44,12 @@ def test_NADA_de_instructions_bloquea_nunca():
     ]
     for hallazgos in casos:
         assert not _errores(hallazgos), f"algo bloqueo: {_mensajes(hallazgos)}"
+        # LA SEGUNDA MITAD, y faltaba. Una auditoria la marco como prueba que «no puede fallar», y era
+        # cierto solo a medias: SI falla si alguien añade un `error()` al modulo, que es su proposito
+        # declarado. Lo que no comprobaba es que el modulo emita ALGO -- pasaba igual con toda su logica
+        # borrada --, asi que un caso que dejara de avisar en silencio no lo detectaba nadie. Los cuatro
+        # casos son situaciones que el modulo tiene algo que decir sobre ellas.
+        assert hallazgos, "el caso no produjo NINGUN hallazgo: dejo de avisar en silencio"
 
 
 # ── se deja constancia de que existe y de su alcance ────────────────────────────────────────
