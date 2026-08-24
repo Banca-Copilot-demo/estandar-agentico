@@ -166,6 +166,16 @@ def _crear_mcp(raiz, credenciales: dict | None = None) -> None:
 
     `credenciales=None` simula que el gobierno no declara el bloque `mcp`.
     """
+    # EL MANIFIESTO FORMA PARTE DEL FIXTURE desde que un `mcp` suelto es error: va siempre dentro de un
+    # plugin, porque suelto pierde `enabledPlugins` y con `strictPluginOnlyCustomization` no carga. Sin
+    # esto la prueba fallaria por la falta de plugin en vez de por lo que mide -- el mismo motivo por el
+    # que este helper escribe el gobierno COMPLETO --.
+    manifiesto = raiz / ".claude-plugin"
+    manifiesto.mkdir(parents=True, exist_ok=True)
+    (manifiesto / "plugin.json").write_text(json.dumps(
+        {"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+         "name": "demo.x.y", "version": "1.0.0", "description": "Plugin del fixture del mcp."}),
+        encoding="utf-8")
     (raiz / ".mcp.json").write_text(_MCP_FIJADO, encoding="utf-8")
     # EL GOBIERNO SE ESCRIBE COMPLETO, no solo el bloque `mcp`. Al vivir el gobierno del mcp aqui, un
     # `GOVERNANCE.json` a medias activa las reglas del PLUGIN y la prueba fallaria por `owner.team`
@@ -177,10 +187,10 @@ def _crear_mcp(raiz, credenciales: dict | None = None) -> None:
         "status": "draft",
         "data_classification": "internal",
         "standard_version": "7.0.0",
-        # `version` forma parte de «completo» desde que un repositorio SIN plugin es su propia unidad
-        # de publicacion: sin ella no hay de donde derivar la etiqueta, y el gate lo bloquea. Este
-        # fixture no tiene `plugin.json`, asi que le toca declararla.
-        "version": "1.0.0",
+        # SIN `version`, y es lo correcto: este fixture SI tiene `plugin.json` -- se le añadio cuando un
+        # `mcp` suelto paso a ser error -- y con manifiesto la `version` esta PROHIBIDA en el gobierno,
+        # porque la del paquete es la del manifiesto y dos declaraciones divergen. Las dos reglas
+        # tirando en direcciones opuestas es lo que hace que el fixture solo tenga una forma valida.
         "artifacts": {"skills": 1, "agents": 0, "prompts": 0, "mcps": 1, "instructions": 0},
     }
     if credenciales is not None:

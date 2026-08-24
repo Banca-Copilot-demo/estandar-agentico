@@ -31,6 +31,16 @@ SUFIJO_AGENTE = "*.agent.md"
 SUFIJO_PROMPT = "*.prompt.md"
 SUFIJO_INSTRUCTIONS = "*.instructions.md"
 RUTA_MCP = ".mcp.json"
+# LOS DOS NOMBRES QUE LOS PLUGINS REALES USAN, y buscar solo el primero era un fallo ABIERTO.
+# Medido sobre los catalogos publicos: 16 archivos se llaman `.mcp.json` y 5 `mcp.json` -- estos
+# ultimos en `github/awesome-copilot`, tres de ellos DENTRO de `plugins/` --. El gate solo miraba el
+# primero, asi que un plugin que declarara su MCP a la manera de Copilot quedaba INVISIBLE: inventario
+# 0, ninguna ficha, ningun error y veredicto CONFORME. Se comprobo con un servidor fijado a `@latest`,
+# que es justo el defecto que la regla del rug pull existe para cazar.
+#
+# El orden importa: si por lo que sea aparecieran los dos, manda `.mcp.json`, que es el que la
+# especificacion de plugins documenta.
+RUTAS_MCP = (".mcp.json", "mcp.json")
 DIRECTORIO_VALIDADOR = "validador"
 
 
@@ -85,6 +95,18 @@ class ContenidoRepositorio:
     rutas: frozenset[str] = field(default=frozenset())
     """TODAS las rutas del arbol, para resolver las referencias a recursos de G2. Son todas y no
     solo las escaneables: un `.png` de `assets/` no se escanea y aun asi tiene que existir."""
+
+
+def _archivo_mcp(raiz: Path) -> Path | None:
+    """El archivo de configuracion MCP de esta unidad, con cualquiera de los dos nombres en uso.
+
+    `None` si no hay ninguno. Se busca en el orden de `RUTAS_MCP`, o sea `.mcp.json` primero.
+    """
+    for relativa in RUTAS_MCP:
+        candidato = raiz / relativa
+        if candidato.is_file():
+            return candidato
+    return None
 
 
 def _leer_json(raiz: Path, ruta: Path) -> ArchivoJson:
@@ -211,13 +233,13 @@ def leer(raiz: Path, lector) -> ContenidoRepositorio:
         manifiesto=_leer_json(raiz, manifiesto) if manifiesto else None,
         gobierno=_leer_json(raiz, gobierno) if gobierno.exists() else None,
         hooks=_leer_json(raiz, hooks) if hooks else None,
-        mcp=_leer_json(raiz, raiz / RUTA_MCP) if (raiz / RUTA_MCP).is_file() else None,
+        mcp=_leer_json(raiz, _archivo_mcp(raiz)) if _archivo_mcp(raiz) else None,
         skills=_leer_artefactos_por_directorio(raiz, lector),
         prompts=_leer_prompts(raiz, lector),
         agentes=len(agentes_leidos),
         agentes_leidos=agentes_leidos,
         instructions=_leer_instructions(raiz, lector),
-        mcps=1 if (raiz / RUTA_MCP).exists() else 0,
+        mcps=1 if _archivo_mcp(raiz) else 0,
         archivos_escaneables=_leer_archivos_escaneables(raiz),
         rutas=_leer_rutas(raiz),
     )

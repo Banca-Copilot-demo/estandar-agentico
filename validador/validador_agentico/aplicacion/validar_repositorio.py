@@ -295,8 +295,13 @@ def _revisar_mcp(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     if not contenido.mcp.es_legible:
         return _hallazgo_de_formato(contenido.mcp)
 
-    hallazgos = reglas_mcp.revisar_servidores(
-        contenido.mcp.ruta_relativa, contenido.mcp.contenido.get("mcpServers"))
+    # UN `mcp` VA DENTRO DE UN PLUGIN. Se comprueba aqui porque hace falta saber si esta unidad
+    # tiene manifiesto, que es un dato del contenido y no del archivo de configuracion.
+    hallazgos = reglas_mcp.revisar_que_esta_en_un_plugin(
+        contenido.mcp.ruta_relativa,
+        hay_manifiesto=contenido.manifiesto is not None and contenido.manifiesto.es_legible)
+    hallazgos += reglas_mcp.revisar_servidores(
+        contenido.mcp.ruta_relativa, contenido.mcp.contenido)
 
     gobierno_del_mcp = _gobierno_del_mcp(contenido)
     if gobierno_del_mcp is None:

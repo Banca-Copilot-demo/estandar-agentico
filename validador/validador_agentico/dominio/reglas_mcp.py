@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import re
 
+from validador_agentico.dominio import forma_mcp
 from validador_agentico.dominio.hallazgo import Hallazgo, aviso, error
 
 # Etiquetas moviles habituales de los registros de paquetes. Ninguna fija nada: el mismo nombre
@@ -74,27 +75,72 @@ def _defecto_de_la_referencia(referencia: str) -> str | None:
     return None
 
 
-def revisar_servidores(donde: str, servidores: object) -> list[Hallazgo]:
-    """`servidores` es el bloque `mcpServers` del `.mcp.json`, tal cual lo leen los clientes."""
-    if not isinstance(servidores, dict) or not servidores:
-        return [error(donde, "el `.mcp.json` no declara `mcpServers`: sin servidores no hay `mcp` "
-                             "que gobernar, y el archivo no le sirve a ningun cliente")]
+def revisar_que_esta_en_un_plugin(donde: str, hay_manifiesto: bool) -> list[Hallazgo]:
+    """Un `mcp` va SIEMPRE dentro de un plugin. Error, no aviso.
+
+    TECNICAMENTE FUNCIONA SUELTO -- se comprobo: un `.mcp.json` en la raiz con su bloque en el
+    `GOVERNANCE.json` de la raiz da gate limpio, se sella y recibe ficha --. Se prohibe por dos
+    razones, y la segunda es la que lo decide:
+
+      1. Sin plugin no hay `enabledPlugins`, que es lo UNICO que permite apagar un servidor en todas
+         las maquinas sin tocarlas. Y el `mcp` es uno de los dos tipos que cruzan una frontera de
+         control: es justo el que algun dia habra que apagar rapido.
+
+      2. Existe `strictPluginOnlyCustomization` con `mcp` en la lista, un ajuste de empresa
+         documentado que hace que los servidores SOLO puedan venir de plugins. Bajo ese ajuste, un
+         `mcp` suelto NO CARGA. Publicarlo seria gobernar, sellar y catalogar algo muerto -- y peor
+         aun, algo que parece instalado y no esta.
+
+    Y LA INDUSTRIA LO HACE ASI: de 18 archivos de configuracion MCP dentro de `plugins/` medidos en el
+    marketplace oficial y en `awesome-copilot`, los 18 estan en un plugin. La guia del proveedor para
+    distribuir un catalogo aprobado es exactamente esa: «distribuye los servidores como plugins a
+    traves de un marketplace gestionado».
+    """
+    if hay_manifiesto:
+        return []
+    return [error(donde,
+                  "un `mcp` va dentro de un PLUGIN, y esta unidad no tiene `plugin.json`. Suelto se "
+                  "gobierna y se sella, pero pierde `enabledPlugins` -- lo unico que permite apagarlo "
+                  "centralmente -- y con `strictPluginOnlyCustomization` activado NO CARGA, asi que se "
+                  "publicaria algo que parece instalado y no esta. Muevelo a un plugin: la convencion "
+                  "medida en los catalogos publicos es UN servidor por plugin")]
+
+
+def revisar_servidores(donde: str, configuracion: object) -> list[Hallazgo]:
+    """`configuracion` es el archivo MCP ENTERO, no un bloque suyo.
+
+    Antes recibia ya extraido el `mcpServers`, y eso obligaba al llamador a saber en que clave estan
+    los servidores -- cuando resulta que hay TRES formas en uso --. Ahora la forma la resuelve
+    `forma_mcp`, que es donde vive el conocimiento de las variantes, y esta regla se ocupa de lo suyo.
+    """
+    servidores = forma_mcp.servidores_de(configuracion)
+    if servidores is None:
+        return [error(donde, "no se reconocen servidores en el archivo. Se admiten las tres formas en "
+                             "uso -- un objeto `mcpServers`, un objeto `servers`, o los servidores "
+                             "como claves de primer nivel -- y ninguna encaja: sin servidores no hay "
+                             "`mcp` que gobernar, y el archivo no le sirve a ningun cliente")]
+    if not servidores:
+        return [error(donde, "declara cero servidores: el archivo no le sirve a ningun cliente. Si la "
+                             "intencion es no tener MCP, borra el archivo en vez de dejarlo vacio")]
 
     hallazgos: list[Hallazgo] = []
-    for nombre, configuracion in servidores.items():
-        if not isinstance(configuracion, dict):
+    # `definicion` y no `configuracion`: la variable del bucle tapaba el parametro del mismo nombre.
+    # Funcionaba por accidente -- los servidores ya estaban extraidos -- y dejaba una trampa para quien
+    # añadiera despues cualquier uso del archivo completo tras el bucle.
+    for nombre, definicion in servidores.items():
+        if not isinstance(definicion, dict):
             hallazgos.append(error(donde, f"el servidor `{nombre}` no es un objeto"))
             continue
 
-        if str(configuracion.get(_CLAVE_TRANSPORTE, "")).lower() in _TRANSPORTES_SIN_VERSION:
+        if str(definicion.get(_CLAVE_TRANSPORTE, "")).lower() in _TRANSPORTES_SIN_VERSION:
             hallazgos.append(aviso(
                 donde,
-                f"el servidor `{nombre}` es REMOTO ({configuracion.get(_CLAVE_URL, 'sin url')}): no "
+                f"el servidor `{nombre}` es REMOTO ({definicion.get(_CLAVE_URL, 'sin url')}): no "
                 f"hay version que fijar y su contenido puede cambiar en cualquier momento. Lo unico "
                 f"que lo detecta es comparar periodicamente el digest de sus herramientas"))
             continue
 
-        referencias = _referencias_de(configuracion)
+        referencias = _referencias_de(definicion)
         if not referencias:
             hallazgos.append(aviso(
                 donde, f"no se reconoce la referencia del servidor `{nombre}`: no se puede "

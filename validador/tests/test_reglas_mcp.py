@@ -10,7 +10,11 @@ sea movil.
 """
 from __future__ import annotations
 
-from validador_agentico.dominio.reglas_mcp import revisar_servidores
+from validador_agentico.dominio.hallazgo import Severidad
+from validador_agentico.dominio.reglas_mcp import (
+    revisar_que_esta_en_un_plugin,
+    revisar_servidores,
+)
 
 DONDE = "plugins/x/.mcp.json"
 
@@ -94,3 +98,31 @@ def test_un_mcp_json_sin_mcpServers_es_error():
     # No le sirve a ningun cliente, asi que no es un `mcp` a medias: es un archivo inutil.
     for vacio in (None, {}, [], "texto"):
         assert _errores(revisar_servidores(DONDE, vacio)), f"no se detecto {vacio!r}"
+
+
+# ── un `mcp` va SIEMPRE dentro de un plugin ─────────────────────────────────────────────────
+def test_un_mcp_sin_plugin_es_ERROR():
+    """Tecnicamente funciona suelto -- se comprobo: gate limpio, sello y ficha -- y se prohibe igual.
+
+    Dos razones, y la segunda es la que decide: sin plugin no hay `enabledPlugins`, que es lo unico que
+    apaga un servidor en todas las maquinas sin tocarlas; y con `strictPluginOnlyCustomization` -- un
+    ajuste de empresa documentado, con `mcp` en la lista -- un servidor fuera de un plugin NO CARGA.
+    Publicarlo seria sellar y catalogar algo que parece instalado y no esta.
+    """
+    hallazgos = revisar_que_esta_en_un_plugin(".mcp.json", hay_manifiesto=False)
+
+    assert [h.severidad for h in hallazgos] == [Severidad.ERROR]
+    assert "dentro de un PLUGIN" in hallazgos[0].mensaje
+
+
+def test_un_mcp_dentro_de_un_plugin_no_produce_hallazgo():
+    assert revisar_que_esta_en_un_plugin(".mcp.json", hay_manifiesto=True) == []
+
+
+def test_el_mensaje_dice_QUE_hacer_y_la_convencion_medida():
+    # Un error que solo prohibe obliga a adivinar. Este dice donde moverlo y cuantos servidores poner,
+    # que es el dato que medimos: 18 de 18 archivos dentro de `plugins/` llevan un solo servidor.
+    mensaje = revisar_que_esta_en_un_plugin(".mcp.json", hay_manifiesto=False)[0].mensaje
+
+    assert "Muevelo a un plugin" in mensaje
+    assert "UN servidor por plugin" in mensaje
