@@ -57,7 +57,7 @@ from validador_agentico.adaptadores.repositorio import (
 from validador_agentico.aplicacion import proyeccion
 from validador_agentico.dominio import reglas_agente, reglas_aprobacion
 from validador_agentico.dominio import reglas_credenciales, reglas_evals, reglas_layout, reglas_mcp
-from validador_agentico.dominio import reglas_instructions, reglas_recursos
+from validador_agentico.dominio import reglas_recursos
 from validador_agentico.dominio import reglas_higiene, reglas_hooks, reglas_huerfanos
 from validador_agentico.dominio import scripts_de_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
@@ -114,7 +114,6 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
             *_revisar_skills(contenido),
             *_revisar_prompts(contenido),
             *_revisar_agentes(contenido),
-            *_revisar_instructions(contenido),
             *_revisar_hooks(contenido, raiz_plugin),
             *_revisar_mcp(contenido),
             *_revisar_evals(contenido, raiz_plugin, directorio_de_esquemas),
@@ -133,16 +132,13 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
             plugins.append(publicado)
         custodia = {**custodia, **proyeccion.custodia_declarada(contenido)}
 
-    # Estas CUATRO son del REPOSITORIO, no de cada plugin: la higiene se revisa sobre el arbol
-    # completo -- un secreto no deja de serlo por estar fuera de un plugin --, la mezcla de
-    # firmantes se juzga sobre el pull request entero, el solapamiento de instructions se mide
-    # entre TODAS las del repositorio -- dos plugins vecinos se instalan juntos en el repositorio
-    # destino, asi que comprobar cada plugin por separado dejaria pasar el caso mas probable -- y los
-    # HUERFANOS solo se ven desde arriba: son artefactos que no caen dentro de ninguna raiz de plugin,
-    # asi que por construccion ningun recorrido por plugin los encuentra.
+    # Estas TRES son del REPOSITORIO, no de cada plugin: la higiene se revisa sobre el arbol completo
+    # -- un secreto no deja de serlo por estar fuera de un plugin --, la mezcla de firmantes se juzga
+    # sobre el pull request entero, y los HUERFANOS solo se ven desde arriba: son artefactos que no
+    # caen dentro de ninguna raiz de plugin, asi que por construccion ningun recorrido por plugin los
+    # encuentra.
     del_repositorio = repositorio.leer(raiz, lector)
     hallazgos += [*_revisar_higiene(del_repositorio), *_revisar_mezcla(archivos_cambiados),
-                  *_revisar_solapamiento_de_instructions(del_repositorio),
                   *_revisar_sin_unidad(raiz, del_repositorio)]
 
     log.info("%d hallazgo(s) en %s", len(hallazgos), raiz.name)
@@ -260,7 +256,7 @@ def _revisar_recursos(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     tipos con cuerpo: un `.agent.md` que apunta a un script inexistente falla igual que un skill."""
     hallazgos: list[Hallazgo] = []
     for artefacto in (contenido.skills + contenido.prompts
-                      + contenido.agentes_leidos + contenido.instructions):
+                      + contenido.agentes_leidos):
         hallazgos += reglas_recursos.revisar_recursos_referenciados(
             artefacto.ruta_relativa, artefacto.cuerpo, contenido.rutas)
         hallazgos += reglas_recursos.revisar_recursos_no_referenciados(
@@ -346,22 +342,6 @@ def _revisar_agentes(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     return hallazgos
 
 
-def _revisar_instructions(contenido: ContenidoRepositorio) -> list[Hallazgo]:
-    """NO se les aplica el envelope: `instructions` dejo de ser un tipo gobernado -- no hay canal para
-    distribuirlas, comprobado en la referencia de plugins de los dos clientes --. Lo que queda es
-    higiene: dejar constancia de que existen y de su alcance, porque son el unico archivo que cambia
-    el comportamiento del agente sin que nadie lo elija.
-
-    Un archivo sin frontmatter tampoco es un error aqui: sin gobierno no hay campos obligatorios que
-    exigir, y lo unico que se pierde es el `applyTo` -- que ya se avisa como tal --.
-    """
-    hallazgos: list[Hallazgo] = []
-    for instruccion in contenido.instructions:
-        hallazgos += reglas_instructions.revisar_instructions(
-            instruccion.ruta_relativa, instruccion.frontmatter or {}, instruccion.lineas)
-    return hallazgos
-
-
 def _revisar_sin_unidad(raiz: Path, contenido_de_la_raiz: ContenidoRepositorio) -> list[Hallazgo]:
     """Artefactos en la raiz que nadie publica, porque la raiz no declara con que version.
 
@@ -378,18 +358,6 @@ def _revisar_sin_unidad(raiz: Path, contenido_de_la_raiz: ContenidoRepositorio) 
         directorios=_DIRECTORIOS_DE_ARTEFACTOS,
         archivos=_ARCHIVOS_DE_ARTEFACTOS)
     return reglas_huerfanos.revisar_sin_unidad(rutas)
-
-
-def _revisar_solapamiento_de_instructions(contenido: ContenidoRepositorio) -> list[Hallazgo]:
-    """Se pasan las que TIENEN ambito: la falta de `applyTo` ya la senala la regla por archivo, y
-    volver a nombrarla aqui daria dos hallazgos por el mismo hecho."""
-    declaradas = [
-        (instruccion.ruta_relativa,
-         reglas_instructions.ambito_de(instruccion.frontmatter or {}))
-        for instruccion in contenido.instructions
-    ]
-    return reglas_instructions.revisar_solapamiento(
-        [(donde, ambito) for donde, ambito in declaradas if ambito])
 
 
 # Que esquema valida cada coleccion de artefactos, y con que `kind` se ensambla.
@@ -522,7 +490,7 @@ def _revisar_yaml(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     exactamente el caso que G1 -- que el artefacto exista de forma comprobable -- tiene que atrapar.
     """
     todos = (*contenido.skills, *contenido.prompts, *contenido.agentes_leidos,
-             *contenido.instructions)
+             )
     return [
         error(artefacto.ruta_relativa,
               f"el frontmatter no es YAML valido ({artefacto.yaml_invalido}): el cliente se salta "

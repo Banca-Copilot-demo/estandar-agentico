@@ -191,7 +191,7 @@ def _crear_mcp(raiz, credenciales: dict | None = None) -> None:
         # `mcp` suelto paso a ser error -- y con manifiesto la `version` esta PROHIBIDA en el gobierno,
         # porque la del paquete es la del manifiesto y dos declaraciones divergen. Las dos reglas
         # tirando en direcciones opuestas es lo que hace que el fixture solo tenga una forma valida.
-        "artifacts": {"skills": 1, "agents": 0, "prompts": 0, "mcps": 1, "instructions": 0},
+        "artifacts": {"skills": 1, "agents": 0, "prompts": 0, "mcps": 1},
     }
     if credenciales is not None:
         gobierno["mcp"] = {"credentials": credenciales}

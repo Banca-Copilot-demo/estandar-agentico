@@ -4,8 +4,11 @@ El defecto de fondo era de cobertura, no de logica: `agent` estaba en el esquema
 tocaba, asi que un agente sin `description` pasaba en verde. Un tipo declarado y no comprobado promete
 un control que no existe.
 
-Las de `instructions` estaban aqui y se fueron a `test_reglas_instructions`: dejaron de ser un tipo
-gobernado y lo que se comprueba de ellas es otra cosa -- higiene, todo aviso --.
+Aqui hubo tambien pruebas de `instructions`. Se retiraron con el tipo: no tiene canal de distribucion,
+no esta en el blueprint del catalogo ni en el enum de `kind` del envelope, y no existe ni un artefacto de
+ese tipo en los repositorios. Lo unico que sobrevive es la regresion de `test_reglas_aprobacion`, que fija
+que un archivo con ese nombre NO exija firmante -- porque llego a exigirlo y bloqueaba pull requests por
+un tipo que ya no se gobernaba --.
 """
 from __future__ import annotations
 

@@ -66,14 +66,6 @@ def _escribir_manifiesto(raiz: Path) -> None:
         encoding="utf-8")
 
 
-def _escribir_instruccion(raiz: Path, nombre: str, ambito: str | None) -> None:
-    directorio = raiz / ".github" / "instructions"
-    directorio.mkdir(parents=True, exist_ok=True)
-    cabecera = f"---\napplyTo: '{ambito}'\n---\n" if ambito else ""
-    (directorio / f"{nombre}.instructions.md").write_text(
-        f"{cabecera}# Reglas\nAlgo.\n", encoding="utf-8")
-
-
 # ── un repositorio por regla ───────────────────────────────────────────────────────────────
 def _sin_plugin(raiz: Path) -> None:
     _escribir_skill(raiz)
@@ -107,11 +99,6 @@ def _agente_sin_description(raiz: Path) -> None:
         f'---\nname: demo.sdlc.a\ndescription: ""\nmetadata:\n{_ENVELOPE}\n---\n', encoding="utf-8")
 
 
-def _instruccion_sin_ambito(raiz: Path) -> None:
-    _escribir_skill(raiz)
-    _escribir_instruccion(raiz, "todo", ambito=None)
-
-
 def _hooks_no_declarados(raiz: Path) -> None:
     _escribir_skill(raiz)
     _escribir_manifiesto(raiz)
@@ -136,12 +123,6 @@ def _secreto_literal(raiz: Path) -> None:
     # Token con la forma que el escaneo busca, inventado: no es una credencial real.
     _escribir_skill(raiz,
                     texto=_SKILL_CONFORME + "\ntoken: ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\n")
-
-
-def _dos_instrucciones_que_se_solapan(raiz: Path) -> None:
-    _escribir_skill(raiz)
-    _escribir_instruccion(raiz, "una", ambito="**/*.py")
-    _escribir_instruccion(raiz, "otra", ambito="**/*.py")
 
 
 def _skill_en_la_raiz_que_nadie_publica(raiz: Path) -> None:
@@ -225,16 +206,12 @@ _CABLES = (
      "`skillsReference` no es un campo estandar"),
     ("_revisar_agentes", _agente_sin_description,
      "falta `description`: es lo que decide si el modelo le delega"),
-    ("_revisar_instructions", _instruccion_sin_ambito,
-     "sin `applyTo`"),
     ("_revisar_hooks", _hooks_no_declarados,
      "no declara `hooks`"),
     ("_revisar_recursos", _recurso_inexistente,
      "y ese archivo NO existe"),
     ("_revisar_higiene", _secreto_literal,
      "posible token de GitHub"),
-    ("_revisar_solapamiento_de_instructions", _dos_instrucciones_que_se_solapan,
-     "su ambito se solapa con"),
     ("_revisar_sin_unidad", _skill_en_la_raiz_que_nadie_publica,
      "no declara `version`"),
     ("_revisar_evals", _suite_de_evals_que_apunta_a_nada,

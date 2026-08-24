@@ -29,7 +29,6 @@ DIRECTORIO_PROMPTS = "commands"
 ARCHIVO_SKILL = "SKILL.md"
 SUFIJO_AGENTE = "*.agent.md"
 SUFIJO_PROMPT = "*.prompt.md"
-SUFIJO_INSTRUCTIONS = "*.instructions.md"
 RUTA_MCP = ".mcp.json"
 # LOS DOS NOMBRES QUE LOS PLUGINS REALES USAN, y buscar solo el primero era un fallo ABIERTO.
 # Medido sobre los catalogos publicos: 16 archivos se llaman `.mcp.json` y 5 `mcp.json` -- estos
@@ -97,7 +96,6 @@ class ContenidoRepositorio:
     prompts: tuple[Artefacto, ...] = ()
     # Se LEEN, no solo se cuentan: sin frontmatter no hay gate que aplicarles.
     agentes_leidos: tuple[Artefacto, ...] = ()
-    instructions: tuple[Artefacto, ...] = ()
     agentes: int = 0
     mcps: int = 0
     archivos_escaneables: tuple[tuple[str, str], ...] = field(default=())
@@ -187,23 +185,6 @@ def _leer_agentes(raiz: Path, lector) -> tuple[Artefacto, ...]:
     )
 
 
-def _leer_instructions(raiz: Path, lector) -> tuple[Artefacto, ...]:
-    """Las `instructions` no viven en un directorio fijo: se buscan en todo el arbol porque su
-    `applies_to` es lo que decide donde aplican, no donde estan guardadas."""
-    return tuple(
-        Artefacto(
-            ruta_relativa=archivo.relative_to(raiz).as_posix(),
-            nombre_directorio=archivo.name.removesuffix(".instructions.md"),
-            frontmatter=lector.leer(archivo),
-            yaml_invalido=lector.es_yaml_valido(archivo),
-            lineas=lector.contar_lineas(archivo),
-            cuerpo=lector.leer_cuerpo(archivo),
-        )
-        for archivo in sorted(raiz.rglob(SUFIJO_INSTRUCTIONS))
-        if ".git" not in archivo.parts
-    )
-
-
 def _leer_suites_de_evals(raiz: Path) -> tuple[ArchivoJson, ...]:
     """Las suites `*/evals/*.eval.json` de la unidad, a cualquier profundidad.
 
@@ -286,7 +267,6 @@ def leer(raiz: Path, lector) -> ContenidoRepositorio:
         prompts=_leer_prompts(raiz, lector),
         agentes=len(agentes_leidos),
         agentes_leidos=agentes_leidos,
-        instructions=_leer_instructions(raiz, lector),
         mcps=1 if _archivo_mcp(raiz) else 0,
         archivos_escaneables=_leer_archivos_escaneables(raiz),
         rutas=_leer_rutas(raiz),
