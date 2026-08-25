@@ -10,11 +10,29 @@ name: Validar artefactos agenticos
 # LLAMADOR, asi que no puede leer este repo si es privado. En su lugar se usa una accion
 # COMPUESTA, que GitHub resuelve por la politica de acceso de Actions sin necesitar token.
 #
-# NO usa `secrets: inherit` a proposito: el validador valida archivos, no necesita ningun
-# secreto, y heredarlos invertiria la relacion de confianza con cada repo que lo llama.
+# SIGUE SIN USAR `secrets: inherit` a proposito -- heredar en bloque invertiria la relacion de
+# confianza con cada repositorio que lo llama --, pero ahora acepta DOS secretos NOMBRADOS y
+# OPCIONALES, que es otra cosa: el llamador decide que entrega, y solo eso.
+#
+# POR QUE HICIERON FALTA, y no estaban en la version anterior de este archivo: G4 exige que el
+# `owner_team` declarado EXISTA en la organizacion, y el `GITHUB_TOKEN` de Actions esta acotado al
+# repositorio. MEDIDO en una ejecucion real: `gh api orgs/<org>/teams` responde
+# «Resource not accessible by integration (HTTP 403)», el validador no puede comprobar y degrada a
+# AVISO. Resultado: un artefacto podia declarar como dueno un equipo inexistente y publicarse en verde,
+# que es justo lo que la regla existe para impedir.
+#
+# SON OPCIONALES A PROPOSITO: sin ellos el gate sigue corriendo y avisa de que no pudo resolver, en vez
+# de fallar. Un repositorio que aun no tenga la App configurada tiene que poder validar.
 
 on:
   workflow_call:
+    secrets:
+      app-id:
+        description: App ID de la App del ciclo de vida. Sin el, el dueno no se resuelve y se avisa.
+        required: false
+      app-key:
+        description: Clave privada de esa App.
+        required: false
 
 permissions:
   contents: read
@@ -28,5 +46,22 @@ jobs:
       - name: Descargar el repositorio evaluado
         uses: actions/checkout@v4
 
+      # SE ACUÑA UN TOKEN DE LA APP SOLO PARA RESOLVER EL DUENO. Con `continue-on-error` porque su
+      # ausencia NO debe tumbar la validacion: sin token el gate corre igual y avisa de que no pudo
+      # comprobar el equipo. Un repositorio sin la App configurada tiene que poder validar.
+      - name: Token de la App (para resolver los equipos de la organizacion)
+        id: token
+        if: ${{ secrets.app-id != '' }}
+        continue-on-error: true
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.app-id }}
+          private-key: ${{ secrets.app-key }}
+          owner: ${{ github.repository_owner }}
+
       - name: Ejecutar los gates
         uses: Banca-Copilot-demo/estandar-agentico/.github/actions/validar@main
+        with:
+          # El de la App si se pudo acuñar; si no, cadena vacia y la accion cae al token del
+          # repositorio -- que sirve para todo menos para leer los equipos --.
+          token-organizacion: ${{ steps.token.outputs.token }}

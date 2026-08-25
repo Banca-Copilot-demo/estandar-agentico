@@ -4,6 +4,16 @@ description: >
   asi el workflow reutilizable NO tiene que clonar el repositorio del estandar, que con un
   GITHUB_TOKEN acotado al repo del llamador es imposible cuando el estandar es privado.
 
+inputs:
+  token-organizacion:
+    description: >
+      Token capaz de LEER LOS EQUIPOS de la organizacion, normalmente acuñado de la App del ciclo de
+      vida. Opcional: sin el, la accion cae al `GITHUB_TOKEN` del repositorio, que sirve para todo
+      menos para eso -- responde 403 --, y G4 degrada a aviso en lugar de comprobar que el `owner_team`
+      declarado exista.
+    required: false
+    default: ""
+
 runs:
   using: composite
   steps:
@@ -65,4 +75,10 @@ runs:
         # lo publica la plataforma, y dejar que cada dominio traiga los suyos permitiria relajarlos.
         python -m validador_agentico.cli .           --organizacion "${GITHUB_REPOSITORY_OWNER}"           --esquemas "${{ github.action_path }}/../../../schemas"           $base           --anotaciones           --escribir-resumen "$GITHUB_STEP_SUMMARY"           --verbose
       env:
-        GH_TOKEN: ${{ github.token }}
+        # EL DE LA APP SI LO HAY, y si no el del repositorio. La diferencia es UNA comprobacion, pero es
+        # la que decide si G4 bloquea o solo avisa: el `GITHUB_TOKEN` esta acotado al repositorio y
+        # `gh api orgs/<org>/teams` le responde «Resource not accessible by integration (HTTP 403)»
+        # -- medido en una ejecucion real --, asi que el validador no puede resolver el `owner_team` y
+        # degrada a aviso. Con el de la App, un dueno inexistente pasa a ser ERROR, que es lo que la
+        # regla pretende: «sin dueno resoluble no hay a quien avisar cuando este artefacto falle».
+        GH_TOKEN: ${{ inputs.token-organizacion || github.token }}
