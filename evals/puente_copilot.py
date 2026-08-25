@@ -73,6 +73,20 @@ espiritu de la regla -- el diagnostico se enciende sin tocar el codigo -- por la
 deja libre.
 """
 
+VARIABLE_DE_ENTORNO_AGENTE = "EVALS_AGENTE"
+"""El agente concreto a evaluar, o vacio para el agente por defecto del cliente.
+
+QUE CAMBIA SEGUN ESTE VALOR, y es la diferencia entre evaluar un SKILL y evaluar un AGENTE:
+
+  SIN declarar   se lanza el agente por defecto con los artefactos del proyecto disponibles. Es lo que
+                 hace falta para un skill o un prompt: se comprueba que el cliente lo DESCUBRA y lo use.
+  DECLARADO      se lanza ESE agente (`--agent <nombre>`). El nombre es el del archivo `.agent.md` sin la
+                 extension, tal como lo documenta el CLI.
+
+Por entorno y no como argumento, por la misma razon que el proyecto: el contrato con el motor es que el
+prompt es el UNICO argumento posicional.
+"""
+
 _PREFIJO_DEL_INTERPRETE = ["cmd", "/c"] if os.name == "nt" else []
 _TIEMPO_LIMITE_S = 180
 _MAX_STDERR_REGISTRADO = 400
@@ -104,7 +118,12 @@ def _en_una_linea(consulta: str) -> str:
     return " ".join(consulta.split())
 
 
-def construir_orden(raiz_del_proyecto: Path, cli: str) -> list[str]:
+def agente_declarado() -> str | None:
+    """El agente a evaluar, o `None` para el agente por defecto del cliente."""
+    return os.getenv(VARIABLE_DE_ENTORNO_AGENTE) or None
+
+
+def construir_orden(raiz_del_proyecto: Path, cli: str, agente: str | None = None) -> list[str]:
     """La orden completa, como LISTA (P10). Pura: se puede comprobar sin ejecutar nada.
 
     SIN `-p`: LA CONSULTA VA POR ENTRADA ESTANDAR, y ese cambio arregla dos defectos de un golpe y abre
@@ -131,6 +150,10 @@ def construir_orden(raiz_del_proyecto: Path, cli: str) -> list[str]:
         *_PREFIJO_DEL_INTERPRETE,
         cli,
         "-C", str(raiz_del_proyecto),
+        # `--agent` SOLO si se declara: sin el, el cliente usa su agente por defecto y descubre los
+        # artefactos del proyecto -- que es justo lo que hay que probar en un skill --. Anadirlo vacio
+        # no seria inocuo: el CLI buscaria un agente sin nombre.
+        *(["--agent", agente] if agente else []),
         "-s",
         "--allow-all-tools",
         "--no-ask-user",
@@ -143,7 +166,8 @@ def responder(consulta: str, raiz_del_proyecto: Path, *, ejecutar=subprocess.run
     `ejecutar` es inyectable con un default sobreescribible (T4): las pruebas sustituyen el lanzador en
     vez de parchear `subprocess`, asi que el cableado esta en la firma y no escondido dentro.
     """
-    hecho = ejecutar(construir_orden(raiz_del_proyecto, ruta_del_cli()), input=consulta,
+    hecho = ejecutar(construir_orden(raiz_del_proyecto, ruta_del_cli(), agente_declarado()),
+                     input=consulta,
                      capture_output=True, text=True, encoding="utf-8", errors="replace",
                      timeout=_TIEMPO_LIMITE_S)
     if hecho.returncode != 0:

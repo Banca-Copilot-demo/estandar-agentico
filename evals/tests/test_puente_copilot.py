@@ -18,8 +18,10 @@ from pathlib import Path
 import pytest
 
 from puente_copilot import (
+    VARIABLE_DE_ENTORNO_AGENTE,
     VARIABLE_DE_ENTORNO_CLI,
     VARIABLE_DE_ENTORNO_PROYECTO,
+    agente_declarado,
     construir_orden,
     raiz_del_proyecto,
     responder,
@@ -107,6 +109,39 @@ def test_el_directorio_del_proyecto_se_pasa_con_C_y_no_se_cambia_de_directorio()
 
     assert "-C" in orden
     assert orden[orden.index("-C") + 1] == str(_RAIZ)
+
+
+# ── el agente ───────────────────────────────────────────────────────────────────────────────
+def test_sin_agente_declarado_NO_se_pasa_la_bandera():
+    """Sin `--agent`, el cliente usa su agente por defecto y DESCUBRE los artefactos del proyecto, que
+    es justo lo que hay que probar en un skill: no solo que el modelo obedezca un texto, sino que el
+    cliente lo encuentre y decida usarlo.
+
+    Y pasar la bandera vacia no seria inocuo: el CLI buscaria un agente sin nombre.
+    """
+    orden = construir_orden(_RAIZ, _CLI, agente=None)
+
+    assert "--agent" not in orden
+
+
+def test_con_agente_declarado_se_lanza_ESE_agente():
+    orden = construir_orden(_RAIZ, _CLI, agente="demo.sdlc.revisor")
+
+    assert orden[orden.index("--agent") + 1] == "demo.sdlc.revisor"
+
+
+def test_el_agente_se_declara_por_entorno(monkeypatch):
+    monkeypatch.setenv(VARIABLE_DE_ENTORNO_AGENTE, "demo.sdlc.revisor")
+
+    assert agente_declarado() == "demo.sdlc.revisor"
+
+
+def test_una_variable_de_agente_VACIA_equivale_a_no_declararla(monkeypatch):
+    """Un valor vacio es lo que deja una variable declarada sin contenido -- pasa en CI con frecuencia --
+    y tiene que comportarse como su ausencia, no producir `--agent ''`."""
+    monkeypatch.setenv(VARIABLE_DE_ENTORNO_AGENTE, "")
+
+    assert agente_declarado() is None
 
 
 # ── la ruta del CLI ─────────────────────────────────────────────────────────────────────────
