@@ -1,0 +1,30 @@
+{
+  "_LEEME": "Este NO es un archivo suelto: es el bloque `mcp` que hay que PEGAR dentro del GOVERNANCE.json del plugin, al mismo nivel que `artifacts`. Se entrega aparte porque su forma es la que mas se equivoca. Borra esta clave al pegarlo.",
+  "mcp": {
+    "servers": [
+      {
+        "name": "<<NOMBRE_DEL_SERVIDOR>>",
+        "source": {
+          "kind": "remote",
+          "ref": "<<ENDPOINT>>",
+          "version_pin": "sin-version"
+        },
+        "transport": "http",
+        "endpoint": "<<ENDPOINT>>",
+        "write_operations": false,
+        "tools_digest": "<<DIGESTO_DE_HERRAMIENTAS>>",
+        "tools_digest_date": "<<FECHA>>"
+      }
+    ],
+    "credentials": {
+      "mechanism": "none"
+    },
+    "approval": {
+      "approved_by": "<<EQUIPO_DE_SEGURIDAD>>",
+      "date": "<<FECHA>>",
+      "review_by": "<<FECHA_DE_REVISION>>",
+      "security_review": true,
+      "notes": "<<POR_QUE_SE_APRUEBA>>"
+    }
+  }
+}

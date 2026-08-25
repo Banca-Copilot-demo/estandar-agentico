@@ -1,0 +1,72 @@
+# Plantillas del estándar agéntico
+
+Esqueletos para crear artefactos y unidades publicables que **nacen conformes**. Están pensadas para que
+las use el asistente de autoría, y también para copiarlas a mano.
+
+> **La propiedad que las hace útiles: se validan.** Una prueba del validador instancia cada plantilla,
+> sustituye los marcadores y **corre el gate sobre el resultado**. Una plantilla que produjera un
+> artefacto no conforme sería peor que no tener plantilla: enseñaría a hacerlo mal y con la autoridad de
+> venir del repositorio del estándar. Si el estándar cambia y una plantilla se queda atrás, la prueba
+> falla.
+
+---
+
+## Cómo se organiza, y por qué así
+
+```
+plantillas/
+├── unidad-plugin/      el envoltorio de un PLUGIN: manifiesto + gobierno
+├── unidad-suelta/      el envoltorio del CONJUNTO SUELTO: solo gobierno, con version
+└── artefactos/         UNA plantilla por tipo, se copia dentro de la unidad que sea
+    ├── skill/
+    ├── agente/
+    ├── prompt/
+    ├── mcp/
+    ├── hooks/
+    └── evals/
+```
+
+**Los artefactos están separados de los envoltorios a propósito.** Un `SKILL.md` es idéntico dentro de un
+plugin o suelto: lo que cambia es **dónde vive y qué lo declara**. Si hubiera una copia de cada tipo por
+cada envoltorio, serían diez plantillas para cinco tipos, y divergirían en la primera corrección que
+alguien hiciera con prisa.
+
+## Los marcadores
+
+Todos tienen la forma `<<NOMBRE>>`, en mayúsculas y con dobles ángulos. No es decorativo: hace que sean
+**buscables con una expresión regular trivial** y que ninguna plantilla se pueda publicar por descuido —
+un `<<` en un artefacto real es un error visible, no un valor plausible.
+
+| Marcador | Qué es | Ejemplo |
+|---|---|---|
+| `<<DOMINIO>>` | El dominio al que pertenece | `sdlc` |
+| `<<ID>>` | Identidad completa del artefacto | `demo.sdlc.revisar-jql` |
+| `<<NOMBRE>>` | Nombre corto, en minúsculas y guiones | `revisar-jql` |
+| `<<EQUIPO>>` | Slug del equipo dueño, **que debe existir en la organización** | `squad-sdlc` |
+| `<<CONTACTO>>` | Correo del equipo | `squad-sdlc@ejemplo.dev` |
+| `<<VERSION>>` | SemVer, **entre comillas** | `"1.0.0"` |
+| `<<DESCRIPCION>>` | Qué hace y **cuándo usarlo** | ver más abajo |
+
+## Cuál elegir: plugin o suelto
+
+La decisión no es estética — determina si se puede **revocar de forma centralizada**:
+
+| Si el artefacto es… | Va en |
+|---|---|
+| Una configuración **MCP** o unos **hooks** | **`unidad-plugin/` — obligatorio.** Son los dos tipos que cruzan una frontera de control |
+| Un skill, prompt o agente que **viaja junto a otros** porque cambia con ellos | `unidad-plugin/` |
+| Un skill, prompt o agente **independiente** | `unidad-suelta/` |
+
+Un repositorio puede tener las dos cosas a la vez: plugins en `plugins/` y artefactos sueltos en la raíz.
+
+## Lo que ninguna plantilla puede rellenar por ti
+
+Tres cosas, y son las que deciden si el artefacto sirve:
+
+1. **La `description`.** Es el mecanismo por el que el modelo decide usar el artefacto — o no usarlo. Tiene
+   que decir **qué hace y cuándo usarlo**, en tercera persona. Una descripción vaga hace que el artefacto
+   se active en tareas ajenas, o que no se active nunca.
+2. **El equipo dueño.** Tiene que **existir** en la organización. El gate lo comprueba, y sin dueño
+   resoluble no hay a quien avisar cuando el artefacto falle.
+3. **La aprobación**, para `mcp` y `hooks`. La firma un equipo de seguridad, con fecha y con fecha de
+   revisión. No es un campo que se rellene solo.

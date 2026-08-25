@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "<<NOMBRE_DEL_SERVIDOR>>": {
+      "type": "http",
+      "url": "<<ENDPOINT>>"
+    }
+  }
+}

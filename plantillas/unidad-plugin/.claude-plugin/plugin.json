@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "<<ID>>",
+  "version": "<<VERSION>>",
+  "description": "<<DESCRIPCION>>",
+  "author": {
+    "name": "<<EQUIPO>>"
+  },
+  "repository": "https://github.com/<<ORGANIZACION>>/<<REPOSITORIO>>",
+  "license": "Proprietary",
+  "keywords": [
+    "<<DOMINIO>>"
+  ]
+}

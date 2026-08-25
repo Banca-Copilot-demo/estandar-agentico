@@ -1,0 +1,62 @@
+# Suite de evals de <<ID>>.
+#
+# DONDE VA: `<artefacto>/evals/promptfooconfig.yaml`, CO-LOCALIZADA con lo que evalua. Una suite lejos de
+# su artefacto se queda atras cuando el artefacto cambia, y nadie lo nota porque el archivo sigue ahi y
+# sigue pasando.
+#
+# NO DECLARA `providers` A PROPOSITO. El proveedor se inyecta al ejecutar:
+#
+#   promptfoo eval -c <esta-suite> -r file://<ruta-al-puente> --grader file://<ruta-al-puente>
+#
+# Tres razones: el puente vive en el repositorio del estandar y esta suite en uno de dominio, asi que una
+# ruta relativa asumiria que estan clonados como hermanos; una ruta absoluta lleva el nombre de una
+# maquina y el gate de higiene la RECHAZA; y asi un solo archivo sirve para los dos clientes, que es lo
+# unico que cambia entre ellos.
+#
+# REQUISITO DE ENTORNO que no es del esquema: el cliente tiene que DESCUBRIR el artefacto. Antes de correr
+# la suite hay que colocarlo o instalarlo donde el cliente lo vea. Correr una suite contra un artefacto
+# que el cliente nunca cargo hace fallar todos los casos por una razon que no tiene que ver con el
+# artefacto.
+description: <<ID>> · <<QUE_SE_EVALUA>>
+
+prompts:
+  - "{{consulta}}"
+
+tests:
+  # ── CAMINO ESPERADO ───────────────────────────────────────────────────────────────────────
+  - description: <<CASO_FELIZ>>
+    vars:
+      consulta: "<<CONSULTA>>"
+    assert:
+      # ANCLA DETERMINISTA — OBLIGATORIA EN CADA CASO. Ningun caso se sostiene solo sobre el juicio de un
+      # modelo. Y no es teoria: cuando el juez no esta disponible -- le falta credencial, o su proveedor
+      # falla -- un caso con ancla SIGUE dando informacion y uno sin ancla no dice nada.
+      - type: icontains
+        value: <<PALABRA_QUE_TIENE_QUE_APARECER>>
+      # Y al juez solo lo que ninguna comprobacion mecanica alcanza: coherencia, pertinencia, calidad de
+      # una explicacion. Redactado como una AFIRMACION COMPROBABLE contra la salida, no como «esta bien
+      # hecho»: un criterio vago produce veredictos inestables y no diagnosticables.
+      - type: llm-rubric
+        value: >
+          <<CRITERIO_VERIFICABLE>>
+
+  # ── BORDE ─────────────────────────────────────────────────────────────────────────────────
+  - description: <<CASO_BORDE>>
+    vars:
+      consulta: "<<CONSULTA_BORDE>>"
+    assert:
+      - type: icontains
+        value: <<PALABRA_BORDE>>
+
+  # ── NEGATIVO — OBLIGATORIO ────────────────────────────────────────────────────────────────
+  # Es la omision mas frecuente y produce artefactos que «siempre encuentran algo que hacer». Un
+  # near-miss: algo que COMPARTE VOCABULARIO con el artefacto pero necesita otra cosa.
+  #
+  # Y la forma cambia segun el tipo: para un SKILL se comprueba que NO SE ACTIVE; para un AGENTE -- que se
+  # invoca explicitamente y no puede no activarse -- que SE ABSTENGA de lo que no le corresponde.
+  - description: <<CASO_NEGATIVO>>
+    vars:
+      consulta: "<<CONSULTA_AJENA>>"
+    assert:
+      - type: not-contains
+        value: <<SEÑAL_DE_QUE_ACTUO_CUANDO_NO_DEBIA>>
