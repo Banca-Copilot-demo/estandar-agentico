@@ -275,7 +275,8 @@ def test_toda_regla_invocada_por_el_gate_tiene_su_cable_probado():
 
     # Estas tres tienen su cable probado en `test_gate.py`, no aqui: llegan por parametro opcional y
     # necesitan que el gate reciba contexto (esquemas, equipos, archivos cambiados).
-    probadas_en_test_gate = {"_revisar_forma_contra_esquemas", "_revisar_duenos", "_revisar_mezcla"}
+    probadas_en_test_gate = {"_revisar_forma_contra_esquemas", "_revisar_duenos", "_revisar_mezcla",
+                             "_revisar_subida_de_version"}
     # Y estas dos las cubren las pruebas de `mcp` y de YAML invalido que ya existian en `test_gate.py`.
     probadas_de_antes = {"_revisar_mcp", "_revisar_yaml"}
 

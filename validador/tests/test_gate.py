@@ -369,3 +369,41 @@ def test_el_gate_cablea_la_regla_de_mezcla_de_firmantes(tmp_path):
     mensajes = [h.mensaje for h in resultado.veredicto.errores]
     assert not resultado.conforme
     assert any("firmantes DISTINTOS" in m for m in mensajes), mensajes
+
+
+def _repositorio_de_una_unidad_versionada(raiz: Path, version: str = "1.0.0") -> Path:
+    """Un repositorio que ES un plugin: la unidad `.` declara nombre y version en su manifiesto.
+
+    La regla de subida de version solo puede hablar de unidades con identidad, y el repositorio
+    minimo no la tiene -- sin manifiesto ni gobierno no hay version que subir --.
+    """
+    _repositorio_minimo(raiz)
+    manifiesto = raiz / ".claude-plugin"
+    manifiesto.mkdir(parents=True, exist_ok=True)
+    (manifiesto / "plugin.json").write_text(
+        json.dumps({"name": "demo.sdlc.unidad", "version": version}), encoding="utf-8")
+    return raiz
+
+
+def test_el_gate_cablea_la_regla_de_subida_de_version(tmp_path):
+    # La unidad cambia y sigue declarando la misma version que la rama base: sin numero nuevo no hay
+    # etiqueta, y sin etiqueta lo publicado se queda como estaba sin que nada lo avise.
+    resultado = ejecutar(_repositorio_de_una_unidad_versionada(tmp_path),
+                         comprobador_oficial=ComprobadorFalso(Resultado.CONFORME),
+                         archivos_cambiados=("skills/validar-algo/SKILL.md",),
+                         versiones_en_base={".": "1.0.0"})
+
+    mensajes = [h.mensaje for h in resultado.veredicto.errores]
+    assert not resultado.conforme
+    assert any("sigue declarando la version" in m for m in mensajes), mensajes
+
+
+def test_sin_rama_base_la_regla_de_subida_de_version_NO_APLICA(tmp_path):
+    """Fuera de un pull request no hay contra que comparar. Avisar en cada validacion local ensenaria
+    a ignorar el aviso, que es como se pierde una comprobacion."""
+    resultado = ejecutar(_repositorio_de_una_unidad_versionada(tmp_path),
+                         comprobador_oficial=ComprobadorFalso(Resultado.CONFORME),
+                         archivos_cambiados=("skills/validar-algo/SKILL.md",))
+
+    mensajes = [h.mensaje for h in resultado.veredicto.hallazgos]
+    assert not any("sigue declarando la version" in m for m in mensajes), mensajes

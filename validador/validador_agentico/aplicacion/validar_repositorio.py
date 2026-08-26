@@ -43,6 +43,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from validador_agentico.adaptadores import esquema
+from validador_agentico.adaptadores import identidad_en_disco
 from validador_agentico.adaptadores import frontmatter as adaptador_frontmatter
 from validador_agentico.adaptadores import repositorio as adaptador_repositorio
 from validador_agentico.adaptadores.repositorio import (
@@ -57,7 +58,7 @@ from validador_agentico.adaptadores.repositorio import (
 from validador_agentico.aplicacion import proyeccion
 from validador_agentico.dominio import reglas_agente, reglas_aprobacion
 from validador_agentico.dominio import reglas_credenciales, reglas_evals, reglas_layout, reglas_mcp
-from validador_agentico.dominio import reglas_recursos
+from validador_agentico.dominio import reglas_recursos, reglas_version
 from validador_agentico.dominio import reglas_higiene, reglas_hooks, reglas_huerfanos
 from validador_agentico.dominio import scripts_de_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
@@ -83,10 +84,11 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
             repositorio=adaptador_repositorio,
             equipos_conocidos: frozenset[str] | None = None,
             archivos_cambiados: tuple[str, ...] | None = None,
+            versiones_en_base: dict[str, str | None] | None = None,
             directorio_de_esquemas: Path | None = None) -> Veredicto:
-    """`equipos_conocidos` y `archivos_cambiados` llegan como DATOS y no como adaptadores: son
-    contexto que el composition root resuelve una sola vez. Los dos admiten `None`, que significa
-    «no se pudo averiguar» y produce un aviso -- nunca un pase silencioso."""
+    """`equipos_conocidos`, `archivos_cambiados` y `versiones_en_base` llegan como DATOS y no como
+    adaptadores: son contexto que el composition root resuelve una sola vez. Los tres admiten
+    `None`, que significa «no se pudo averiguar» y produce un aviso -- nunca un pase silencioso."""
     raices = reglas_layout.unidades_publicables(
         raiz, RUTAS_MANIFIESTO,
         directorios_de_artefactos=_DIRECTORIOS_DE_ARTEFACTOS,
@@ -145,7 +147,8 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
     # encuentra.
     del_repositorio = repositorio.leer(raiz, lector)
     hallazgos += [*_revisar_higiene(del_repositorio), *_revisar_mezcla(archivos_cambiados),
-                  *_revisar_sin_unidad(raiz, del_repositorio)]
+                  *_revisar_sin_unidad(raiz, del_repositorio),
+                  *_revisar_subida_de_version(raiz, raices, archivos_cambiados, versiones_en_base)]
 
     log.info("%d hallazgo(s) en %s", len(hallazgos), raiz.name)
     return Veredicto(hallazgos=tuple(hallazgos), inventario=inventario,
@@ -293,6 +296,33 @@ def _revisar_mezcla(archivos_cambiados: tuple[str, ...] | None) -> list[Hallazgo
     if archivos_cambiados is None:
         return []
     return reglas_aprobacion.revisar_mezcla_de_aprobadores(archivos_cambiados)
+
+
+def _revisar_subida_de_version(raiz: Path, raices: tuple[Path, ...],
+                               archivos_cambiados: tuple[str, ...] | None,
+                               versiones_en_base: dict[str, str | None] | None) -> list[Hallazgo]:
+    """G5 — lo que cambia se declara: si una unidad cambio, su version tambien.
+
+    Sin lista de cambios o sin rama base la regla NO APLICA y no se avisa, por la misma razon que en
+    la mezcla de aprobadores: fuera de un pull request no hay contra que comparar, y un aviso en cada
+    validacion local ensenaria a ignorarlo. En CI las dos llegan siempre, y cuando la base existe pero
+    no se puede leer es `versiones_en_base` -- no esta funcion -- quien avisa.
+    """
+    if archivos_cambiados is None or versiones_en_base is None:
+        return []
+    unidades = []
+    for unidad in raices:
+        ruta = unidad.relative_to(raiz).as_posix() or reglas_layout.RAIZ_DEL_REPOSITORIO
+        identidad = identidad_en_disco.identidad_de(unidad, raiz)
+        if identidad is None:
+            # Sin version declarada no hay nada que subir, y el gate ya lo reprocha por otra via:
+            # una unidad sin `version` no se puede etiquetar y eso se dice donde se valida el
+            # manifiesto. Repetirlo aqui daria dos errores para un solo defecto.
+            continue
+        unidades.append(reglas_version.VersionDeUnidad(
+            ruta=ruta, nombre=identidad.nombre, version=identidad.version,
+            version_en_base=versiones_en_base.get(ruta)))
+    return reglas_version.revisar_subida_de_version(tuple(unidades), archivos_cambiados)
 
 
 def _revisar_mcp(contenido: ContenidoRepositorio) -> list[Hallazgo]:

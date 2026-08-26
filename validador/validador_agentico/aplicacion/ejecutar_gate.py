@@ -49,6 +49,7 @@ def ejecutar(raiz: Path, *, comprobador_oficial: ComprobadorOficial = gh_skill,
              con_comprobacion_oficial: bool = True,
              equipos_conocidos: frozenset[str] | None = None,
              archivos_cambiados: tuple[str, ...] | None = None,
+             versiones_en_base: dict[str, str | None] | None = None,
              directorio_de_esquemas: Path | None = None) -> ResultadoGate:
     """Corre TODAS las comprobaciones y agrega al final.
 
@@ -59,6 +60,7 @@ def ejecutar(raiz: Path, *, comprobador_oficial: ComprobadorOficial = gh_skill,
     """
     veredicto = validar(raiz, equipos_conocidos=equipos_conocidos,
                         archivos_cambiados=archivos_cambiados,
+                        versiones_en_base=versiones_en_base,
                         directorio_de_esquemas=directorio_de_esquemas)
     comprobaciones = [_comprobacion_propia(veredicto)]
 

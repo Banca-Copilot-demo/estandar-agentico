@@ -12,24 +12,24 @@ para algo que el empaquetado no encuentra, la publicacion falla despues de haber
 etiqueta que -- con releases inmutables -- ya no se puede borrar.
 
 De ahi que esto no reimplemente el descubrimiento: reutiliza `dominio.reglas_layout`, la misma
-regla que usa el gate. Una sola implementacion, tres consumidores.
+regla que usa el gate, ni la lectura de la identidad: `dominio.reglas_identidad`, la misma que el
+gate usa para preguntarle a la rama base que version declaraba alli. Una sola implementacion.
 
 SALIDA A STDOUT PORQUE LA CONSUME OTRO PROCESO; el logging va a stderr (L8).
 """
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import sys
 from pathlib import Path
 
 from validador_agentico.adaptadores import registro
+from validador_agentico.adaptadores.identidad_en_disco import identidad_de
 from validador_agentico.adaptadores.repositorio import (
     DIRECTORIO_AGENTES,
     DIRECTORIO_PROMPTS,
     DIRECTORIO_SKILLS,
-    RUTA_GOBIERNO,
     RUTA_MCP,
 )
 from validador_agentico.dominio import reglas_etiquetas
@@ -46,69 +46,8 @@ _DIRECTORIOS_DE_ARTEFACTOS = (DIRECTORIO_SKILLS, DIRECTORIO_AGENTES, DIRECTORIO_
 _ARCHIVOS_DE_ARTEFACTOS = (RUTA_MCP,)
 
 
-def _manifiesto_de(raiz: Path) -> Path | None:
-    """El manifiesto del plugin, en cualquiera de las ubicaciones que los clientes leen."""
-    for relativa in RUTAS_MANIFIESTO:
-        candidato = raiz / relativa
-        if candidato.is_file():
-            return candidato
-    return None
-
-
-def _identidad(manifiesto: Path) -> tuple[str, str] | None:
-    """`(nombre, version)` del manifiesto, o `None` si le falta alguno de los dos.
-
-    Un plugin sin nombre no se puede resolver en el catalogo y uno sin version no se puede
-    etiquetar: emitir una linea a medias haria que el llamador la tratara como valida.
-    """
-    try:
-        datos = json.loads(manifiesto.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as fallo:
-        log.error("%s no es JSON valido", manifiesto, exc_info=fallo)
-        return None
-    except OSError as fallo:
-        log.error("no se pudo leer %s", manifiesto, exc_info=fallo)
-        return None
-    nombre, version = datos.get("name"), datos.get("version")
-    if not nombre or not version:
-        log.error("%s sin `name` o sin `version`: se omite", manifiesto)
-        return None
-    return str(nombre), str(version)
-
-
-def _identidad_del_gobierno(raiz: Path) -> tuple[str, str] | None:
-    """`(id, version)` del `GOVERNANCE.json` de la raiz, para un repositorio de artefactos SUELTOS.
-
-    POR QUE EXISTE. Aqui se rompia la cadena del artefacto suelto: cuando no habia manifiesto esta
-    funcion no existia y el descubrimiento hacia `continue`, asi que no se etiquetaba nada -- y sin
-    etiqueta no hay release, ni paquete, ni atestacion, ni ficha en el catalogo --. El comentario de
-    `etiquetar.yml` ya decia que un repositorio de sueltos declara su version en el `GOVERNANCE.json`;
-    el campo NO existia en el esquema y esta funcion tampoco. El resultado era que el lineamiento
-    prometia que un suelto aparece en el catalogo y se puede atestar, y ninguna de las dos cosas pasaba.
-
-    `None` cuando no hay gobierno legible o le falta la `version`: sin ella no hay de donde derivar la
-    etiqueta, y emitir una linea a medias haria que el llamador la tratara como valida.
-    """
-    gobierno = raiz / RUTA_GOBIERNO
-    if not gobierno.is_file():
-        return None
-    try:
-        datos = json.loads(gobierno.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as fallo:
-        log.error("%s no es JSON valido", gobierno, exc_info=fallo)
-        return None
-    except OSError as fallo:
-        log.error("no se pudo leer %s", gobierno, exc_info=fallo)
-        return None
-    identificador, version = datos.get("id"), datos.get("version")
-    if not identificador or not version:
-        log.info("%s no declara `id` y `version`: nada que etiquetar como paquete suelto", gobierno)
-        return None
-    return str(identificador), str(version)
-
-
-def listar(raiz: Path) -> list[tuple[str, str, str]]:
-    """Las unidades publicables del repositorio como `(ruta, nombre, version)`.
+def listar(raiz: Path) -> list[tuple[str, str, str, str]]:
+    """Las unidades publicables del repositorio como `(ruta, nombre, version, etiqueta)`.
 
     LAS DOS CLASES DE UNIDAD, y un repositorio de dominio puede tener las dos a la vez:
 
@@ -126,11 +65,12 @@ def listar(raiz: Path) -> list[tuple[str, str, str]]:
     """
     identificadas = []
     for unidad in unidades_publicables(raiz, RUTAS_MANIFIESTO,
-                                        _DIRECTORIOS_DE_ARTEFACTOS, _ARCHIVOS_DE_ARTEFACTOS):
-        identidad = _identidad_de(unidad, raiz)
+                                       _DIRECTORIOS_DE_ARTEFACTOS, _ARCHIVOS_DE_ARTEFACTOS):
+        identidad = identidad_de(unidad, raiz)
         if identidad is None:
             continue
-        identificadas.append((unidad.relative_to(raiz).as_posix() or ".", *identidad))
+        identificadas.append((unidad.relative_to(raiz).as_posix() or ".",
+                              identidad.nombre, identidad.version))
 
     if not identificadas:
         log.info("%s no tiene plugin ni gobierno con version: no hay nada que publicar", raiz)
@@ -144,29 +84,6 @@ def listar(raiz: Path) -> list[tuple[str, str, str]]:
     unica = len(identificadas) == 1
     return [(ruta, nombre, version, reglas_etiquetas.etiqueta_de(nombre, version, unica))
             for ruta, nombre, version in identificadas]
-
-
-def _identidad_de(unidad: Path, raiz: Path) -> tuple[str, str] | None:
-    """`(nombre, version)` de una unidad: del MANIFIESTO si lo tiene, del gobierno si es el suelto.
-
-    EL ORDEN DE LAS FUENTES ES LO QUE EVITA ETIQUETAR DOS VECES EL MISMO CONTENIDO, y se aprendio
-    rompiendolo: al preguntar primero por el gobierno, un repositorio de UN plugin en la raiz se
-    etiquetaba con la version del `GOVERNANCE.json` -- 1.0.0 -- en vez de la del `plugin.json` --
-    3.0.0 --, porque en ese layout los dos archivos describen el MISMO paquete (el gate exige que su
-    `id` coincida con el `name`). Con el manifiesto primero, cada unidad tiene una sola identidad y la
-    del gobierno solo se usa cuando no hay manifiesto, que es exactamente el conjunto suelto.
-    """
-    manifiesto = _manifiesto_de(unidad)
-    if manifiesto is not None:
-        return _identidad(manifiesto)
-    if unidad != raiz:
-        # Una unidad anidada sin manifiesto no deberia existir -- se descubren POR el manifiesto --
-        # pero si apareciera, no se inventa su identidad.
-        return None
-    del_gobierno = _identidad_del_gobierno(raiz)
-    if del_gobierno is not None:
-        log.info("el conjunto suelto se publica como %s v%s", *del_gobierno)
-    return del_gobierno
 
 
 def _parsear_argumentos() -> argparse.Namespace:

@@ -18,7 +18,9 @@ from validador_agentico.adaptadores import (
     informe,
     organizacion,
     registro,
+    versiones_en_base,
 )
+from validador_agentico import listar_plugins
 from validador_agentico.aplicacion.ejecutar_gate import ejecutar
 
 log = logging.getLogger(__name__)
@@ -48,8 +50,10 @@ def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
                         help="organizacion de GitHub contra la que resolver `owner_team` (G4). "
                              "Sin esto, el dueno declarado queda como texto libre y se avisa")
     parser.add_argument("--rama-base", metavar="REF",
-                        help="rama base del pull request. Activa la regla de que un PR no mezcle "
-                             "artefactos con firmantes distintos. Sin esto, la regla no aplica")
+                        help="rama base del pull request. Activa las reglas que solo tienen sentido "
+                             "comparando contra ella: que el PR no mezcle artefactos con firmantes "
+                             "distintos, y que toda unidad que cambia suba su version. Sin esto, "
+                             "esas reglas no aplican")
     parser.add_argument("--esquemas", type=Path, metavar="RUTA",
                         help="directorio con los esquemas JSON contra los que comprobar la FORMA de "
                              "cada artefacto. Sin este flag esa comprobacion no se ejecuta, y el "
@@ -73,10 +77,31 @@ def main(argv: list[str] | None = None) -> int:
     equipos = organizacion.equipos(argumentos.organizacion) if argumentos.organizacion else None
     cambios = (cambios_git.archivos_cambiados(raiz, argumentos.rama_base)
                if argumentos.rama_base else None)
+    # PEDIR LA BASE Y NO PODER RESOLVERLA NO ES «NO APLICA»: es una comprobacion que se pidio y no
+    # corrio. Sin este corte el gate salia CONFORME sin haber ejecutado las reglas que dependen de la
+    # base, y eso es indistinguible de haberlas ejecutado y aprobado.
+    #
+    # MEDIDO en el registro de una solicitud real, donde llevaba pasando desde el principio:
+    # `fatal: origin/main...HEAD: no merge base`, un WARNING que nadie lee y un gate en verde. La
+    # causa -- un checkout superficial contra un fetch superficial de la base -- se arregla en la
+    # accion; esto es lo que impide que el proximo fallo de la misma clase vuelva a pasar callando.
+    if argumentos.rama_base and cambios is None:
+        log.critical("se pidio validar contra la rama base %s y no se pudo resolver: las reglas que "
+                     "dependen de ella NO se han ejecutado. El gate no puede declararse conforme sin "
+                     "haberlas corrido", argumentos.rama_base)
+        return SALIDA_NO_CONFORME
+    # LAS UNIDADES SE TOMAN DE `listar_plugins` Y NO SE VUELVEN A DESCUBRIR AQUI: es la misma lista
+    # que usan el etiquetado y el empaquetado, y si el gate exigiera subir la version de una unidad
+    # que el etiquetado no reconoce, pediria un numero para algo que nunca se publica.
+    versiones = (versiones_en_base.versiones_en_base(
+                    raiz, argumentos.rama_base,
+                    tuple(ruta for ruta, _, _, _ in listar_plugins.listar(raiz)))
+                 if argumentos.rama_base else None)
 
     resultado = ejecutar(raiz, comprobador_oficial=gh_skill,
                          con_comprobacion_oficial=not argumentos.sin_comprobacion_oficial,
                          equipos_conocidos=equipos, archivos_cambiados=cambios,
+                         versiones_en_base=versiones,
                          directorio_de_esquemas=argumentos.esquemas)
     if argumentos.anotaciones:
         # Antes del informe: los comandos de workflow los recoge el runner de stdout, y asi quedan
