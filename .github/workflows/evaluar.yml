@@ -70,6 +70,11 @@ env:
   # indistinguible de una regresion del artefacto.
   VERSION_PROMPTFOO: "0.118.16"
   REPO_DEL_ESTANDAR: Banca-Copilot-demo/estandar-agentico
+  # DONDE SE CLONA EL ESTANDAR DENTRO DEL WORKSPACE. Vive como variable porque ahora lo usan tres
+  # sitios -- el checkout, la instalacion del validador y la busqueda de suites, que debe SALTARSELO --
+  # y con el nombre repetido a mano bastaria con cambiarlo en dos para que la busqueda volviera a
+  # tragarse las plantillas del estandar (Y2/Y3).
+  DIRECTORIO_DEL_ESTANDAR: .estandar
   # LLAMADAS EN VUELO POR CORRIDA. Lo que satura el token no es el numero de trabajos sino el
   # PRODUCTO «trabajos en paralelo x concurrencia interna». Por defecto el motor usa 4; con varias
   # corridas a la vez eso se multiplica, y el agotamiento no se ve como cuota sino como casos en
@@ -120,7 +125,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.REPO_DEL_ESTANDAR }}
-          path: .estandar
+          path: ${{ env.DIRECTORIO_DEL_ESTANDAR }}
 
       - name: Preparar Python (puente y reglas del estandar)
         uses: actions/setup-python@v5
@@ -131,7 +136,7 @@ jobs:
         shell: bash
         # Aporta `listar_plugins`, que es la MISMA regla que usan el gate, el etiquetado y el
         # empaquetado para decidir que es una unidad. Redefinirla aqui seria como divergen las cosas.
-        run: pip install --quiet "$GITHUB_WORKSPACE/.estandar/validador"
+        run: pip install --quiet "$GITHUB_WORKSPACE/$DIRECTORIO_DEL_ESTANDAR/validador"
 
       - name: Buscar las suites de evaluacion
         id: detectar
@@ -148,26 +153,49 @@ jobs:
           donde="${{ inputs.subruta }}"
           [ -n "$donde" ] || donde="."
           echo "buscando suites en: $donde"
-          suites="$(find "$donde" -path "*/.git" -prune -o -name promptfooconfig.yaml -print | sort)"
+          # SE PODA EL CLON DEL ESTANDAR, no solo `.git`. Ese directorio lo crea ESTE workflow dentro
+          # del workspace y no forma parte del repositorio evaluado. MEDIDO en el push a main de
+          # `agentes-sdlc` (run 33016050350): el trabajo quedo rojo por
+          # `.estandar/plantillas/artefactos/evals/promptfooconfig.yaml`, una PLANTILLA del estandar,
+          # mientras las 3 suites del repositorio pasaban 3 de 3.
+          #
+          # LA PODA SE HACE AQUI ADEMAS DEL FILTRO POR PERTENENCIA DE ABAJO, y no en su lugar, porque
+          # cubren huecos distintos: en un repositorio cuya unica unidad publicable es la RAIZ,
+          # `listar_plugins` la emite como `.` y entonces TODO el workspace -- `.estandar/` incluido --
+          # cuelga de ella, asi que la pertenencia no puede distinguirlo. Podar aqui es lo unico que
+          # sabe que ese directorio es inyectado; el filtro de abajo es lo unico que cubre cualquier
+          # OTRO directorio ajeno que aparezca en el futuro sin que nadie se acuerde de esta linea.
+          suites="$(find "$donde" -path "*/.git" -prune \
+                                  -o -path "./$DIRECTORIO_DEL_ESTANDAR" -prune \
+                                  -o -name promptfooconfig.yaml -print | sort)"
 
-          # EN UNA SOLICITUD DE CAMBIO SOLO SE EVALUA LO QUE EL CAMBIO TOCA.
+          # DOS ACOTADOS DISTINTOS, Y UNO DE ELLOS SE APLICA SIEMPRE.
           #
-          # Con todas las suites corriendo, UNA en rojo bloquea a cualquiera que toque el
-          # repositorio, aunque no sea suya y no pueda arreglarla -- MEDIDO: un cambio de cableado
-          # quedo bloqueado por la suite de un agente ajeno --. Y el coste crece con el inventario:
-          # las suites corren en secuencia y cada una tarda minutos.
+          # 1) DESCARTAR LO QUE NO ES DEL REPOSITORIO. Una suite solo cuenta si pertenece a una unidad
+          #    publicable. Corre en TODOS los eventos -- tambien en push a main y al publicar --,
+          #    porque lo que no se publica no puede certificarse y evaluarlo solo puede poner en rojo
+          #    a quien no lo controla, ademas de gastar cuota.
           #
-          # AL PUBLICAR NO SE ACOTA por aqui, y es correcto: ahi no hay «lo que cambia», hay un
-          # estado que evaluar. El acotado de la publicacion es `inputs.subruta`, que es otra cosa.
-          if [ -n "$suites" ] && [ "${{ github.event_name }}" = "pull_request" ]; then
+          # 2) EN UNA SOLICITUD DE CAMBIO, ADEMAS, SOLO SE EVALUA LO QUE EL CAMBIO TOCA. Con todas las
+          #    suites corriendo, UNA en rojo bloquea a cualquiera que toque el repositorio, aunque no
+          #    sea suya y no pueda arreglarla -- MEDIDO: un cambio de cableado quedo bloqueado por la
+          #    suite de un agente ajeno --. Y el coste crece con el inventario: las suites corren en
+          #    secuencia y cada una tarda minutos. Fuera del pull request no hay «lo que cambia», hay
+          #    un estado que evaluar entero, asi que este acotado no aplica.
+          #
+          # El acotado de la PUBLICACION es `inputs.subruta` y es una tercera cosa, ya resuelta arriba.
+          if [ -n "$suites" ]; then
             printf '%s\n' "$suites" > "$RUNNER_TEMP/todas.txt"
             python -m validador_agentico.listar_plugins . 2>/dev/null \
               | awk '{print $1}' > "$RUNNER_TEMP/unidades.txt"
-            git diff --name-only "origin/${{ github.base_ref }}...HEAD" > "$RUNNER_TEMP/cambiados.txt"
-            suites="$(python "$GITHUB_WORKSPACE/.estandar/evals/suites_a_evaluar.py" \
-                        --suites "$RUNNER_TEMP/todas.txt" \
-                        --unidades "$RUNNER_TEMP/unidades.txt" \
-                        --cambiados "$RUNNER_TEMP/cambiados.txt")"
+            # P10/lista y no concatenacion: el flag opcional se anade como elemento, no como texto.
+            acotado=(--suites "$RUNNER_TEMP/todas.txt" --unidades "$RUNNER_TEMP/unidades.txt")
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              git diff --name-only "origin/${{ github.base_ref }}...HEAD" > "$RUNNER_TEMP/cambiados.txt"
+              acotado+=(--cambiados "$RUNNER_TEMP/cambiados.txt")
+            fi
+            suites="$(python "$GITHUB_WORKSPACE/$DIRECTORIO_DEL_ESTANDAR/evals/suites_a_evaluar.py" \
+                        "${acotado[@]}")"
           fi
 
           if [ -z "$suites" ]; then
@@ -241,7 +269,7 @@ jobs:
           EVALS_PROYECTO: ${{ github.workspace }}
         run: |
           set -o pipefail
-          cable="${GITHUB_WORKSPACE}/.estandar/evals/puente_copilot.py"
+          cable="${GITHUB_WORKSPACE}/${DIRECTORIO_DEL_ESTANDAR}/evals/puente_copilot.py"
           fallidas=0
           while IFS= read -r suite; do
             echo "::group::$suite"
@@ -251,7 +279,7 @@ jobs:
             #     mide otra cosa y falla por una razon que no tiene que ver con el artefacto.
             # MEDIDO: la primera ejecucion de este gate corrio las dos igual y la del agente dio 1 de
             # 3 -- el informe acusaba al ARTEFACTO de un fallo de la HERRAMIENTA --.
-            EVALS_AGENTE="$(python "${GITHUB_WORKSPACE}/.estandar/evals/agente_de_la_suite.py" "$suite")"
+            EVALS_AGENTE="$(python "${GITHUB_WORKSPACE}/${DIRECTORIO_DEL_ESTANDAR}/evals/agente_de_la_suite.py" "$suite")"
             export EVALS_AGENTE
             [ -n "$EVALS_AGENTE" ] && echo "se invoca al agente $EVALS_AGENTE"
             # `--no-cache` porque una suite que pasa por cache no ha probado nada.

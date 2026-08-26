@@ -7,6 +7,12 @@ name: Pruebas del estandar
 # son infraestructura de la que dependen todos los dominios, y los dos fallan en silencio si nadie
 # los prueba -- el empaquetador con especial facilidad: un digest inestable no rompe nada visible,
 # solo hace que la atestacion no pruebe nada.
+# `plantillas/**` ENTRA POR LO MISMO. La seleccion de suites descarta los esqueletos de autoria por su
+# propiedad -- llevar marcadores `<<...>>` sin rellenar -- y hay una prueba que lo comprueba contra el
+# ARCHIVO REAL de `plantillas/`, o sea que la plantilla es hoy una entrada de la suite. Quien rellene
+# esos marcadores para «dejarla bonita» la convertiria en una suite ejecutable que no puede pasar, y sin
+# este filtro CI no lo diria.
+#
 # `port/**` ESTABA IGUAL DE AUSENTE, y por la misma razon exacta que `schemas/**`: la prueba del
 # contrato del catalogo lee `port/blueprint-artefacto-agentico.json` del repositorio, o sea que el
 # blueprint es tambien una ENTRADA de la suite. Editar el contrato del catalogo no disparaba la prueba
@@ -26,10 +32,10 @@ name: Pruebas del estandar
 # pull requests y no en `main`, o al contrario.
 on:
   pull_request:
-    paths: ["validador/**", "indice/**", "evals/**", "schemas/**", "port/**", ".github/actions/publicar/**", "plugins/**"]
+    paths: ["validador/**", "indice/**", "evals/**", "schemas/**", "port/**", ".github/actions/publicar/**", "plugins/**", "plantillas/**"]
   push:
     branches: [main]
-    paths: ["validador/**", "indice/**", "evals/**", "schemas/**", "port/**", ".github/actions/publicar/**", "plugins/**"]
+    paths: ["validador/**", "indice/**", "evals/**", "schemas/**", "port/**", ".github/actions/publicar/**", "plugins/**", "plantillas/**"]
 
 permissions:
   contents: read
