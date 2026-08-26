@@ -121,6 +121,20 @@ jobs:
     # LA PROMOCION TAMBIEN ESCRIBE EN EL CATALOGO, y por eso necesita las mismas credenciales que la
     # publicacion. Sin ellas quitaba la marca de prelanzamiento -- el artefacto YA se distribuia -- y
     # dejaba la ficha diciendo `conformant`: el catalogo de metadata contradecia al instalable.
+    #
+    # UN WORKFLOW REUTILIZABLE NO HEREDA LOS SECRETOS DEL LLAMADOR: hay que pasarlos uno a uno o
+    # declarar `secrets: inherit`. Se pasan uno a uno a proposito, para que lo que cada workflow
+    # necesita quede escrito en su firma en vez de viajar entero y en silencio.
+    #
+    # LAS DOS FUENTES SON NECESARIAS, y quedarse solo con la de MAYUSCULAS no habria arreglado nada:
+    # cuando a este workflow lo invoca un repositorio de DOMINIO, `secrets.PORT_CLIENT_ID` esta VACIO
+    # -- dentro de un workflow reutilizable solo existen los secretos que el llamador paso -- y las
+    # credenciales llegan por el parametro en minusculas. La forma de mayusculas cubre el otro
+    # disparador, el `push` de etiqueta de este mismo repositorio. Es el mismo patron de las lineas
+    # de arriba.
+    #
+    # NO SE ROMPE SI FALTAN: son opcionales, y entonces `promocionar` deja su aviso de que la ficha
+    # quedo desalineada. Ese aviso es lo que hizo visible este defecto en vez de dejarlo en verde.
     secrets:
-      port-client-id: ${{ secrets.PORT_CLIENT_ID }}
-      port-client-secret: ${{ secrets.PORT_CLIENT_SECRET }}
+      port-client-id: ${{ secrets.port-client-id || secrets.PORT_CLIENT_ID }}
+      port-client-secret: ${{ secrets.port-client-secret || secrets.PORT_CLIENT_SECRET }}
