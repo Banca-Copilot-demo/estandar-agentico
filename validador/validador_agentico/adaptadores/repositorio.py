@@ -85,6 +85,15 @@ class ContenidoRepositorio:
 
     manifiesto: ArchivoJson | None = None
     gobierno: ArchivoJson | None = None
+    gobierno_heredado: bool = False
+    """El gobierno no es de esta unidad sino del repositorio que la aloja. Pasa con un ARTEFACTO
+    SUELTO publicado por separado, que no declara gobierno propio.
+
+    IMPORTA PARA LAS REGLAS DE IDENTIDAD: un gobierno heredado describe el REPOSITORIO, asi que su
+    `id` y su `version` no son los de esta unidad y compararlos con el manifiesto da un error falso
+    -- medido: «`id` (demo.sdlc.sueltos) no coincide con `name` (demo.sdlc.revisar-jql)», que es
+    exactamente lo que debe pasar y no un defecto --. Lo que si se hereda y si aplica es el DUENO,
+    el dominio y la clasificacion del dato."""
     hooks: ArchivoJson | None = None
     # El `.mcp.json` LEIDO, no solo contado: hay reglas que se aplican sobre lo que declara -- que
     # sus referencias esten FIJADAS a una version, por ejemplo -- y para eso hace falta su contenido.
@@ -131,7 +140,34 @@ def _primera_existente(raiz: Path, rutas: tuple[str, ...]) -> Path | None:
     return next((raiz / r for r in rutas if (raiz / r).exists()), None)
 
 
+def _leer_skill_en_la_raiz(raiz: Path, lector) -> tuple[Artefacto, ...]:
+    """El skill cuando la unidad ES el skill: `SKILL.md` en la raiz de la unidad, sin `skills/`.
+
+    ES LA FORMA QUE LOS CLIENTES YA ESPERAN, y esta medido instalando en los dos: un plugin que
+    entrega exactamente un skill puede llevar su `SKILL.md` en la raiz, y entonces el nombre de
+    invocacion sale del frontmatter -- sin prefijo de plugin --. Asi, publicar un skill suelto por
+    separado NO obliga a reestructurar nada: basta anadirle el manifiesto donde ya vive.
+
+    La ruta se emite RELATIVA A LA UNIDAD -- `SKILL.md` a secas -- porque quien compone el veredicto
+    le antepone la subruta de su unidad. Emitirla completa la duplicaria.
+    """
+    definicion = raiz / ARCHIVO_SKILL
+    if not definicion.is_file():
+        return ()
+    return (Artefacto(
+        ruta_relativa=ARCHIVO_SKILL,
+        nombre_directorio=raiz.name,
+        frontmatter=lector.leer(definicion),
+        yaml_invalido=lector.es_yaml_valido(definicion),
+        lineas=lector.contar_lineas(definicion),
+        cuerpo=lector.leer_cuerpo(definicion),
+    ),)
+
+
 def _leer_artefactos_por_directorio(raiz: Path, lector) -> tuple[Artefacto, ...]:
+    en_la_raiz = _leer_skill_en_la_raiz(raiz, lector)
+    if en_la_raiz:
+        return en_la_raiz
     directorio = raiz / DIRECTORIO_SKILLS
     if not directorio.is_dir():
         return ()
@@ -250,16 +286,32 @@ def _leer_archivos_escaneables(raiz: Path) -> tuple[tuple[str, str], ...]:
     return tuple(escaneables)
 
 
-def leer(raiz: Path, lector) -> ContenidoRepositorio:
-    """Lee el repositorio completo una sola vez. `lector` es el adaptador de frontmatter."""
+def leer(raiz: Path, lector, gobierno_de_respaldo: Path | None = None) -> ContenidoRepositorio:
+    """Lee el repositorio completo una sola vez. `lector` es el adaptador de frontmatter.
+
+    `gobierno_de_respaldo` es el `GOVERNANCE.json` que se usa cuando la unidad no trae el suyo. Solo
+    lo pasa el composition root, y solo para un ARTEFACTO SUELTO publicado por separado: ese artefacto
+    vive en el repositorio del dominio, cuyo gobierno de la raiz ya declara dueno, dominio y
+    clasificacion. Exigirle uno propio obligaria a escribir un archivo de gobierno por cada skill del
+    inventario -- decenas -- para repetir los mismos tres campos. Un PLUGIN si declara el suyo: agrupa
+    varios artefactos y puede tener dueno distinto del repositorio que lo aloja.
+    """
     log.debug("leyendo el repositorio %s", raiz)
     manifiesto = _primera_existente(raiz, RUTAS_MANIFIESTO)
     gobierno = raiz / RUTA_GOBIERNO
+    # La BASE del gobierno se lleva aparte porque un gobierno heredado NO cuelga de la unidad, y
+    # `_leer_json` calcula su ruta relativa contra la base que se le da.
+    base_del_gobierno = raiz
+    if not gobierno.exists() and gobierno_de_respaldo is not None and gobierno_de_respaldo.exists():
+        log.debug("%s hereda el gobierno de %s", raiz, gobierno_de_respaldo)
+        gobierno = gobierno_de_respaldo
+        base_del_gobierno = gobierno_de_respaldo.parent
     hooks = _primera_existente(raiz, RUTAS_HOOKS)
     agentes_leidos = _leer_agentes(raiz, lector)
     return ContenidoRepositorio(
         manifiesto=_leer_json(raiz, manifiesto) if manifiesto else None,
-        gobierno=_leer_json(raiz, gobierno) if gobierno.exists() else None,
+        gobierno=_leer_json(base_del_gobierno, gobierno) if gobierno.exists() else None,
+        gobierno_heredado=base_del_gobierno != raiz,
         hooks=_leer_json(raiz, hooks) if hooks else None,
         mcp=_leer_json(raiz, _archivo_mcp(raiz)) if _archivo_mcp(raiz) else None,
         suites_de_evals=_leer_suites_de_evals(raiz),

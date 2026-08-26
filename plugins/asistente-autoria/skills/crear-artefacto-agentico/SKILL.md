@@ -73,6 +73,34 @@ ademas pierde portabilidad. Expresa como skill todo lo que se pueda.
 Ejecuta `scripts/generar.sh <tipo> <nombre>`. El script copia el esqueleto de `assets/` y
 **hereda el `id` y el `owner` del plugin**, asi que esos no se teclean.
 
+### Cuando el artefacto NO va dentro de un plugin
+
+Si el desarrollador quiere publicarlo **suelto** —porque no viaja con nadie y tiene su propio
+ritmo de cambio— usa `scripts/generar.sh --unidad <tipo> <nombre>`. Crea el artefacto **con su
+propio manifiesto**, asi que se publica como una unidad independiente: version, etiqueta, digesto y
+entrada de catalogo propios.
+
+**No es opcional si se quiere distribuir.** Un artefacto suelto sin manifiesto **no entra al
+catalogo**, y esta medido contra los dos clientes: con el contenido en otro repositorio —que es la
+topologia real— la instalacion falla con `No plugin.json found in repository`. Y lo que no esta en
+el catalogo no lo gobierna el estado: se instalaria igual estuviera certificado, conforme o
+suspendido.
+
+Lo que el modo `--unidad` resuelve por su cuenta, y conviene no rehacerlo a mano:
+
+- **El nombre de la unidad** sale del dominio declarado en el `GOVERNANCE.json` de la raiz mas el
+  nombre del artefacto. Preguntarlo llevaria a que dos artefactos del mismo dominio acabaran con
+  prefijos distintos.
+- **La ubicacion.** El skill se queda donde ya vive; un prompt y un agente necesitan directorio
+  propio, porque son archivos y no pueden alojar el manifiesto a su lado.
+- **El componente declarado.** Un prompt declara `commands` en su manifiesto; skills y agentes no lo
+  necesitan. `commands` es el unico componente **sin ruta por defecto** en Copilot, asi que sin
+  declararlo el prompt se instala y no lo registra nadie: los archivos aterrizan y no los ve el
+  cliente.
+
+**El inventario del `GOVERNANCE.json` de la raiz no se toca**: la unidad no forma parte del conjunto
+suelto, se publica sola y de la raiz solo hereda el dueno y el dominio.
+
 ## Paso 4 · Completa lo que solo el desarrollador sabe
 
 Pidele `description` y `when_to_use`. Son los dos campos que ningun script puede deducir, y de

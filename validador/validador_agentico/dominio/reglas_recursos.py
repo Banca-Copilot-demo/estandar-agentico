@@ -49,6 +49,11 @@ _ENTRE_ACENTOS = re.compile(r"`([^`\n]+)`")
 
 # Los directorios de recursos de la especificacion, mas los dos que el CoE usa y v7 dejo caer.
 DIRECTORIOS_DE_RECURSOS = ("scripts/", "references/", "assets/", "templates/", "examples/")
+
+# Carpetas que NO son recursos del artefacto sino maquinaria de publicacion: las lee el CLIENTE o la
+# cadena, nunca el artefacto, asi que pedir que su cuerpo las mencione seria un aviso imposible de
+# atender. `.claude-plugin/` es la que aparece al publicar un artefacto suelto por separado.
+CARPETAS_DE_MAQUINARIA = frozenset({".claude-plugin", ".github"})
 # Prefijos que NO son un archivo del repositorio: una url, un ancla, una ruta absoluta.
 _PREFIJOS_EXTERNOS = ("http://", "https://", "mailto:", "#", "/", "~")
 _MARCA_DE_PLANTILLA = ("$", "{", "<")
@@ -147,6 +152,12 @@ def revisar_recursos_no_referenciados(donde: str, cuerpo: str,
 
     Solo mira el PRIMER nivel: una carpeta referenciada por su nombre cubre todo lo que hay dentro,
     y bajar mas produciria un aviso por cada subcarpeta de algo que ya se uso.
+
+    NO SE AVISA DE LAS CARPETAS DE MAQUINARIA. La regla busca RECURSOS que el artefacto deberia usar
+    -- plantillas, ejemplos, datos --, y un manifiesto no es eso: es lo que hace instalable al
+    artefacto, y quien lo lee es el CLIENTE, no el artefacto. Sin esta exclusion, publicar un
+    artefacto suelto por separado -- que exige manifiesto propio, medido contra los dos clientes --
+    producia un aviso pidiendo referenciar desde el SKILL.md una carpeta que nunca debe mencionarse.
     """
     directorio = donde.rsplit("/", 1)[0] if "/" in donde else ""
     prefijo = f"{directorio}/" if directorio else ""
@@ -155,7 +166,7 @@ def revisar_recursos_no_referenciados(donde: str, cuerpo: str,
         ruta[len(prefijo):].split("/", 1)[0]
         for ruta in rutas_del_repositorio
         if ruta.startswith(prefijo) and "/" in ruta[len(prefijo):]
-    }
+    } - CARPETAS_DE_MAQUINARIA
     if not carpetas:
         return []
 
