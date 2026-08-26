@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from validador_agentico.aplicacion.validar_repositorio import validar
+from validador_agentico.dominio.especificacion import CAMPOS_ENVELOPE
 from validador_agentico.dominio.hallazgo import Severidad
 
 _ESQUEMAS = Path(__file__).resolve().parents[2] / "schemas"
@@ -30,7 +31,6 @@ _GOBIERNO_CONFORME = {
     "id": "demo.sdlc.x",
     "domain": "sdlc",
     "owner": {"team": "squad-sdlc", "contact": "squad-sdlc@ejemplo.dev"},
-    "status": "draft",
     "data_classification": "internal",
     "standard_version": "8.0.0",
     "artifacts": {"skills": 0, "agents": 0, "prompts": 0},
@@ -52,6 +52,12 @@ def _errores(raiz: Path) -> str:
     resultado = validar(raiz, directorio_de_esquemas=_ESQUEMAS)
     return " | ".join(h.mensaje for h in resultado.hallazgos
                       if h.severidad is Severidad.ERROR)
+
+
+def _avisos(raiz: Path) -> str:
+    resultado = validar(raiz, directorio_de_esquemas=_ESQUEMAS)
+    return " | ".join(h.mensaje for h in resultado.hallazgos
+                      if h.severidad is Severidad.AVISO)
 
 
 def test_un_gobierno_conforme_no_produce_errores_de_forma(tmp_path):
@@ -78,6 +84,42 @@ def test_falta_cada_campo_obligatorio_del_gobierno_se_detecta(tmp_path, campo):
     mensajes = _errores(_repositorio(tmp_path / campo, incompleto))
 
     assert mensajes, f"no se detecto la falta de `{campo}`"
+
+
+# ── el retiro de `status` del gobierno, y su transicion ──────────────────────────────────────
+def test_un_gobierno_SIN_status_es_conforme(tmp_path):
+    """`status` dejo de ser obligatorio: el estado del ciclo de vida se DERIVA de los gates y lo
+    publica la ficha del catalogo, asi que nadie lo declara. Si siguiera en `required`, el gobierno
+    que ya no lo lleva —el de las plantillas, el de este repositorio— seria no conforme."""
+    assert "status" not in _errores(_repositorio(tmp_path, _GOBIERNO_CONFORME))
+
+
+def test_un_gobierno_que_TODAVIA_declara_status_no_bloquea_el_gate(tmp_path):
+    # Medido sobre el esquema: declara `additionalProperties: false`, asi que borrar la propiedad
+    # convertiria su presencia en ERROR de forma automatica. Y el gate es comprobacion REQUERIDA en
+    # los repositorios de dominio: eso pondria rojos de golpe a los seis `GOVERNANCE.json` que aun lo
+    # llevan e impediria mergear NI SIQUIERA el PR que lo quita, porque ese PR pasa por el gate.
+    heredado = {**_GOBIERNO_CONFORME, "status": "draft"}
+
+    assert _errores(_repositorio(tmp_path, heredado)) == ""
+
+
+def test_un_status_en_el_gobierno_produce_un_aviso_que_lo_declara_ignorado(tmp_path):
+    """Aceptarlo en silencio dejaria el campo pareciendo una palanca para siempre. El aviso es lo que
+    empuja a quitarlo sin cerrar el camino para hacerlo."""
+    heredado = {**_GOBIERNO_CONFORME, "status": "draft"}
+
+    mensajes = _avisos(_repositorio(tmp_path, heredado))
+
+    assert "`status`" in mensajes and "IGNORA" in mensajes, mensajes
+
+
+def test_el_status_del_FRONTMATTER_del_artefacto_sigue_siendo_obligatorio():
+    """Hay DOS campos llamados `status` y solo se retiro uno. El del gobierno describia al PAQUETE y
+    era la palanca falsa; el del envelope vive en `metadata` DENTRO del artefacto, es lo que lo hace
+    auditable cuando viaja suelto sin plugin ni catalogo, y sigue vigente. Sin esta prueba, el
+    siguiente que lea «se retiro status» puede quitar el que no era."""
+    assert "status" in CAMPOS_ENVELOPE
 
 
 def test_un_enum_con_valor_INVENTADO_es_error(tmp_path):
