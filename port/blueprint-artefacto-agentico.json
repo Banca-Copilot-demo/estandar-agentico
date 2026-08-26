@@ -64,6 +64,11 @@
         "type": "string",
         "title": "Repositorio de origen"
       },
+      "ruta": {
+        "type": "string",
+        "title": "Ruta dentro del repositorio",
+        "description": "Donde vive el artefacto. La ficha la necesita para poder RECONSTRUIR la pista de instalacion cuando el artefacto cambia de estado: una transicion no vuelve a leer el repositorio, asi que sin este dato la pista se quedaria en la del estado anterior."
+      },
       "ref": {
         "type": "string",
         "title": "Etiqueta publicada"

@@ -21,8 +21,14 @@ on:
         required: true
         type: string
     # El llamador puede estar en otro repositorio -- un repo de DOMINIO --, y `github.token` del
-    # workflow reutilizable lo apunta a el, que es justo donde vive el release. No hace falta ningun
-    # secreto adicional.
+    # workflow reutilizable lo apunta a el, que es justo donde vive el release.
+    secrets:
+      port-client-id:
+        description: Client ID de Port. Vacio = no se actualiza la ficha del catalogo.
+        required: false
+      port-client-secret:
+        description: Client secret de Port.
+        required: false
   workflow_dispatch:
     inputs:
       etiqueta:
@@ -37,6 +43,13 @@ jobs:
   promocionar:
     name: Promocionar
     runs-on: ubuntu-latest
+    # EL SECRETO SE LEE AQUI Y NO EN EL `if:` DE CADA PASO. `secrets` NO es un contexto valido en un
+    # `if:` de paso: el workflow no falla en el paso, falla al ARRANCAR -- `startup_failure`, cero
+    # trabajos, cero anotaciones -- y el unico sintoma es que la ejecucion aparece listada por su
+    # ruta en vez de por su nombre. Ya nos costo que un gate obligatorio no corriera nunca sin que
+    # nadie lo notara. Hay una prueba de forma sobre los workflows que fija esto.
+    env:
+      PORT_CLIENT_ID: ${{ secrets.port-client-id }}
     steps:
       - name: Comprobar que la etiqueta existe y esta sin promocionar
         id: estado
@@ -79,6 +92,55 @@ jobs:
           gh release edit "${{ inputs.etiqueta }}" --repo "$GITHUB_REPOSITORY" --prerelease=false
           echo "Promocionado: ${{ inputs.etiqueta }} entra al catalogo en la proxima regeneracion del indice."
 
+      # EL RELEASE PRIMERO Y LA FICHA DESPUES, y el orden es la decision. El release es el HECHO --
+      # es lo que el indice mira y lo que decide si el artefacto se instala --; la ficha es la
+      # vitrina que lo cuenta. Si la ficha se escribiera antes y el release fallara, el catalogo
+      # anunciaria como distribuido algo que no lo esta: prometer de mas es peor que ir un paso por
+      # detras, que es lo que pasa en el orden contrario y se corrige repitiendo la promocion.
+      - name: Checkout del estandar para su accion de estado
+        if: env.PORT_CLIENT_ID != ''
+        uses: actions/checkout@v4
+        with:
+          repository: Banca-Copilot-demo/estandar-agentico
+          path: .estandar
+
+      # EL NOMBRE DEL PLUGIN SALE DE LA ETIQUETA porque es el unico dato que la promocion tiene: aqui
+      # no se relee el repositorio ni se vuelve a sellar nada. Con la forma corta `vX.Y.Z` -- un
+      # repositorio que publica una sola unidad -- la etiqueta no lo nombra, y entonces se deja vacio
+      # a proposito: la accion cae en la pista conservadora en vez de inventar un nombre.
+      - name: Derivar de la etiqueta el nombre del plugin
+        if: env.PORT_CLIENT_ID != ''
+        id: plugin
+        shell: bash
+        run: |
+          etiqueta="${{ inputs.etiqueta }}"
+          case "$etiqueta" in
+            *--v*) nombre="${etiqueta%--v*}" ;;
+            *)     nombre="" ;;
+          esac
+          echo "nombre=$nombre" >> "$GITHUB_OUTPUT"
+
+      # SE EJECUTA AUNQUE EL RELEASE YA ESTUVIERA PROMOCIONADO, y no es un descuido. El caso en que
+      # la ficha esta desalineada es exactamente ese: alguien quito la marca de prelanzamiento por su
+      # cuenta -- a mano, o en una promocion que fallo al llegar a Port -- y el catalogo de metadata
+      # se quedo diciendo `conformant`. Condicionarlo a que hubiera cambio dejaria esa deriva sin
+      # forma de repararse.
+      - name: Fijar el estado Certificado en el catalogo
+        if: env.PORT_CLIENT_ID != ''
+        uses: ./.estandar/.github/actions/estado-en-port
+        with:
+          etiqueta: ${{ inputs.etiqueta }}
+          estado: certified
+          nombre-plugin: ${{ steps.plugin.outputs.nombre }}
+          port-client-id: ${{ secrets.port-client-id }}
+          port-client-secret: ${{ secrets.port-client-secret }}
+
+      - name: Avisar de que la ficha del catalogo no se actualizo
+        if: env.PORT_CLIENT_ID == ''
+        shell: bash
+        run: |
+          echo "::warning::sin credenciales de Port: el release ya esta promocionado, pero su ficha sigue diciendo el estado anterior"
+
       - name: Dejar constancia en el resumen
         shell: bash
         run: |
@@ -89,6 +151,7 @@ jobs:
             echo "|---|---|"
             echo "| Etiqueta | \`${{ inputs.etiqueta }}\` |"
             echo "| Estaba sin promocionar | ${{ steps.estado.outputs.era_prelanzamiento }} |"
+            echo "| Ficha del catalogo | ${{ env.PORT_CLIENT_ID != '' && 'fijada en `certified`' || 'sin actualizar (sin credenciales)' }} |"
             echo
             echo "El paquete, su digesto y su atestacion NO cambian: promocionar solo decide si el"
             echo "artefacto entra al catalogo instalable."

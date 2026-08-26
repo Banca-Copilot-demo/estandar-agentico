@@ -224,15 +224,22 @@ runs:
         case "$politica" in
           al_publicar)
             marca=""
+            resuelta="al_publicar"
             echo "El release nace COMPLETO: entra al catalogo al publicar." ;;
           al_certificar)
             marca="--prerelease"
+            resuelta="al_certificar"
             echo "El release nace como PRELANZAMIENTO: entrara al catalogo al certificarse." ;;
           *)
             marca="--prerelease"
+            resuelta="al_certificar"
             echo "::warning::no se pudo resolver la politica de promocion ('$politica'): se aplica la mas restrictiva" ;;
         esac
         echo "marca=$marca" >> "$GITHUB_OUTPUT"
+        # La ficha del catalogo necesita la POLITICA, no la bandera: es lo que decide si declara el
+        # artefacto como distribuido. Se emite la ya RESUELTA -- incluida la degradacion -- para que
+        # el release y la ficha no puedan discrepar sobre la misma publicacion.
+        echo "promocion=$resuelta" >> "$GITHUB_OUTPUT"
 
     - name: Publicar el release con el paquete
       shell: bash
@@ -344,7 +351,7 @@ runs:
       run: |
         token="$(curl -sf -X POST "https://api.port.io/v1/auth/access_token"           -H 'Content-Type: application/json'           -d "{\"clientId\":\"$ID\",\"clientSecret\":\"$SECRETO\"}"           | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')"
 
-        python3 "${{ github.action_path }}/fichas.py"           --veredicto veredicto.json           --repositorio "$GITHUB_REPOSITORY"           --etiqueta "$ETIQUETA"           --sha "$GITHUB_SHA"           --digest "$DIGEST"           --token "$token"
+        python3 "${{ github.action_path }}/fichas.py"           --veredicto veredicto.json           --repositorio "$GITHUB_REPOSITORY"           --etiqueta "$ETIQUETA"           --sha "$GITHUB_SHA"           --digest "$DIGEST"           --subruta "${{ steps.plugin.outputs.subruta }}"           --promocion "${{ steps.politica.outputs.promocion }}"           --token "$token"
 
     - name: Resumen de la publicacion
       if: always()
