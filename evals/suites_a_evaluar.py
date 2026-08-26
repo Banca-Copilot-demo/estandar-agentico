@@ -15,8 +15,29 @@ separado -- un plugin anidado o un artefacto suelto con manifiesto propio --, y 
 se recibe ya resuelta por `listar_plugins`, que es la misma regla que usan el gate, el etiquetado y el
 empaquetado. Inventar una segunda definicion de «unidad» es exactamente como divergen las cosas.
 
-SIN ARCHIVOS CAMBIADOS SE DEVUELVEN TODAS. Es el caso de la publicacion y del disparo manual: ahi no
-hay «lo que cambia», hay un estado que evaluar entero.
+SIN ARCHIVOS CAMBIADOS SE DEVUELVEN TODAS LAS PROPIAS. Es el caso de la publicacion y del push a
+main: ahi no hay «lo que cambia», hay un estado que evaluar entero.
+
+Y «LAS PROPIAS» NO ES UN MATIZ: es un filtro distinto de los otros dos y se aplica SIEMPRE. Una suite
+solo cuenta si PERTENECE a una unidad publicable del repositorio evaluado. MEDIDO en un push a main de
+`agentes-sdlc` (run 33016050350): el trabajo de comportamiento se puso rojo por
+`./.estandar/plantillas/artefactos/evals/promptfooconfig.yaml` -- una PLANTILLA del repositorio del
+estandar, que el propio workflow clona dentro del workspace para traerse el puente y las reglas --.
+Junto a ella corrieron 3 suites legitimas, 3 de 3 cada una. Un repositorio de dominio quedo en rojo
+por un artefacto que no controla, se pago cuota de inferencia por evaluar algo que no se publica, y la
+plantilla se midio fuera de su sitio, donde es esperable que no pase.
+
+No se veia en una solicitud de cambio porque alli el acotado por cambios ya la descartaba: la
+plantilla no la toca nadie. En un push a main no hay contra que acotar y corre todo lo que se
+encuentra, asi que el defecto solo aparece en la rama donde mas duele.
+
+Y ESA PLANTILLA NO ES UNA SUITE MAL ESCRITA: NO PUEDE PASAR NUNCA, POR CONSTRUCCION. Es el esqueleto
+que el asistente de autoria copia, y lleva los marcadores sin rellenar. COMPROBADO leyendo el archivo:
+promptfoo le pregunta al modelo la cadena literal `<<CONSULTA>>` y comprueba si la respuesta contiene
+`<<PALABRA_QUE_TIENE_QUE_APARECER>>`. Ademas del rojo espurio, se paga inferencia por preguntarle a un
+modelo un marcador de posicion. Por eso no basta con descartarla cuando llega prestada desde
+`.estandar/`: no debe evaluarse NUNCA, tampoco en el repositorio del estandar. De ahi la segunda
+regla, `sin_plantillas`.
 
 SALIDA A STDOUT PORQUE LA CONSUME OTRO PROCESO; el logging va a stderr (L8).
 """
@@ -24,7 +45,10 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import sys
+from collections.abc import Callable
+from pathlib import Path
 
 # LA PERTENENCIA DE UN ARCHIVO A UNA UNIDAD NO SE DEFINE AQUI. Vivio en este modulo mientras fue su
 # unico consumidor; al necesitarla tambien el gate -- para exigirle a toda unidad que cambia que suba
@@ -38,10 +62,62 @@ from validador_agentico.dominio.reglas_layout import unidad_de as _unidad_de
 
 log = logging.getLogger(__name__)
 
+# UN HUECO SIN RELLENAR DEL ESQUELETO DE AUTORIA: `<<CONSULTA>>`, `<<PALABRA_QUE_TIENE_QUE_APARECER>>`.
+# Se reconoce la plantilla POR ESTA PROPIEDAD y no por una lista de rutas conocidas, y la eleccion es
+# deliberada: una lista hay que acordarse de actualizarla al anadir el siguiente esqueleto, y el olvido
+# no avisa -- se manifiesta meses despues como una suite en rojo que nadie escribio --. Un marcador sin
+# rellenar, en cambio, esta en el archivo por definicion mientras siga siendo una plantilla, y
+# desaparece solo cuando alguien la convierte en una suite de verdad.
+_MARCADOR_SIN_RELLENAR = re.compile(r"<<[^<>\n]+>>")
+
+
+def es_plantilla(contenido: str) -> bool:
+    """Si el archivo es un ESQUELETO sin rellenar y no una suite ejecutable."""
+    return _MARCADOR_SIN_RELLENAR.search(contenido) is not None
+
+
+def sin_plantillas(suites: list[str], contenido_de: Callable[[str], str]) -> list[str]:
+    """Descarta los esqueletos de autoria, que no pueden pasar por construccion.
+
+    EL LECTOR SE INYECTA para que la regla se pruebe sin tocar disco (T1/T4): decidir si un texto es
+    una plantilla es una regla pura, y solo el punto de entrada sabe de donde sale ese texto.
+    """
+    ejecutables = [s for s in suites if not es_plantilla(contenido_de(s))]
+    descartadas = len(suites) - len(ejecutables)
+    if descartadas:
+        log.info("%d plantilla(s) descartada(s): traen marcadores sin rellenar, no son suites "
+                 "ejecutables", descartadas)
+    return ejecutables
+
+
+def _suites_del_repositorio(suites: list[str], unidades: list[str]) -> list[str]:
+    """Solo las suites que cuelgan de una unidad publicable. Descarta lo ajeno al repositorio.
+
+    LA PREGUNTA NO ES «¿ESTA EN EL WORKSPACE?» SINO «¿SE PUBLICA?». El workspace de la evaluacion
+    contiene mas cosas que el repositorio evaluado -- el estandar se clona en `.estandar/` para
+    aportar el puente y las reglas --, y en el futuro puede contener otras. Filtrar por el nombre de
+    ese directorio arreglaria el caso medido y ninguno de los siguientes; preguntar por la
+    PERTENENCIA los cubre todos, porque lo que no cuelga de una unidad no se etiqueta, no se empaqueta
+    y no se certifica: evaluarlo no puede cambiar ningun veredicto.
+
+    Se reutiliza `unidad_de`, que es la UNICA definicion de pertenencia del repo -- la misma que usa
+    el gate para exigir la subida de version --, y por eso este filtro no puede divergir de ella.
+    """
+    propias = [s for s in suites if _unidad_de(s, unidades) is not None]
+    ajenas = len(suites) - len(propias)
+    if ajenas:
+        # SE DICE CUANTAS SE DESCARTAN Y POR QUE. Un repositorio sin ninguna unidad publicable -- sin
+        # gobierno con version -- perderia aqui TODAS sus suites, y una cobertura que cae a cero en
+        # silencio se lee como «todo en verde». Que quede en el log del paso.
+        log.info("%d suite(s) descartada(s): no pertenecen a ninguna unidad publicable de este "
+                 "repositorio", ajenas)
+    return propias
+
 
 def suites_a_evaluar(suites: list[str], unidades: list[str],
                      cambiados: list[str]) -> list[str]:
-    """Las suites que corresponde ejecutar. Todas si `cambiados` esta vacio."""
+    """Las suites que corresponde ejecutar. Todas las PROPIAS si `cambiados` esta vacio."""
+    suites = _suites_del_repositorio(suites, unidades)
     if not cambiados:
         log.info("sin lista de archivos cambiados: se evaluan las %d suite(s)", len(suites))
         return suites
@@ -76,7 +152,15 @@ def main() -> int:
     def _lineas(archivo) -> list[str]:
         return [l.strip().removeprefix("./") for l in archivo if l.strip()] if archivo else []
 
-    for suite in suites_a_evaluar(_lineas(argumentos.suites), _lineas(argumentos.unidades),
+    def _texto(ruta: str) -> str:
+        # SIN CAPTURAR LA LECTURA A PROPOSITO. Las rutas vienen de un `find` que acaba de verlas, asi
+        # que un fallo aqui es un defecto real y tiene que romper el paso: tragarselo convertiria una
+        # suite ilegible en una suite ausente, o sea en verde. `errors="replace"` solo evita que una
+        # codificacion rara la haga desaparecer, porque los marcadores son ASCII y se ven igual.
+        return Path(ruta).read_text(encoding="utf-8", errors="replace")
+
+    ejecutables = sin_plantillas(_lineas(argumentos.suites), _texto)
+    for suite in suites_a_evaluar(ejecutables, _lineas(argumentos.unidades),
                                   _lineas(argumentos.cambiados)):
         print(suite)
     return 0

@@ -1,4 +1,4 @@
-"""Que una solicitud de cambio evalue lo que TOCA, y no todo el repositorio.
+"""Que se evalue lo que el cambio TOCA, y solo lo que el repositorio realmente publica.
 
 EL PROBLEMA QUE CUBRE es de escala y de acoplamiento, y el segundo es el que duele: con todas las
 suites corriendo, UNA en rojo bloquea a todo el que toque el repositorio, aunque no sea suya y no
@@ -6,12 +6,24 @@ pueda arreglarla. MEDIDO: un cambio de cableado quedo bloqueado por la suite de 
 
 Y el de escala llega solo: el inventario del cliente tiene decenas de artefactos, las suites corren en
 secuencia y cada una tarda minutos.
+
+EL SEGUNDO BLOQUE cubre un defecto distinto y peor, medido en el run 33016050350: correr una suite que
+NO ES DEL REPOSITORIO. Ese acotado no depende del evento -- se aplica tambien en push a main -- y por
+eso sus pruebas van aparte de las del acotado por cambios.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from suites_a_evaluar import suites_a_evaluar
+from suites_a_evaluar import es_plantilla, sin_plantillas, suites_a_evaluar
+
+# La plantilla REAL del repositorio del estandar, la que puso en rojo el run 33016050350. Se lee del
+# arbol y no se copia aqui: una copia se queda atras el dia que alguien edite el esqueleto, que es
+# justo el dia en que hay que volver a comprobarlo.
+_PLANTILLA_DEL_ESTANDAR = (Path(__file__).resolve().parents[2]
+                           / "plantillas" / "artefactos" / "evals" / "promptfooconfig.yaml")
 
 _UNIDADES = ["plugins/contratos", "plugins/referencia", "skills/revisar-jql"]
 _SUITES = [
@@ -82,3 +94,68 @@ def test_da_igual_que_las_rutas_lleguen_con_o_sin_el_punto_inicial(cambiado, tmp
     normalizado = cambiado.removeprefix("./")
 
     assert suites_a_evaluar(_SUITES, _UNIDADES, [normalizado])
+
+
+# ── LO QUE NO ES DEL REPOSITORIO NO SE EVALUA ─────────────────────────────────────────────────────
+#
+# REGRESION del run 33016050350 de `agentes-sdlc` (push a main): el trabajo de comportamiento se puso
+# rojo por `.estandar/plantillas/artefactos/evals/promptfooconfig.yaml` -- una plantilla del repositorio
+# del estandar, que el propio workflow clona dentro del workspace -- mientras las 3 suites del
+# repositorio pasaban 3 de 3. En un pull request no se veia: el acotado por cambios ya la descartaba.
+
+_SUITE_PRESTADA = ".estandar/plantillas/artefactos/evals/promptfooconfig.yaml"
+
+
+def test_una_suite_que_no_cuelga_de_ninguna_unidad_no_se_evalua_en_push_a_main():
+    """El caso exacto del run: sin lista de cambios contra la que acotar, la suite ajena entraba."""
+    elegidas = suites_a_evaluar([*_SUITES, _SUITE_PRESTADA], _UNIDADES, [])
+
+    assert _SUITE_PRESTADA not in elegidas
+
+
+def test_descartar_lo_ajeno_no_se_lleva_por_delante_las_suites_propias():
+    """El filtro nuevo no puede convertir el rojo espurio en un verde vacio: las 3 suites legitimas
+    del run pasaban sus casos y tienen que seguir corriendo."""
+    assert suites_a_evaluar([*_SUITES, _SUITE_PRESTADA], _UNIDADES, []) == _SUITES
+
+
+def test_la_plantilla_del_estandar_no_se_selecciona_ni_desde_su_propio_repositorio():
+    """LA PERTENENCIA SOLA NO BASTA y esto lo fija. `plantillas/` cuelga de la RAIZ del repositorio del
+    estandar; hoy ese repo publica solo `plugins/asistente-autoria` -- COMPROBADO con `listar_plugins`,
+    la raiz NO es unidad -- pero el dia que declare un conjunto suelto la raiz pasa a serlo y la
+    plantilla «pertenece» a ella. Por eso se descarta ademas por sus marcadores sin rellenar."""
+    contenido = _PLANTILLA_DEL_ESTANDAR.read_text(encoding="utf-8")
+    ruta = "plantillas/artefactos/evals/promptfooconfig.yaml"
+
+    ejecutables = sin_plantillas([ruta], lambda _: contenido)
+
+    assert ejecutables == [], "la plantilla del estandar se seleccionaria para evaluar"
+
+
+def test_la_plantilla_real_conserva_los_marcadores_que_la_hacen_inejecutable():
+    """MEDIDO leyendo el archivo del run: promptfoo le pregunto al modelo la cadena literal
+    `<<CONSULTA>>` y comprobo si la respuesta contenia `<<PALABRA_QUE_TIENE_QUE_APARECER>>`. No es una
+    suite que falla, es una que no puede pasar -- y encima gasta cuota de inferencia --. Si alguien
+    rellena esos huecos «para dejarla bonita», deja de descartarse y esta prueba lo dice."""
+    assert es_plantilla(_PLANTILLA_DEL_ESTANDAR.read_text(encoding="utf-8"))
+
+
+_SUITE_REAL = (
+    "description: revisar-jql\n"
+    "prompts:\n  - \"{{consulta}}\"\n"
+    "tests:\n  - vars:\n      consulta: \"revisa este JQL\"\n"
+    "    assert:\n      - type: icontains\n        value: proyecto\n"
+)
+
+
+def test_una_suite_de_verdad_no_se_confunde_con_una_plantilla():
+    """El filtro por marcadores no puede tragarse suites reales: el riesgo de una regla por contenido
+    es justo ese, y sin esta prueba el sintoma seria una cobertura que cae a cero en verde. Las llaves
+    de `{{consulta}}` son de plantilla de promptfoo, no huecos sin rellenar, y no deben contar."""
+    assert not es_plantilla(_SUITE_REAL)
+
+
+def test_una_suite_de_verdad_sobrevive_al_descarte_de_plantillas():
+    ruta = "skills/revisar-jql/evals/promptfooconfig.yaml"
+
+    assert sin_plantillas([ruta], lambda _: _SUITE_REAL) == [ruta]
