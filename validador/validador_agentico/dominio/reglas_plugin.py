@@ -61,7 +61,11 @@ def revisar_gobierno(gobierno: dict, manifiesto: dict | None,
                                       "organizacion. Un artefacto sin dueno real no se puede "
                                       "deprecar, corregir ni retirar"))
     if heredado:
+        # Un gobierno heredado es el del repositorio que aloja la unidad, y ese MISMO archivo ya se
+        # revisa como gobierno propio de la raiz. Lo que quede aqui se repetiria una vez por cada
+        # artefacto suelto del repositorio.
         return hallazgos
+    hallazgos += _revisar_estado_retirado(donde, gobierno)
     identificador = gobierno.get("id")
     nombre_plugin = (manifiesto or {}).get("name")
     if identificador and nombre_plugin and identificador != nombre_plugin:
@@ -69,6 +73,41 @@ def revisar_gobierno(gobierno: dict, manifiesto: dict | None,
                                       f"plugin.json ({nombre_plugin})"))
     hallazgos += _revisar_version_del_paquete(donde, gobierno, manifiesto)
     return hallazgos
+
+
+CAMPO_ESTADO_RETIRADO = "status"
+"""El campo de estado que el gobierno declaraba y que ya no forma parte del estandar."""
+
+
+def _revisar_estado_retirado(donde: str, gobierno: dict) -> list[Hallazgo]:
+    """`status` en el gobierno: se ACEPTA, se DESCARTA y se avisa. Nunca bloquea.
+
+    POR QUE SE RETIRO. El estado del ciclo de vida se DERIVA de hechos —gates superados, etiqueta,
+    atestacion— y lo publica la ficha del catalogo. Este campo era EDITABLE y decia `draft` mientras
+    el catalogo decia `certified` del mismo artefacto: no se contradicen, significan cosas distintas,
+    pero comparten nombre y quien lo leia podia creer que editandolo movia el estado real. Un campo
+    que parece una palanca y no lo es es peor que no tenerlo.
+
+    POR QUE AVISO Y NO ERROR, que es la parte que decide si esto se puede desplegar. El gate es
+    comprobacion REQUERIDA en los repositorios de dominio: si la presencia del campo bloqueara, todos
+    los repositorios que aun no se han actualizado se pondrian rojos a la vez y —peor— ninguno podria
+    mergear NI SIQUIERA el PR que lo quita, porque ese PR tambien pasa por el gate. El estandar no
+    puede exigir un cambio que el propio gate impide realizar. El aviso empuja sin cerrar la puerta.
+
+    Y POR QUE HACE FALTA ESTA REGLA ADEMAS DE QUITARLO DEL ESQUEMA: el esquema del gobierno declara
+    `additionalProperties: false`, asi que borrar la propiedad convertiria su presencia en ERROR
+    automaticamente —justo el bloqueo que hay que evitar—. Por eso el esquema la conserva marcada
+    `deprecated` y es esta regla la que emite la senal.
+
+    NO ES el `metadata.status` del frontmatter de un artefacto: ese vive en `envelope.schema.json`,
+    lo revisa `reglas_artefacto.revisar_envelope` y sigue vigente.
+    """
+    if CAMPO_ESTADO_RETIRADO not in gobierno:
+        return []
+    return [aviso(donde, f"`{CAMPO_ESTADO_RETIRADO}` ya no forma parte del gobierno y se IGNORA: el "
+                         "estado del ciclo de vida se DERIVA de los gates y lo publica la ficha del "
+                         "catalogo, asi que editarlo aqui no cambiaba nada. Quitalo del archivo; "
+                         "para el veredicto de la ultima corrida mira `certification.verdict`")]
 
 
 def _revisar_version_del_paquete(donde: str, gobierno: dict,

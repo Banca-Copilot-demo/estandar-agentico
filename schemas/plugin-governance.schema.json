@@ -9,7 +9,6 @@
     "id",
     "domain",
     "owner",
-    "status",
     "data_classification",
     "standard_version",
     "artifacts"
@@ -49,15 +48,8 @@
       }
     },
     "status": {
-      "type": "string",
-      "enum": [
-        "draft",
-        "conformant",
-        "certified",
-        "deprecated",
-        "retired"
-      ],
-      "description": "Estado del ciclo de vida. NO se declara a mano: se DERIVA de los gates superados, y un PR que lo suba sin la evidencia correspondiente se bloquea. draft = en autoria. conformant = supero G1-G4 (ninguno consume modelo). certified = conformant + G5 (su suite alcanza el umbral). deprecated = sigue funcionando pero no se recomienda; exige superseded_by y sunset_date. retired = fuera de circulacion, terminal. La separacion deprecated/retired la exige RFC 9745 §4: el sello de Sunset NO DEBE ser anterior al de Deprecation, o sea que son dos instantes distintos y no caben en un estado."
+      "deprecated": true,
+      "description": "RETIRADO DEL ESTANDAR — no lo declares. Se conserva en el esquema SOLO para que los `GOVERNANCE.json` que todavia lo llevan no se rompan; se acepta y se DESCARTA, y el gate emite un aviso que no bloquea. POR QUE SE RETIRO: el estado del ciclo de vida se DERIVA de hechos —gates superados, etiqueta publicada, atestacion valida— y vive en la ficha del catalogo de Port, que es quien lo calcula. Este campo era EDITABLE, asi que decia `draft` mientras el catalogo decia `certified` para el mismo artefacto. No se contradecian —significaban cosas distintas— pero compartian nombre, y quien lo leyera podia creer que editandolo cambiaba el estado real. No cambiaba nada: un campo que parece una palanca y no lo es es peor que no tenerlo. NO CONFUNDIR con `metadata.status` del frontmatter de un artefacto (`SKILL.md`, `*.agent.md`), que es otro campo, esta en otro esquema —`envelope.schema.json`— y SIGUE VIGENTE. QUE MIRAR EN SU LUGAR: `certification.verdict` para el veredicto de la ultima corrida de gates, y la ficha del catalogo para el estado publicado. Se eliminara del esquema cuando ningun repositorio de dominio lo declare."
     },
     "data_classification": {
       "type": "string",
@@ -192,7 +184,7 @@
         "sunset_date",
         "decided_by"
       ],
-      "description": "Obligatorio cuando status = deprecated. El retiro es en DOS TIEMPOS por especificacion (RFC 9745 §4 + RFC 8594): entre marcar algo obsoleto y que deje de funcionar hace falta un plazo anunciado, o el retiro es una sorpresa. El ejemplo de la propia RFC separa ambas fechas por un ano.",
+      "description": "Bloque de RETIRO ANUNCIADO. Es la DECISION HUMANA de dejar de recomendar el plugin, y por eso se declara: nada la deriva de un hecho, a diferencia del estado del ciclo de vida —que sale de los gates y lo publica el catalogo— y que por eso ya no se declara aqui. Declararlo es lo que hace que el catalogo derive `deprecated`, no al reves. El retiro es en DOS TIEMPOS por especificacion (RFC 9745 §4 + RFC 8594): entre marcar algo obsoleto y que deje de funcionar hace falta un plazo anunciado, o el retiro es una sorpresa. El ejemplo de la propia RFC separa ambas fechas por un ano.",
       "properties": {
         "superseded_by": {
           "type": "string",

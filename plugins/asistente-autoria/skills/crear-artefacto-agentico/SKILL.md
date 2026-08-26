@@ -122,4 +122,5 @@ tipos que exigen firmantes distintos, porque la aprobacion dejaria de ser atribu
 
 - No modifiques `GOVERNANCE.json` salvo para anadir el artefacto al inventario.
 - No pongas credenciales en ningun archivo: se referencian (`${input:...}`, `oauth`).
-- No declares `status` distinto de `draft`: el estado lo derivan los gates.
+- No declares `metadata.status` del artefacto distinto de `draft`: el estado lo derivan los gates.
+  En `GOVERNANCE.json` no lo declares en absoluto — ese campo se retiro del estandar y se ignora.
