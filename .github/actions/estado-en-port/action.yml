@@ -1,0 +1,74 @@
+name: Fijar el estado de una etiqueta en el catalogo
+description: >
+  Lleva al estado indicado las fichas de Port que apuntan a una etiqueta, tocando SOLO el estado y
+  los dos campos que se derivan de el. No vuelve a sellar nada ni reescribe la ficha: lo que la
+  publicacion firmo -- identidad, propietario, sha, digesto -- se conserva por fusion.
+
+  ES UNA ACCION COMPUESTA Y NO CODIGO DENTRO DE UN WORKFLOW porque hay siete flujos del ciclo de
+  vida que hacen exactamente esto con estados distintos -- promocion, suspension, reactivacion,
+  obsolescencia, retirada --, y repetir el cableado en cada uno garantizaria que divergieran.
+
+inputs:
+  etiqueta:
+    description: La etiqueta cuyas fichas cambian de estado.
+    required: true
+  estado:
+    description: El estado del ciclo de vida al que pasan -- `certified`, `suspended`, ... --.
+    required: true
+  nombre-plugin:
+    description: >
+      El plugin al que pertenecen los artefactos. Vacio cuando la etiqueta no lo nombra; entonces la
+      pista de instalacion cae en la rama sin catalogo, que es la conservadora.
+    required: false
+    default: ""
+  port-client-id:
+    description: Client ID de Port.
+    required: true
+  port-client-secret:
+    description: Client secret de Port.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # El repositorio del estandar trae el paquete del validador, del que sale la regla de dominio
+    # que decide que dice la ficha en cada estado. Es la MISMA que usa la publicacion: si cada pieza
+    # tuviera la suya, promocionar y publicar acabarian discrepando sobre el mismo artefacto.
+    - name: Instalar el validador del estandar
+      shell: bash
+      run: python3 -m pip install --quiet "${{ github.action_path }}/../../../validador"
+
+    - name: Resolver la politica de promocion al catalogo
+      id: politica
+      shell: bash
+      run: |
+        # Ante un fallo se aplica la mas restrictiva, igual que en la publicacion: un error de
+        # lectura no debe convertirse en «distribuyelo».
+        politica="$(python3 "${{ github.action_path }}/../publicar/resolver-politica.py" \
+                            "${{ github.action_path }}/../../../POLITICA.json" || true)"
+        case "$politica" in
+          al_publicar|al_certificar) ;;
+          *)
+            politica="al_certificar"
+            echo "::warning::no se pudo resolver la politica de promocion: se aplica la mas restrictiva" ;;
+        esac
+        echo "promocion=$politica" >> "$GITHUB_OUTPUT"
+
+    - name: Fijar el estado de las fichas del catalogo
+      shell: bash
+      env:
+        ID: ${{ inputs.port-client-id }}
+        SECRETO: ${{ inputs.port-client-secret }}
+      run: |
+        token="$(curl -sf -X POST "https://api.port.io/v1/auth/access_token" \
+                 -H 'Content-Type: application/json' \
+                 -d "{\"clientId\":\"$ID\",\"clientSecret\":\"$SECRETO\"}" \
+                 | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')"
+
+        python3 "${{ github.action_path }}/estado_en_port.py" \
+          --etiqueta "${{ inputs.etiqueta }}" \
+          --estado "${{ inputs.estado }}" \
+          --repositorio "$GITHUB_REPOSITORY" \
+          --nombre-plugin "${{ inputs.nombre-plugin }}" \
+          --promocion "${{ steps.politica.outputs.promocion }}" \
+          --token "$token"

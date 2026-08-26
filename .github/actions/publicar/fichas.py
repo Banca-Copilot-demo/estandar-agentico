@@ -39,6 +39,13 @@ from jsonschema import Draft202012Validator
 # hace `pip install` del paquete antes de llegar aqui --. Era la SEXTA copia de la misma funcion en el
 # repositorio: cuatro dentro del validador (ya unificadas), una en el indice y esta.
 from validador_agentico.adaptadores import registro
+from validador_agentico.dominio import ficha
+from validador_agentico.dominio.politica import ESTADO_AL_PUBLICAR, promocion_declarada
+
+# Reexportado a proposito: `plugin_que_contiene` era una regla pura viviendo en este adaptador, y
+# ahora la comparte con la pieza que fija el estado en transiciones posteriores.
+plugin_que_contiene = ficha.plugin_que_contiene
+CATALOGO = ficha.CATALOGO
 
 log = logging.getLogger(__name__)
 
@@ -51,99 +58,16 @@ _BLUEPRINT_DEL_CATALOGO = Path(__file__).resolve().parents[3] / "port" / \
 # Cuanto se cita del cuerpo de una respuesta de error: lo justo para diagnosticar sin volcar
 # una pagina de HTML al log.
 _MAX_CUERPO_ERROR_CHARS = 200
-# El `tipo` con el que el predicado firmado marca un skill.
-_TIPO_SKILL = "skill"
 
 API_PORT = "https://api.port.io"
 BLUEPRINT = "artefacto_agentico"
 # Quien FIRMA las atestaciones: el workflow reutilizable del estandar, no el repo del dominio.
 SIGNER = "Banca-Copilot-demo/estandar-agentico"
-# `name` del catalogo del marketplace, el que resuelve `<plugin>@<catalogo>`.
-CATALOGO = "agentico"
-# Donde espera cada cliente un prompt. `commands/` en el origen; en el destino cambia por cliente.
-_DESTINO_PROMPT = ".github/prompts"
 _TIEMPO_LIMITE_S = 30
 # `upsert` actualiza si ya existe, y `merge` conserva las propiedades que este payload no trae.
 _RUTA_ENTIDADES = f"/v1/blueprints/{BLUEPRINT}/entities?upsert=true&merge=true"
 
-# Los tipos que un plugin TRANSPORTA.
-#
-# `prompt` SE AÑADIO DESPUES, y el comentario anterior decia lo contrario: que ni `prompt` ni
-# `instructions` estaban en ninguna lista de componentes y por eso «viajan por otro canal». Estaba
-# incompleto, y se vio MIDIENDO en vez de leyendo:
-#
-#   - la referencia de plugins de Copilot SI lista `commands` como componente, con un matiz que lo
-#     explica todo: es el unico SIN RUTA POR DEFECTO. Por eso un prompt dentro de un plugin se
-#     instalaba sin registrarse -- los archivos aterrizaban y no los veia nadie --;
-#   - al declarar `commands` en el manifiesto, el comportamiento CAMBIA de forma observable: Copilot
-#     copia SOLO el directorio declarado en vez de copiarlo todo a ciegas, lo que prueba que lee la
-#     declaracion. En Claude Code `commands/` si es ruta por defecto y se registra sin declararla.
-#
-# CONSECUENCIA PARA QUIEN GENERE EL MANIFIESTO: una unidad de tipo `prompt` tiene que declarar
-# `commands`; skills y agentes no lo necesitan porque sus rutas SI son las de por defecto.
-#
-# `instructions` sigue fuera: dejo de ser un tipo gobernado porque no hay canal que la distribuya.
-_TIPOS_EN_PLUGIN = frozenset({"skill", "agent", "prompt", "mcp", "hooks"})
-
-
-def plugin_que_contiene(ruta_del_artefacto: str, plugins: list[dict]) -> str:
-    """El nombre del plugin dentro del que vive `ruta_del_artefacto`, o cadena vacia si ninguno.
-
-    EL DEFECTO QUE ESTO ARREGLA, visto mirando el catalogo real y no el codigo: la pista de instalacion
-    se construia con `inventario.nombre_plugin`, que es UN nombre a nivel de REPOSITORIO. En un
-    repositorio con varios plugins ese unico nombre se aplicaba a TODOS los artefactos, asi que cuatro
-    de los cinco quedaban apuntando al plugin equivocado.
-
-    No era un error cosmetico: quien siguiera la pista instalaba OTRO plugin y no obtenia el artefacto
-    que buscaba -- y el comando no falla, porque el plugin al que apunta si existe --. Un fallo asi no se
-    ve en el gate ni en la publicacion; solo se ve leyendo la ficha publicada.
-
-    Se resuelve por PREFIJO DE RUTA porque es el unico dato que relaciona a los dos: el artefacto lleva
-    su `ruta` relativa al repositorio y el plugin su `subruta`. Se toma la coincidencia MAS LARGA, para
-    que un plugin anidado dentro de otro gane sobre el que lo contiene.
-    """
-    candidatos = [
-        p for p in plugins
-        if p.get("subruta") and p["subruta"] != "."
-        and ruta_del_artefacto.startswith(f"{p['subruta']}/")
-    ]
-    if not candidatos:
-        # `.` es el plugin que ocupa el repositorio entero: solo aplica si no hay ninguno anidado.
-        raiz = [p for p in plugins if p.get("subruta") == "."]
-        return str(raiz[0].get("nombre", "")) if raiz else ""
-    return str(max(candidatos, key=lambda p: len(p["subruta"])).get("nombre", ""))
-
-
-def _pista_de_instalacion(artefacto: dict, en_marketplace: bool, repositorio: str,
-                          sha: str, etiqueta: str, nombre_plugin: str) -> str:
-    """El COMANDO exacto que el consumidor ejecuta. Siempre un comando: una descripcion en prosa
-    obliga al consumidor a averiguar como se instala, que es justo lo que la ficha evita."""
-    if en_marketplace:
-        # Se instala el PLUGIN, no el artefacto: un plugin se instala completo. Poner aqui el id del
-        # artefacto daba un comando que no resuelve contra ninguna entrada del marketplace.
-        return f"copilot plugin install {nombre_plugin}@{CATALOGO}"
-    if artefacto["tipo"] == _TIPO_SKILL:
-        # La forma es `gh skill install <repo> <skill[@version]>`, MEDIDO ejecutandolo: el nombre del
-        # skill es un argumento aparte, no parte del repositorio. Concatenar la ruta al repositorio
-        # -- como hacia la primera version -- produce un comando que falla con «must specify a skill
-        # name». El nombre es el DIRECTORIO del skill, que la especificacion obliga a que coincida
-        # con su `name`.
-        nombre = artefacto["ruta"].rsplit("/", 2)[-2]
-        return f"gh skill install {repositorio} {nombre}@{etiqueta}"
-
-    # UN PROMPT FUERA DE TODO PLUGIN. Es el unico camino que queda sin catalogo, y por eso tambien es
-    # el unico que el estado no gobierna: quien lo siga instalara el archivo este certificado,
-    # conforme o suspendido. La salida es publicarlo como su propia unidad -- con manifiesto que
-    # declare `commands` --, no mejorar esta pista.
-    #
-    # Se trae el archivo FIJADO AL SHA -- no a la etiqueta -- porque el sha es lo que quedo sellado, y
-    # el nombre del destino lo fija el cliente, no nosotros.
-    destino = f"{_DESTINO_PROMPT}/{artefacto['ruta'].rsplit('/', 1)[-1]}"
-    return (f"curl -fsSL https://raw.githubusercontent.com/{repositorio}/{sha}/"
-            f"{artefacto['ruta']} -o {destino}")
-
-
-def _pista_de_verificacion(artefacto: dict, en_marketplace: bool, repositorio: str,
+def _pista_de_verificacion(artefacto: dict, viaja_en_un_paquete: bool, repositorio: str,
                            paquete_o_archivo: str) -> str:
     """Como comprobar el sello ANTES de confiar en lo instalado.
 
@@ -151,8 +75,13 @@ def _pista_de_verificacion(artefacto: dict, en_marketplace: bool, repositorio: s
     atestaciones, y el `--help` de `gh skill install` no la menciona. Asi que verificar es un paso
     EXPLICITO, y la ficha tiene que decir como -- incluido el `--signer-repo`, sin el cual la
     verificacion falla con un mensaje que no menciona al firmante.
+
+    LA CONDICION ES SI EL CONSUMIDOR ACABA CON UN PAQUETE, no si el artefacto se distribuye. Son
+    cosas distintas desde que publicar y distribuir se separaron: un artefacto Conforme dentro de un
+    plugin NO esta en el catalogo y aun asi se entrega empaquetado -- descargando el release --, asi
+    que lo que tiene que verificar es la atestacion y no un sha256 suelto.
     """
-    if en_marketplace or artefacto["tipo"] == _TIPO_SKILL:
+    if viaja_en_un_paquete or artefacto["tipo"] == ficha.TIPO_SKILL:
         return (f"gh attestation verify <paquete>.tar.gz --repo {repositorio} "
                 f"--signer-repo {SIGNER}")
     # Un archivo copiado fuera del paquete no se verifica contra la atestacion: se compara su sha256
@@ -167,27 +96,36 @@ def _entidad(artefacto: dict, veredicto: dict, argumentos: argparse.Namespace) -
     # vacio: un comando que no resuelve. Con la publicacion por artefacto suelto individual el caso
     # deja de ser teorico, porque en un mismo repositorio conviven sueltos con manifiesto y sin el.
     plugin_del_artefacto = plugin_que_contiene(artefacto["ruta"], veredicto.get("plugins") or [])
-    en_marketplace = bool(plugin_del_artefacto) and artefacto["tipo"] in _TIPOS_EN_PLUGIN
+
+    # DISTRIBUIDO NO ES LO MISMO QUE «ES COMPONENTE DE UN PLUGIN», y confundirlos hacia que la ficha
+    # de un artefacto Conforme prometiera un `plugin install` que no resuelve. Lo decide el ESTADO
+    # combinado con la politica, y la regla vive en el dominio porque la comparte con la pieza que
+    # fija el estado en las transiciones posteriores.
+    en_marketplace = ficha.esta_distribuido(
+        ESTADO_AL_PUBLICAR, argumentos.promocion, bool(plugin_del_artefacto), artefacto["tipo"])
     return {
         "identifier": artefacto["id"],
         "title": f"{artefacto['id']} ({artefacto['tipo']})",
         "properties": {
             "tipo": artefacto["tipo"],
             # `conformant` y no `certified`: la promocion la decide G5, despues, y no este paso.
-            "status": "conformant",
+            "status": ESTADO_AL_PUBLICAR,
             "owner_team": artefacto["owner_team"],
             "owner_contact": artefacto["owner_contact"],
             "data_classification": artefacto["data_classification"],
             "standard_version": artefacto["standard_version"],
             "repo": argumentos.repositorio,
+            # La necesita la pieza que fija el estado despues: sin ella una transicion no puede
+            # reconstruir la pista de instalacion y la dejaria en la del estado anterior.
+            "ruta": artefacto["ruta"],
             "ref": argumentos.etiqueta,
             "sha": argumentos.sha,
             "digest": argumentos.digest,
-            "install_hint": _pista_de_instalacion(
-                artefacto, en_marketplace, argumentos.repositorio, argumentos.sha,
-                argumentos.etiqueta, plugin_del_artefacto),
+            "install_hint": ficha.pista_de_instalacion(
+                artefacto["tipo"], artefacto["ruta"], en_marketplace, argumentos.repositorio,
+                argumentos.sha, argumentos.etiqueta, plugin_del_artefacto),
             "verify_hint": _pista_de_verificacion(
-                artefacto, en_marketplace, argumentos.repositorio, artefacto["ruta"]),
+                artefacto, bool(plugin_del_artefacto), argumentos.repositorio, artefacto["ruta"]),
             "sha256_archivo": artefacto.get("sha256", ""),
             # Solo lo trae un `mcp`, y solo cuando su credencial exige que alguien la conceda. Va en
             # la ficha porque ningun cliente lo muestra: es un campo propio sin convencion, y su
@@ -264,19 +202,38 @@ def _parsear_argumentos() -> argparse.Namespace:
     parser.add_argument("--sha", required=True)
     parser.add_argument("--digest", required=True)
     parser.add_argument("--token", required=True)
+    parser.add_argument("--subruta", required=True,
+                        help="subruta de la unidad que ESTA publicacion sella; `.` es el "
+                             "repositorio entero o su conjunto suelto")
+    parser.add_argument("--promocion", required=True,
+                        help="politica de promocion al catalogo ya resuelta por la accion")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Activa logging DEBUG (detalles internos de ejecucion).")
-    return parser.parse_args()
+    argumentos = parser.parse_args()
+    # Se convierte aqui y no en cada uso: `promocion_declarada` degrada a la politica MAS
+    # RESTRICTIVA ante un valor que no reconoce, asi que un fallo de cableado deja de distribuir en
+    # vez de distribuir de mas.
+    argumentos.promocion = promocion_declarada({"promocion_al_catalogo": argumentos.promocion})
+    return argumentos
 
 
 def main() -> int:
     argumentos = _parsear_argumentos()
     registro.configurar(verboso=argumentos.verbose)
     veredicto = json.loads(argumentos.veredicto.read_text(encoding="utf-8"))
-    artefactos = veredicto.get("artefactos") or []
+    unidades = veredicto.get("plugins") or []
+
+    # SOLO LOS ARTEFACTOS DE LA UNIDAD QUE SE PUBLICA. El predicado firmado es del REPOSITORIO
+    # entero -- lo valida entero, por diseno --, asi que iterarlo tal cual reescribia la ficha de
+    # todos los vecinos con la etiqueta, el sha y el digesto de una version que no es la suya.
+    todos = veredicto.get("artefactos") or []
+    artefactos = [a for a in todos if ficha.es_de_la_unidad(a["ruta"], argumentos.subruta, unidades)]
+    if len(artefactos) != len(todos):
+        log.info("la publicacion sella la unidad %s: %d de %d artefactos del predicado",
+                 argumentos.subruta, len(artefactos), len(todos))
 
     if not artefactos:
-        log.info("el predicado no declara artefactos: no hay ficha que publicar")
+        log.info("la unidad %s no declara artefactos: no hay ficha que publicar", argumentos.subruta)
         return 0
 
     validador = _validador_del_blueprint()

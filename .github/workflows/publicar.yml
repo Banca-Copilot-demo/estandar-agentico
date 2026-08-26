@@ -118,3 +118,9 @@ jobs:
     uses: Banca-Copilot-demo/estandar-agentico/.github/workflows/promocionar.yml@main
     with:
       etiqueta: ${{ github.ref_name }}
+    # LA PROMOCION TAMBIEN ESCRIBE EN EL CATALOGO, y por eso necesita las mismas credenciales que la
+    # publicacion. Sin ellas quitaba la marca de prelanzamiento -- el artefacto YA se distribuia -- y
+    # dejaba la ficha diciendo `conformant`: el catalogo de metadata contradecia al instalable.
+    secrets:
+      port-client-id: ${{ secrets.PORT_CLIENT_ID }}
+      port-client-secret: ${{ secrets.PORT_CLIENT_SECRET }}

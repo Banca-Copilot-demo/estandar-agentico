@@ -20,24 +20,9 @@ nadie. La leccion se repite: lo que no se ejercita, no esta comprobado.
 """
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
-
 import pytest
 
-_RUTA_FICHAS = (Path(__file__).resolve().parents[2]
-                / ".github" / "actions" / "publicar" / "fichas.py")
-
-
-def _cargar_fichas():
-    """El modulo vive en `.github/actions/`, fuera del paquete, asi que se carga por ruta."""
-    especificacion = importlib.util.spec_from_file_location("fichas", _RUTA_FICHAS)
-    modulo = importlib.util.module_from_spec(especificacion)
-    especificacion.loader.exec_module(modulo)
-    return modulo
-
-
-fichas = _cargar_fichas()
+from validador_agentico.dominio import ficha
 
 # Los cinco plugins del repositorio de demo, tal y como el veredicto los publica.
 _PLUGINS = [
@@ -58,14 +43,14 @@ _PLUGINS = [
 ])
 def test_cada_artefacto_apunta_a_SU_plugin(ruta, esperado):
     """Los cinco casos reales del repositorio de demo. Cuatro estaban mal."""
-    assert fichas.plugin_que_contiene(ruta, _PLUGINS) == esperado
+    assert ficha.plugin_que_contiene(ruta, _PLUGINS) == esperado
 
 
 def test_un_artefacto_suelto_no_pertenece_a_ningun_plugin():
     """Un repositorio mixto tiene artefactos en la raiz, fuera de todo plugin. Devolver el nombre de
     cualquiera de ellos seria peor que no devolver nada: mandaria a instalar un paquete que NO lo
     contiene."""
-    assert fichas.plugin_que_contiene("skills/revisar-jql/SKILL.md", _PLUGINS) == ""
+    assert ficha.plugin_que_contiene("skills/revisar-jql/SKILL.md", _PLUGINS) == ""
 
 
 def test_un_plugin_que_ocupa_el_repositorio_entero_si_contiene_a_todos():
@@ -73,7 +58,7 @@ def test_un_plugin_que_ocupa_el_repositorio_entero_si_contiene_a_todos():
     pertenecen, y sin esta rama la pista quedaria vacia justo en el caso mas simple."""
     unico = [{"nombre": "demo.plataforma.agentico", "subruta": "."}]
 
-    assert fichas.plugin_que_contiene("skills/crear/SKILL.md", unico) == "demo.plataforma.agentico"
+    assert ficha.plugin_que_contiene("skills/crear/SKILL.md", unico) == "demo.plataforma.agentico"
 
 
 def test_el_plugin_ANIDADO_gana_sobre_el_que_lo_contiene():
@@ -84,7 +69,7 @@ def test_el_plugin_ANIDADO_gana_sobre_el_que_lo_contiene():
         {"nombre": "demo.dentro", "subruta": "plugins/uno/interno"},
     ]
 
-    assert fichas.plugin_que_contiene("plugins/uno/interno/skills/x/SKILL.md", anidados) == "demo.dentro"
+    assert ficha.plugin_que_contiene("plugins/uno/interno/skills/x/SKILL.md", anidados) == "demo.dentro"
 
 
 def test_un_prefijo_PARCIAL_no_cuenta_como_pertenencia():
@@ -93,7 +78,7 @@ def test_un_prefijo_PARCIAL_no_cuenta_como_pertenencia():
     equivocado -- exactamente el defecto original, por otra via."""
     plugins = [{"nombre": "demo.sdlc.referencia", "subruta": "plugins/referencia"}]
 
-    assert fichas.plugin_que_contiene("plugins/referencia-vieja/skills/x/SKILL.md", plugins) == ""
+    assert ficha.plugin_que_contiene("plugins/referencia-vieja/skills/x/SKILL.md", plugins) == ""
 
 
 # ── el artefacto suelto publicado como su propia unidad ─────────────────────────────────────
@@ -119,12 +104,12 @@ def test_un_suelto_con_unidad_propia_se_instala_DESDE_EL_CATALOGO(tipo, ruta, es
     plugin. La referencia de Copilot SI lo lista, con la particularidad de no tener ruta por defecto,
     y al declararla el cliente cambia lo que copia -- prueba de que la lee --.
     """
-    artefacto = {"tipo": tipo, "ruta": ruta}
-    plugin = fichas.plugin_que_contiene(ruta, _SUELTOS)
+    plugin = ficha.plugin_que_contiene(ruta, _SUELTOS)
 
     assert plugin == esperado
-    pista = fichas._pista_de_instalacion(artefacto, True, "org/repo", "0" * 40, "x--v0.1.0", plugin)
-    assert pista == f"copilot plugin install {esperado}@{fichas.CATALOGO}", pista
+    pista = ficha.pista_de_instalacion(
+        tipo, ruta, True, "org/repo", "0" * 40, "x--v0.1.0", plugin)
+    assert pista == f"copilot plugin install {esperado}@{ficha.CATALOGO}", pista
 
 
 def test_un_suelto_SIN_plugin_no_manda_a_instalar_del_catalogo():
@@ -135,4 +120,4 @@ def test_un_suelto_SIN_plugin_no_manda_a_instalar_del_catalogo():
     Dejo de ser teorico al poder publicar sueltos por unidad: en el mismo repositorio conviven ahora
     sueltos con manifiesto y sin el.
     """
-    assert fichas.plugin_que_contiene("skills/sin-manifiesto/SKILL.md", _SUELTOS) == ""
+    assert ficha.plugin_que_contiene("skills/sin-manifiesto/SKILL.md", _SUELTOS) == ""
