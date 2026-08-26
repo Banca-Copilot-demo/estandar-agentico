@@ -98,6 +98,36 @@ jobs:
         shell: bash
         run: npm install -g @github/copilot
 
+      # SIN ESTE PASO LA EVALUACION MIDE EL MODELO BASE, NO EL ARTEFACTO, y pasa igual.
+      #
+      # Copilot descubre los skills de un proyecto en `.github/skills/`, `.claude/skills/` y
+      # `.agents/skills/`, y los agentes en `.github/agents/`. Un repositorio de dominio los guarda
+      # en `skills/<n>/` y `plugins/<p>/agents/`, que NO son rutas de descubrimiento.
+      #
+      # MEDIDO, y es el defecto mas enganoso de todos los de esta cadena: sin colocarlos, la suite de
+      # `revisar-jql` daba 3 de 3 -- en verde -- con el skill sin cargar. O sea que las aserciones se
+      # cumplian por conocimiento general del modelo y la evaluacion no probaba nada del artefacto.
+      # Un fallo que pasa se lee como cobertura y no lo es.
+      - name: Colocar los artefactos donde el cliente los ve
+        if: steps.detectar.outputs.hay_suites == 'true'
+        shell: bash
+        run: |
+          mkdir -p .github/skills .github/agents
+          # Los skills se copian por DIRECTORIO -- un skill es su carpeta con `SKILL.md` y sus
+          # recursos --, y los agentes por archivo.
+          while IFS= read -r definicion; do
+            skill="$(dirname "$definicion")"
+            destino=".github/skills/$(basename "$skill")"
+            [ -e "$destino" ] || cp -r "$skill" "$destino"
+            echo "skill disponible: $(basename "$skill")"
+          done < <(find . -path ./.github -prune -o -name SKILL.md -print)
+
+          while IFS= read -r definicion; do
+            destino=".github/agents/$(basename "$definicion")"
+            [ -e "$destino" ] || cp "$definicion" "$destino"
+            echo "agente disponible: $(basename "$definicion")"
+          done < <(find . -path ./.github -prune -o -name "*.agent.md" -print)
+
       - name: Descargar el puente del estandar
         if: steps.detectar.outputs.hay_suites == 'true'
         uses: actions/checkout@v4
