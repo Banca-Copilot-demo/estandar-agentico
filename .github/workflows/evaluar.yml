@@ -38,8 +38,21 @@ on:
 
 permissions:
   contents: read
-  # Sin esto el CLI no puede pedir inferencia y falla con un error que no nombra al permiso.
-  copilot-requests: write
+
+# NO SE PIDE `copilot-requests: write`, y la razon importa mas que la linea.
+#
+# Ese permiso solo hace falta cuando el CLI se autentica con el `GITHUB_TOKEN` del propio workflow.
+# Con un token que preste una suscripcion -- `copilot-token` -- no interviene para nada.
+#
+# Y PEDIRLO TIENE UN COSTE QUE NO SE VE HASTA QUE PASA: una organizacion sin asientos de Copilot no
+# puede concederlo -- su maximo es `none` --, y entonces el workflow muere en `startup_failure` con
+# «is requesting 'copilot-requests: write', but is only allowed 'copilot-requests: none'». MEDIDO: eso
+# tumbaba la PUBLICACION entera, antes de empaquetar y sellar, aunque el sellado no necesite Copilot.
+# Un permiso para CERTIFICAR mataba el PUBLICAR.
+#
+# Sin pedirlo, quien use el token del workflow en una organizacion con asientos falla en EJECUCION,
+# con un mensaje del propio CLI, y solo se pierde la certificacion. Un fallo diagnosticable y acotado
+# en lugar de uno que se lleva por delante toda la cadena.
 
 env:
   # Y2: las versiones son variables, en un solo sitio.
