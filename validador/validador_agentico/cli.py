@@ -77,6 +77,19 @@ def main(argv: list[str] | None = None) -> int:
     equipos = organizacion.equipos(argumentos.organizacion) if argumentos.organizacion else None
     cambios = (cambios_git.archivos_cambiados(raiz, argumentos.rama_base)
                if argumentos.rama_base else None)
+    # PEDIR LA BASE Y NO PODER RESOLVERLA NO ES «NO APLICA»: es una comprobacion que se pidio y no
+    # corrio. Sin este corte el gate salia CONFORME sin haber ejecutado las reglas que dependen de la
+    # base, y eso es indistinguible de haberlas ejecutado y aprobado.
+    #
+    # MEDIDO en el registro de una solicitud real, donde llevaba pasando desde el principio:
+    # `fatal: origin/main...HEAD: no merge base`, un WARNING que nadie lee y un gate en verde. La
+    # causa -- un checkout superficial contra un fetch superficial de la base -- se arregla en la
+    # accion; esto es lo que impide que el proximo fallo de la misma clase vuelva a pasar callando.
+    if argumentos.rama_base and cambios is None:
+        log.critical("se pidio validar contra la rama base %s y no se pudo resolver: las reglas que "
+                     "dependen de ella NO se han ejecutado. El gate no puede declararse conforme sin "
+                     "haberlas corrido", argumentos.rama_base)
+        return SALIDA_NO_CONFORME
     # LAS UNIDADES SE TOMAN DE `listar_plugins` Y NO SE VUELVEN A DESCUBRIR AQUI: es la misma lista
     # que usan el etiquetado y el empaquetado, y si el gate exigiera subir la version de una unidad
     # que el etiquetado no reconoce, pediria un numero para algo que nunca se publica.

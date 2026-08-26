@@ -68,7 +68,20 @@ runs:
       run: |
         base=""
         if [ -n "${GITHUB_BASE_REF:-}" ]; then
-          git fetch --quiet --depth=1 origin "${GITHUB_BASE_REF}"
+          # `--unshallow` Y NO `--depth=1`, y esto NO es una precaucion: con `--depth=1` la regla que
+          # depende de la base NO SE EJECUTABA NUNCA, y el gate salia en verde igual. MEDIDO en el
+          # registro de una solicitud real:
+          #
+          #   WARNING cambios_git - no se pudieron listar los cambios frente a origin/main:
+          #   fatal: origin/main...HEAD: no merge base
+          #
+          # El motivo es que un checkout superficial y un fetch superficial de la base son DOS
+          # historias inconexas: no comparten ningun ancestro, asi que `base...HEAD` no tiene contra
+          # que comparar. Sin lista de cambios, las reglas de solicitud de cambio se declaran «no
+          # aplica» y callan -- que es la peor forma de fallar, porque es indistinguible de aprobar.
+          git fetch --quiet --no-tags --unshallow origin 2>/dev/null \
+            || git fetch --quiet --no-tags origin
+          git fetch --quiet --no-tags origin "${GITHUB_BASE_REF}"
           base="--rama-base origin/${GITHUB_BASE_REF}"
         fi
         # `--esquemas` apunta a los esquemas DEL ESTANDAR, no del repositorio validado: el contrato
