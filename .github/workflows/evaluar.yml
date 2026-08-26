@@ -236,20 +236,55 @@ jobs:
         shell: bash
         run: |
           mkdir -p .github/skills .github/agents
+          # SE PODA EL CLON DEL ESTANDAR, igual que en la busqueda de suites y por una razon PEOR.
+          # Este directorio lo crea este mismo workflow y no pertenece al repositorio evaluado, asi
+          # que sin podarlo se copian al cliente los skills del asistente de autoria Y el `SKILL.md`
+          # de `plantillas/`, que es un ESQUELETO con marcadores sin rellenar.
+          #
+          # MEDIDO en el run 33018092035 de `agentes-sdlc`, donde se evaluaba `planificar-migracion`:
+          #
+          #   skill disponible: planificar-migracion   <- el que se mide
+          #   skill disponible: crear-artefacto-agentico
+          #   skill disponible: instalar-artefacto-agentico
+          #   skill disponible: skill                  <- la PLANTILLA
+          #
+          # Y NO ES EL MISMO DANO QUE EVALUAR UNA PLANTILLA, es mayor: aquello ponia en rojo una suite
+          # ajena, esto CONTAMINA EL ENTORNO en el que se mide el artefacto propio. El cliente elige
+          # que skill cargar por su `description`, asi que unos esqueletos ajenos compitiendo por la
+          # peticion pueden cambiar el veredicto del artefacto que si se publica -- y cambiarlo hacia
+          # cualquier lado, sin dejar rastro de por que --. Contradice el proposito del paso, que
+          # existe justamente para que se evalue el artefacto y no lo que hubiera alrededor.
+          #
           # Los skills se copian por DIRECTORIO -- un skill es su carpeta con `SKILL.md` y sus
           # recursos --, y los agentes por archivo.
           while IFS= read -r definicion; do
             skill="$(dirname "$definicion")"
             destino=".github/skills/$(basename "$skill")"
-            [ -e "$destino" ] || cp -r "$skill" "$destino"
+            # UNA COLISION DE NOMBRES SE DICE, NO SE TRAGA. `[ -e ]` protege de sobreescribir, pero
+            # anunciar «disponible» igualmente convertia el segundo skill en uno que el log daba por
+            # colocado y que el cliente nunca vio. En el run de arriba, `skill` aparecia DOS VECES y
+            # solo existia uno.
+            if [ -e "$destino" ]; then
+              echo "::warning::ya habia un skill llamado $(basename "$skill"): se conserva el primero y NO se coloca $skill"
+              continue
+            fi
+            cp -r "$skill" "$destino"
             echo "skill disponible: $(basename "$skill")"
-          done < <(find . -path ./.github -prune -o -name SKILL.md -print)
+          done < <(find . -path ./.github -prune \
+                          -o -path "./$DIRECTORIO_DEL_ESTANDAR" -prune \
+                          -o -name SKILL.md -print)
 
           while IFS= read -r definicion; do
             destino=".github/agents/$(basename "$definicion")"
-            [ -e "$destino" ] || cp "$definicion" "$destino"
+            if [ -e "$destino" ]; then
+              echo "::warning::ya habia un agente llamado $(basename "$definicion"): se conserva el primero y NO se coloca $definicion"
+              continue
+            fi
+            cp "$definicion" "$destino"
             echo "agente disponible: $(basename "$definicion")"
-          done < <(find . -path ./.github -prune -o -name "*.agent.md" -print)
+          done < <(find . -path ./.github -prune \
+                          -o -path "./$DIRECTORIO_DEL_ESTANDAR" -prune \
+                          -o -name "*.agent.md" -print)
 
       - name: Ejecutar las suites
         id: correr

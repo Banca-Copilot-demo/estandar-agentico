@@ -14,6 +14,7 @@ scripts dentro. Por eso la comprobacion es sobre TODOS los archivos y no sobre e
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -139,6 +140,45 @@ def test_quien_llama_a_un_workflow_del_repo_nombra_todos_sus_secretos(ruta):
         f"{_identificador(ruta)} invoca workflows sin nombrar todos sus secretos: {culpables}. "
         "Un workflow reutilizable no los hereda: pasalos, o pasalos vacios si la omision es "
         "deliberada. Sin ellos el trabajo se degrada en silencio y la publicacion termina en verde")
+
+
+def test_todo_find_de_la_evaluacion_poda_el_clon_del_estandar():
+    """El workflow de evaluacion clona el estandar DENTRO del workspace: sus `find` tienen que saltarselo.
+
+    MEDIDO, y en dos sitios distintos con danos distintos:
+
+    - La BUSQUEDA DE SUITES se tragaba `.estandar/plantillas/artefactos/evals/promptfooconfig.yaml` y
+      dejaba en rojo a un repositorio de dominio por una plantilla que no controla (run 33016050350 de
+      `agentes-sdlc`).
+    - El COLOCADO DE ARTEFACTOS copiaba al cliente los skills del asistente de autoria y el `SKILL.md`
+      de `plantillas/` (run 33018092035, `skill disponible: skill`). Este es peor: no pone en rojo algo
+      ajeno, CONTAMINA el entorno donde se mide el artefacto propio, y el cliente elige que skill
+      cargar por su `description`.
+
+    LA PRUEBA ES SOBRE TODOS LOS `find`, NO SOBRE LOS DOS CONOCIDOS. Arreglar los dos y no fijar la
+    regla deja el tercero para el proximo que anada un paso que recorra el workspace, y ese descubrira
+    el mismo defecto desde cero.
+
+    SE MIRA CADA `find`, NO CADA PASO, y la primera version de esta prueba no lo hacia: el paso que
+    coloca los artefactos tiene DOS -- uno para skills y otro para agentes -- y comprobar el texto del
+    paso entero dejaba que el segundo tapara al primero. Comprobado desconectando la poda del `find`
+    de skills: la prueba seguia pasando.
+    """
+    ruta = _RAIZ / ".github" / "workflows" / "evaluar.yml"
+    documento = yaml.safe_load(ruta.read_text(encoding="utf-8"))
+
+    culpables = []
+    for _, paso in _pasos_de(documento):
+        # Las continuaciones de linea se unen: un `find` partido en varias lineas es un solo comando.
+        guion = str(paso.get("run", "")).replace("\\\n", " ")
+        for comando in re.findall(r"find .*", guion):
+            if "DIRECTORIO_DEL_ESTANDAR" not in comando:
+                culpables.append(f"{paso.get('name', '(sin nombre)')}: {comando.strip()[:80]}")
+
+    assert not culpables, (
+        f"estos `find` recorren el workspace sin podar el clon del estandar: {culpables}. "
+        "Ese directorio lo crea este mismo workflow y no pertenece al repositorio evaluado: "
+        "recorrerlo mete plantillas y artefactos ajenos en la evaluacion")
 
 
 @pytest.mark.parametrize("ruta", _TODOS, ids=[_identificador(r) for r in _TODOS])
