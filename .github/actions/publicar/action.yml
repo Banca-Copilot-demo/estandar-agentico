@@ -205,14 +205,29 @@ runs:
       id: politica
       shell: bash
       run: |
-        marca="$(python "${{ github.action_path }}/resolver-politica.py" \
-                        "${{ github.action_path }}/../../../POLITICA.json")"
+        # SI EL RESOLUTOR FALLA, SE APLICA LA POLITICA MAS RESTRICTIVA. Esta linea es el control.
+        #
+        # EL DEFECTO QUE CIERRA, medido en una publicacion real: el script devolvia vacio al fallar y
+        # el shell leia ese vacio como «sin bandera», o sea COMO SI LA POLITICA FUERA `al_publicar`.
+        # Un artefacto sin certificar entro al marketplace y nada fallo. La regla de dominio ya
+        # degradaba a lo restrictivo -- y tiene pruebas que lo fijan -- pero el CABLEADO del shell
+        # reintrodujo el fail-open que la regla evitaba: el mismo modo de fallo, una capa mas abajo.
+        politica="$(python "${{ github.action_path }}/resolver-politica.py" \
+                           "${{ github.action_path }}/../../../POLITICA.json" || true)"
+        # EL RESOLUTOR SIEMPRE IMPRIME UNA POLITICA, nunca la bandera: asi un vacio solo puede
+        # significar que fallo, y no se confunde con «esta politica no necesita bandera».
+        case "$politica" in
+          al_publicar)
+            marca=""
+            echo "El release nace COMPLETO: entra al catalogo al publicar." ;;
+          al_certificar)
+            marca="--prerelease"
+            echo "El release nace como PRELANZAMIENTO: entrara al catalogo al certificarse." ;;
+          *)
+            marca="--prerelease"
+            echo "::warning::no se pudo resolver la politica de promocion ('$politica'): se aplica la mas restrictiva" ;;
+        esac
         echo "marca=$marca" >> "$GITHUB_OUTPUT"
-        if [ -n "$marca" ]; then
-          echo "El release nace como PRELANZAMIENTO: entrara al catalogo al certificarse."
-        else
-          echo "El release nace COMPLETO: entra al catalogo al publicar."
-        fi
 
     - name: Publicar el release con el paquete
       shell: bash

@@ -28,6 +28,18 @@ def bandera_de(promocion: Promocion) -> str:
     return "" if promocion is Promocion.AL_PUBLICAR else _BANDERA_PRELANZAMIENTO
 
 
+def respuesta_de(promocion: Promocion) -> str:
+    """Lo que se imprime: SIEMPRE un valor, nunca vacio.
+
+    POR QUE NO SE IMPRIME LA BANDERA DIRECTAMENTE. Con `al_publicar` la bandera correcta es la cadena
+    VACIA, y entonces el llamador no puede distinguir «la politica dice que no hace falta bandera» de
+    «el resolutor fallo y no imprimio nada». Esa ambiguedad es exactamente la que dejo entrar al
+    marketplace un artefacto sin certificar: el shell leyo un vacio de FALLO como un vacio de
+    POLITICA. Imprimiendo el nombre de la politica, un vacio solo puede significar un fallo.
+    """
+    return promocion.value
+
+
 def _politica_leida(ruta: Path) -> dict | None:
     """El contenido de la politica, o `None` si no se puede leer.
 
@@ -59,7 +71,7 @@ def main() -> int:
 
     promocion = promocion_declarada(_politica_leida(argumentos.politica))
     log.info("politica de promocion: %s", promocion.value)
-    print(bandera_de(promocion))
+    print(respuesta_de(promocion))
     return 0
 
 

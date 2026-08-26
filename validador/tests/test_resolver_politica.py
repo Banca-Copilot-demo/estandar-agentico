@@ -37,6 +37,21 @@ def test_al_publicar_hace_que_el_release_nazca_COMPLETO():
     assert resolver.bandera_de(Promocion.AL_PUBLICAR) == ""
 
 
+@pytest.mark.parametrize("promocion", list(Promocion), ids=[p.value for p in Promocion])
+def test_lo_que_se_IMPRIME_nunca_es_vacio(promocion):
+    """REGRESION del defecto que dejo entrar al marketplace un artefacto sin certificar.
+
+    Se imprimia la BANDERA, y con `al_publicar` la bandera correcta es la cadena VACIA. El shell no
+    podia distinguir «esta politica no necesita bandera» de «el resolutor fallo y no imprimio nada»,
+    asi que un fallo se leia como la politica MENOS restrictiva. MEDIDO en una publicacion real:
+    salio un release completo con la politica puesta en `al_certificar`.
+
+    Imprimiendo el NOMBRE de la politica, un vacio solo puede significar un fallo.
+    """
+    assert resolver.respuesta_de(promocion) == promocion.value
+    assert resolver.respuesta_de(promocion), "una respuesta vacia se confunde con un fallo"
+
+
 @pytest.mark.parametrize("contenido, motivo", [
     (None, "no existe"),
     ("{no es json", "JSON roto"),
