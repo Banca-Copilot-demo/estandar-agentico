@@ -193,10 +193,32 @@ runs:
           fi
         done
 
+    # DE QUE DEPENDE QUE EL RELEASE NAZCA COMO PRELANZAMIENTO. `prerelease` es la señal NATIVA de
+    # «esto no es para consumo general», y es lo que el indice mira para dejar un artefacto fuera del
+    # catalogo. Publicar y distribuir dejan de ser el mismo acto: el paquete se sella, se atesta y
+    # queda verificable igual, pero no se propaga hasta que lo decida la evaluacion.
+    #
+    # LA DECISION NO SE TOMA AQUI: se lee de `POLITICA.json`, que es lo que permite cambiar de
+    # criterio tocando un valor en vez de tres workflows. Si no se puede leer, se cae del lado
+    # restrictivo -- se marca prelanzamiento -- porque el fallo entonces es visible y reversible.
+    - name: Resolver la politica de promocion al catalogo
+      id: politica
+      shell: bash
+      run: |
+        marca="$(python "${{ github.action_path }}/resolver-politica.py" \
+                        "${{ github.action_path }}/../../../POLITICA.json")"
+        echo "marca=$marca" >> "$GITHUB_OUTPUT"
+        if [ -n "$marca" ]; then
+          echo "El release nace como PRELANZAMIENTO: entrara al catalogo al certificarse."
+        else
+          echo "El release nace COMPLETO: entra al catalogo al publicar."
+        fi
+
     - name: Publicar el release con el paquete
       shell: bash
       run: |
         gh release create "${GITHUB_REF_NAME}" "${{ steps.empaquetar.outputs.paquete }}" \
+          ${{ steps.politica.outputs.marca }} \
           --title "${GITHUB_REF_NAME}" \
           --notes "Paquete determinista: sha256 \`${{ steps.empaquetar.outputs.digest }}\`
         Atestado: procedencia (SLSA Build L3) y veredicto de conformidad del estandar.

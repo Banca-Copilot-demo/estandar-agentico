@@ -46,6 +46,12 @@ on:
       app-key:
         description: Clave privada de esa App. Solo sirve para pedir tokens, nunca es un token.
         required: false
+      copilot-token:
+        description: >
+          Token con permiso `Copilot Requests` para la evaluacion que decide la certificacion. Solo
+          hace falta mientras la organizacion no tenga asientos de Copilot propios. Sin el, el
+          artefacto se publica igual y se queda en Conforme.
+        required: false
 
 # EL PERMISO MINIMO PARA CADA COSA, y ni uno mas:
 #   contents: write        -> crear el release y subirle el paquete
@@ -78,3 +84,28 @@ jobs:
           port-client-secret: ${{ secrets.port-client-secret || secrets.PORT_CLIENT_SECRET }}
           app-id: ${{ secrets.app-id || secrets.APP_ID_AGENTICO }}
           app-key: ${{ secrets.app-key || secrets.APP_KEY_AGENTICO }}
+
+  # LA EVALUACION QUE DECIDE LA CERTIFICACION, y es distinta de la del pull request.
+  #
+  # LA DEL PULL REQUEST decide si el CAMBIO avanza; esta decide el ESTADO, y por eso recae sobre el
+  # commit ETIQUETADO -- el contenido que quedo sellado y que alguien instalara --, no sobre el de una
+  # rama. Suelen coincidir, pero certificar por lo que se vio en otro sitio seria certificar de oidas.
+  #
+  # NO BLOQUEA LA PUBLICACION porque llega despues: el artefacto ya esta publicado y sellado. Lo unico
+  # que decide es si se promociona.
+  certificar:
+    needs: publicar
+    uses: Banca-Copilot-demo/estandar-agentico/.github/workflows/evaluar.yml@main
+    with:
+      ref: ${{ github.ref }}
+    secrets:
+      copilot-token: ${{ secrets.copilot-token || secrets.COPILOT_GITHUB_TOKEN }}
+
+  # SOLO SI LA EVALUACION SE SUPERO. Sin suites -- `sin_suites` -- el artefacto se queda en Conforme,
+  # que es el resultado correcto: nadie ha medido su comportamiento.
+  promocionar:
+    needs: certificar
+    if: needs.certificar.outputs.resultado == 'superada'
+    uses: Banca-Copilot-demo/estandar-agentico/.github/workflows/promocionar.yml@main
+    with:
+      etiqueta: ${{ github.ref_name }}

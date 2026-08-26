@@ -68,6 +68,9 @@ if [ -n "$nombre_en_catalogo" ]; then
     # artefacto ausente del catalogo no esta distribuido: esta en Conforme -- publicado pero no
     # promocionado -- o Suspendido. En los dos casos instalarlo se salta la decision del gobierno.
     echo "El catalogo NO lista '$nombre_en_catalogo'." >&2
+    echo "Puede seguir estando PUBLICADO y ser verificable: publicar y distribuir son dos cosas" >&2
+    echo "distintas. Si el estandar promociona al certificar, un artefacto Conforme queda fuera del" >&2
+    echo "catalogo a proposito hasta que supere su evaluacion." >&2
     echo "Un artefacto ausente del catalogo no esta distribuido: o no ha sido certificado, o fue" >&2
     echo "suspendido. Consulta su ficha antes de instalarlo." >&2
     abortar "artefacto ausente del catalogo"

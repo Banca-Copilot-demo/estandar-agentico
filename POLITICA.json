@@ -1,0 +1,7 @@
+{
+  "$schema": "./schemas/politica.schema.json",
+  "promocion_al_catalogo": "al_certificar",
+  "x_notas": {
+    "promocion_al_catalogo": "CUANDO un artefacto entra al catalogo instalable, que es lo unico que decide si se distribuye. `al_certificar`: solo lo Certificado se distribuye, y lo Conforme queda publicado, sellado y verificable pero fuera del catalogo -- no se encuentra buscando ni se instala por nombre --. `al_publicar`: todo lo Conforme se distribuye, que era el comportamiento antes de que el cliente pidiera separar publicar de distribuir. El ciclo de vida NO cambia entre las dos: los estados y sus transiciones son los mismos, y lo unico que cambia es en cual de ellos se entra al catalogo. Se declara aqui, en el repositorio del estandar, porque es una decision de la ORGANIZACION y no de cada equipo: si viviera en cada repositorio de dominio, cada uno elegiria su nivel de control y la politica dejaria de existir."
+  }
+}

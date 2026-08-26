@@ -1,0 +1,161 @@
+name: Evaluar el comportamiento
+
+# EJECUTA LAS SUITES DE EVALUACION del repositorio que llama, y dice si pasan.
+#
+# CUANDO BLOQUEA Y CUANDO NO. Evaluar es opcional; tener evaluaciones ROTAS, no. Un repositorio sin
+# suites salta este trabajo -- y un trabajo saltado reporta «Success», asi que no impide mergear
+# aunque la comprobacion sea requerida (MEDIDO: el pull request queda CLEAN) --. Uno que si las trae
+# esta declarando que quiere certificar, y entonces una suite en rojo detiene el cambio (MEDIDO:
+# queda BLOCKED). Es como funcionan las pruebas en cualquier repositorio: lo opcional es tenerlas.
+#
+# EL FILTRO DE RUTAS NO SIRVE PARA ESTO y es el error clasico: con `on: pull_request: paths:` la
+# comprobacion NO SE REPORTA cuando no hay coincidencia, y una requerida que nunca reporta deja el
+# pull request bloqueado para siempre. Por eso la condicion vive en el JOB, no en el disparador.
+#
+# SE EJECUTA DESPUES DE LOS CONTROLES DETERMINISTAS, nunca en paralelo. Los controles no consumen
+# modelo y tardan segundos; una suite tarda MEDIDOS ~2,5-3,5 minutos y gasta cuota de inferencia.
+# Evaluar un artefacto cuyo frontmatter esta mal formado es pagar por descubrir algo que ya se sabia.
+# Quien llame a este workflow debe encadenarlo con `needs:` al de validacion.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: El commit a evaluar. Por defecto, el que disparo al llamador.
+        required: false
+        type: string
+        default: ""
+    outputs:
+      resultado:
+        description: "`superada`, `sin_suites` o `fallida`. Lo consume la publicacion para decidir si promociona."
+        value: ${{ jobs.evaluar.outputs.resultado }}
+    secrets:
+      copilot-token:
+        description: >
+          Token con permiso `Copilot Requests`. Solo hace falta cuando la ORGANIZACION no tiene
+          asientos de Copilot: entonces el token de Actions hereda esa carencia y el CLI responde
+          «Access denied by policy settings». Con asientos en la organizacion se puede omitir.
+        required: false
+
+permissions:
+  contents: read
+  # Sin esto el CLI no puede pedir inferencia y falla con un error que no nombra al permiso.
+  copilot-requests: write
+
+env:
+  # Y2: las versiones son variables, en un solo sitio.
+  VERSION_NODE: "22"
+  VERSION_PYTHON: "3.13"
+  # `promptfoo` se fija: una suite que pasa hoy y falla mañana por un cambio del motor seria
+  # indistinguible de una regresion del artefacto.
+  VERSION_PROMPTFOO: "0.118.16"
+  REPO_DEL_ESTANDAR: Banca-Copilot-demo/estandar-agentico
+
+jobs:
+  evaluar:
+    name: Evaluacion de comportamiento
+    runs-on: ubuntu-latest
+    outputs:
+      resultado: ${{ steps.correr.outputs.resultado || steps.detectar.outputs.resultado }}
+    steps:
+      - name: Descargar el repositorio que se evalua
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Buscar las suites de evaluacion
+        id: detectar
+        shell: bash
+        run: |
+          # Una suite es `*/evals/promptfooconfig.yaml` a cualquier profundidad: la de un skill vive
+          # junto a el, y la de un artefacto suelto publicado por separado, dentro de su unidad.
+          suites="$(find . -path ./.git -prune -o -name promptfooconfig.yaml -print | sort)"
+          if [ -z "$suites" ]; then
+            echo "hay_suites=false" >> "$GITHUB_OUTPUT"
+            echo "resultado=sin_suites" >> "$GITHUB_OUTPUT"
+            echo "::notice::sin suites de evaluacion: se publicara como Conforme, sin certificar."
+          else
+            echo "hay_suites=true" >> "$GITHUB_OUTPUT"
+            printf 'suites encontradas:\n%s\n' "$suites"
+            # Se guardan en un archivo y no en un output: una lista multilinea en `$GITHUB_OUTPUT`
+            # exige delimitador y se rompe en silencio si alguna ruta lleva un caracter raro.
+            printf '%s\n' "$suites" > "$RUNNER_TEMP/suites.txt"
+          fi
+
+      - name: Preparar Node (motor de evaluacion)
+        if: steps.detectar.outputs.hay_suites == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.VERSION_NODE }}
+
+      - name: Preparar Python (puente con el proveedor de modelo)
+        if: steps.detectar.outputs.hay_suites == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.VERSION_PYTHON }}
+
+      - name: Instalar el CLI de Copilot
+        if: steps.detectar.outputs.hay_suites == 'true'
+        shell: bash
+        run: npm install -g @github/copilot
+
+      - name: Descargar el puente del estandar
+        if: steps.detectar.outputs.hay_suites == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.REPO_DEL_ESTANDAR }}
+          path: .estandar
+
+      - name: Ejecutar las suites
+        id: correr
+        if: steps.detectar.outputs.hay_suites == 'true'
+        shell: bash
+        env:
+          # DOS TOKENS, Y EL ORDEN IMPORTA. El CLI busca `COPILOT_GITHUB_TOKEN`, luego `GH_TOKEN` y
+          # por ultimo `GITHUB_TOKEN`.
+          #
+          # MEDIDO: el token de Actions hereda la politica de Copilot de la ORGANIZACION, y una
+          # organizacion sin asientos responde «Access denied by policy settings» -- aunque el CLI
+          # funcione en la maquina de cualquier desarrollador con suscripcion propia. Por eso se
+          # admite un secreto que preste una suscripcion valida; si no existe, se cae al token de
+          # Actions, que es lo correcto cuando la organizacion SI tiene asientos.
+          COPILOT_GITHUB_TOKEN: ${{ secrets.copilot-token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          EVALS_PROYECTO: ${{ github.workspace }}
+        run: |
+          set -o pipefail
+          cable="${GITHUB_WORKSPACE}/.estandar/evals/puente_copilot.py"
+          fallidas=0
+          while IFS= read -r suite; do
+            echo "::group::$suite"
+            # `--no-cache` porque una suite que pasa por cache no ha probado nada.
+            if npx --yes "promptfoo@${VERSION_PROMPTFOO}" eval \
+                 -c "$suite" -r "file://$cable" --grader "file://$cable" --no-cache; then
+              echo "superada: $suite"
+            else
+              echo "::error::la suite $suite NO pasa"
+              fallidas=$((fallidas + 1))
+            fi
+            echo "::endgroup::"
+          done < "$RUNNER_TEMP/suites.txt"
+
+          if [ "$fallidas" -gt 0 ]; then
+            echo "resultado=fallida" >> "$GITHUB_OUTPUT"
+            echo "::error::$fallidas suite(s) no pasan: el artefacto no puede certificarse"
+            exit 1
+          fi
+          echo "resultado=superada" >> "$GITHUB_OUTPUT"
+
+      - name: Dejar constancia del resultado
+        if: always()
+        shell: bash
+        run: |
+          resultado="${{ steps.correr.outputs.resultado || steps.detectar.outputs.resultado }}"
+          {
+            echo "## Evaluacion de comportamiento"
+            echo
+            case "$resultado" in
+              sin_suites) echo "Sin suites. El artefacto se publicara como **Conforme**: no se distribuye hasta certificarse." ;;
+              superada)   echo "Suites superadas. El artefacto puede promocionarse a **Certificado**." ;;
+              *)          echo "Suites en rojo. El cambio no avanza hasta corregirlas." ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
