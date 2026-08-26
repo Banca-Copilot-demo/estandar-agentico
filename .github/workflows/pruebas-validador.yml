@@ -26,10 +26,10 @@ name: Pruebas del estandar
 # pull requests y no en `main`, o al contrario.
 on:
   pull_request:
-    paths: ["validador/**", "indice/**", "schemas/**", "port/**", ".github/actions/publicar/**", "plugins/**"]
+    paths: ["validador/**", "indice/**", "evals/**", "schemas/**", "port/**", ".github/actions/publicar/**", "plugins/**"]
   push:
     branches: [main]
-    paths: ["validador/**", "indice/**", "schemas/**", "port/**", ".github/actions/publicar/**", "plugins/**"]
+    paths: ["validador/**", "indice/**", "evals/**", "schemas/**", "port/**", ".github/actions/publicar/**", "plugins/**"]
 
 permissions:
   contents: read
@@ -59,6 +59,15 @@ jobs:
       # el estandar deja de ser exigible aunque todo lo demas siga en verde.
       - name: Pruebas del generador del indice
         working-directory: indice
+        shell: bash
+        run: python -m pytest tests -q
+
+      # NADIE LAS CORRIA, y ahi vive lo que decide QUE se evalua y COMO: el puente con el proveedor
+      # de modelo, la deteccion del agente de una suite y el acotado de las suites a lo que el cambio
+      # toca. Si esas tres se rompen, la evaluacion sigue dando verde midiendo lo que no debe --
+      # que es exactamente el modo de fallo que ya aparecio dos veces en esta cadena --.
+      - name: Pruebas del motor de evaluacion
+        working-directory: evals
         shell: bash
         run: python -m pytest tests -q
 
