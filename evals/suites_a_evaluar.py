@@ -25,34 +25,18 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from pathlib import PurePosixPath
 
-log = logging.getLogger(__name__)
-
+# LA PERTENENCIA DE UN ARCHIVO A UNA UNIDAD NO SE DEFINE AQUI. Vivio en este modulo mientras fue su
+# unico consumidor; al necesitarla tambien el gate -- para exigirle a toda unidad que cambia que suba
+# su version -- mantener dos copias habria significado que un archivo pudiera pertenecer a una unidad
+# para la seleccion de suites y a otra para el versionado: se evaluaria una y se publicaria otra.
+# Vive en `reglas_layout`, junto a la regla que dice cuales son las unidades.
+#
 # La suite de una unidad vive DENTRO de ella, a cualquier profundidad: la de un skill en
 # `<unidad>/evals/`, la de un agente en `<unidad>/agents/evals/`. Por eso basta con comparar prefijos.
-_RAIZ_DEL_REPOSITORIO = "."
+from validador_agentico.dominio.reglas_layout import unidad_de as _unidad_de
 
-
-def _unidad_de(ruta: str, unidades: list[str]) -> str | None:
-    """La unidad a la que pertenece una ruta, o `None` si no cuelga de ninguna.
-
-    Gana la unidad MAS ESPECIFICA cuando hay varias candidatas -- un suelto dentro de un repositorio
-    que tambien publica su conjunto --, por la misma razon que en el resto del estandar: un plugin
-    anidado manda sobre el que lo contiene.
-    """
-    candidatas = [u for u in unidades
-                  if u != _RAIZ_DEL_REPOSITORIO and _cuelga_de(ruta, u)]
-    if candidatas:
-        return max(candidatas, key=len)
-    return _RAIZ_DEL_REPOSITORIO if _RAIZ_DEL_REPOSITORIO in unidades else None
-
-
-def _cuelga_de(ruta: str, unidad: str) -> bool:
-    """Comparacion por SEGMENTOS y no por texto: `plugins/referencia-vieja` NO esta dentro de
-    `plugins/referencia`, y sin esto una coincidencia de prefijo los daria por el mismo."""
-    partes_unidad = PurePosixPath(unidad).parts
-    return PurePosixPath(ruta).parts[:len(partes_unidad)] == partes_unidad
+log = logging.getLogger(__name__)
 
 
 def suites_a_evaluar(suites: list[str], unidades: list[str],

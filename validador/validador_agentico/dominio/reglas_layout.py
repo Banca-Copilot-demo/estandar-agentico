@@ -30,7 +30,8 @@ pero lo que hace que un directorio sea la raiz de un plugin es tener el manifies
 """
 from __future__ import annotations
 
-from pathlib import Path
+from collections.abc import Sequence
+from pathlib import Path, PurePosixPath
 
 # Donde se buscan raices de plugin anidadas. Es una convencion observada en los catalogos publicos,
 # no un requisito de ninguna especificacion: por eso la lista es corta y explicita.
@@ -144,3 +145,33 @@ def es_multiunidad(unidades: tuple[Path, ...], raiz: Path) -> bool:
     inventario de cada `GOVERNANCE.json` se compara contra el arbol de SU unidad y no del
     repositorio, o un plugin que declara un skill fallaria por los artefactos de su vecino."""
     return unidades != (raiz,)
+
+
+# La ruta con la que se nombra la unidad que ocupa el repositorio ENTERO -- el conjunto suelto, o el
+# plugin unico de la raiz --. Es la forma en que `listar_plugins` la emite, y lo que hace que
+# `unidad_de` pueda responder por un archivo que no cuelga de ninguna unidad anidada.
+RAIZ_DEL_REPOSITORIO = "."
+
+
+def _cuelga_de(ruta: str, unidad: str) -> bool:
+    """Comparacion por SEGMENTOS y no por texto: `plugins/referencia-vieja` NO esta dentro de
+    `plugins/referencia`, aunque una comparacion de prefijos de cadena diga que si."""
+    partes_unidad = PurePosixPath(unidad).parts
+    return PurePosixPath(ruta).parts[:len(partes_unidad)] == partes_unidad
+
+
+def unidad_de(ruta: str, unidades: Sequence[str]) -> str | None:
+    """La unidad a la que pertenece `ruta`, o `None` si no cuelga de ninguna.
+
+    GANA LA UNIDAD MAS ESPECIFICA cuando hay varias candidatas: con un plugin anidado dentro de
+    otro, atribuir el archivo al de fuera lo asignaria al paquete que no lo publica.
+
+    ESTA ES LA UNICA DEFINICION DE PERTENENCIA del repositorio, y esa unicidad es el punto. La usan
+    el gate -- para exigir la subida de version de lo que cambio -- y la seleccion de suites a
+    evaluar. Con dos definiciones, un archivo podria pertenecer a una unidad para una y a otra para
+    la otra, y entonces se evaluaria una unidad y se versionaria otra.
+    """
+    candidatas = [u for u in unidades if u != RAIZ_DEL_REPOSITORIO and _cuelga_de(ruta, u)]
+    if candidatas:
+        return max(candidatas, key=len)
+    return RAIZ_DEL_REPOSITORIO if RAIZ_DEL_REPOSITORIO in unidades else None
