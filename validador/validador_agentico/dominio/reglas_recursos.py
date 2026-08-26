@@ -1,9 +1,9 @@
 """G2 — los archivos que el artefacto REFERENCIA tienen que existir en el arbol.
 
-EL DEFECTO QUE CIERRA, medido en el harness del CoE: de las 70 rutas de archivos de apoyo que sus
-`METADATA.json` declaran, **ninguna resuelve**. Se escribieron para un layout anterior y nadie las
-volvio a comprobar, porque ningun gate las comprobaba. Un campo que nadie verifica se convierte en
-decoracion.
+EL DEFECTO QUE CIERRA, medido sobre un inventario real de skills: de las 70 rutas de archivos de
+apoyo que su metadata declaraba, **ninguna resolvia**. Se escribieron para un layout anterior y nadie
+las volvio a comprobar, porque ningun gate las comprobaba. Un campo que nadie verifica se convierte
+en decoracion.
 
 Nosotros no declaramos esas rutas, asi que no tenemos ese campo -- pero SI las referenciamos desde
 el cuerpo del artefacto, y tampoco las comprobabamos. El fallo es peor que un adorno: el paquete se
@@ -47,7 +47,8 @@ from validador_agentico.dominio.hallazgo import Hallazgo, aviso, error
 _ENLACE_MARKDOWN = re.compile(r"]\(\s*([^)\s]+)")
 _ENTRE_ACENTOS = re.compile(r"`([^`\n]+)`")
 
-# Los directorios de recursos de la especificacion, mas los dos que el CoE usa y v7 dejo caer.
+# Los directorios de recursos de la especificacion, mas los dos que se observan en inventarios reales
+# y que la v7 dejo caer.
 DIRECTORIOS_DE_RECURSOS = ("scripts/", "references/", "assets/", "templates/", "examples/")
 
 # Carpetas que NO son recursos del artefacto sino maquinaria de publicacion: las lee el CLIENTE o la
