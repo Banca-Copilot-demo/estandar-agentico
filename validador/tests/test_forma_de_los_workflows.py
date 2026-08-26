@@ -84,6 +84,63 @@ def test_ningun_paso_consulta_secrets_en_su_if(ruta):
         "Pasa el secreto por `env` del job y comprueba `env` en el `if`")
 
 
+def _workflow_llamado(usa: str) -> str:
+    """El nombre de archivo del workflow reutilizable de ESTE repositorio que un job invoca, o "".
+
+    Solo se resuelven los de este repositorio: de un workflow ajeno no se puede leer que secretos
+    declara, asi que sobre esos no hay nada que comprobar.
+    """
+    if ".github/workflows/" not in usa or "estandar-agentico" not in usa:
+        return ""
+    return usa.split(".github/workflows/", 1)[1].split("@", 1)[0]
+
+
+def _secretos_declarados_por(nombre: str) -> set[str]:
+    ruta = _RAIZ / ".github" / "workflows" / nombre
+    if not ruta.is_file():
+        return set()
+    documento = yaml.safe_load(ruta.read_text(encoding="utf-8"))
+    # `on` es la clave literal del disparador, pero YAML 1.1 la lee como el booleano True.
+    disparadores = documento.get("on") or documento.get(True) or {}
+    return set((disparadores.get("workflow_call") or {}).get("secrets") or {})
+
+
+@pytest.mark.parametrize("ruta", _WORKFLOWS, ids=[_identificador(r) for r in _WORKFLOWS])
+def test_quien_llama_a_un_workflow_del_repo_nombra_todos_sus_secretos(ruta):
+    """Un workflow reutilizable NO hereda los secretos de quien lo llama: hay que pasarlos.
+
+    MEDIDO en una publicacion real. `publicar.yml` invocaba a `promocionar.yml` pasando solo la
+    etiqueta, asi que la promocion se quedaba sin credenciales de Port. Resultado:
+    `demo.sdlc.revisar-jql--v0.1.2` quedo promocionado y distribuido mientras su ficha seguia
+    diciendo `conformant` y `en_marketplace: false` -- los dos catalogos contando cosas distintas del
+    mismo artefacto --.
+
+    NO FALLA RUIDOSAMENTE, que es lo que lo hace caro: los secretos son opcionales, asi que la
+    publicacion termina en VERDE y lo unico que queda es un aviso dentro del log de un job.
+
+    LA REGLA ES NOMBRARLOS, no pasarlos siempre. Omitir un secreto a proposito sigue siendo legitimo
+    -- se pasa vacio --; lo que deja de ser posible es omitirlo sin enterarse.
+    """
+    documento = yaml.safe_load(ruta.read_text(encoding="utf-8"))
+
+    culpables = []
+    for nombre_job, job in (documento.get("jobs") or {}).items():
+        llamado = _workflow_llamado(str(job.get("uses", "")))
+        if not llamado:
+            continue
+        pasados = job.get("secrets")
+        if pasados == "inherit":
+            continue
+        faltan = _secretos_declarados_por(llamado) - set(pasados or {})
+        if faltan:
+            culpables.append(f"{nombre_job} -> {llamado}: {sorted(faltan)}")
+
+    assert not culpables, (
+        f"{_identificador(ruta)} invoca workflows sin nombrar todos sus secretos: {culpables}. "
+        "Un workflow reutilizable no los hereda: pasalos, o pasalos vacios si la omision es "
+        "deliberada. Sin ellos el trabajo se degrada en silencio y la publicacion termina en verde")
+
+
 @pytest.mark.parametrize("ruta", _TODOS, ids=[_identificador(r) for r in _TODOS])
 def test_declara_lo_minimo_para_ejecutarse(ruta):
     """Un YAML valido puede seguir sin ser un workflow. Un archivo sin `jobs` ni `runs` es sintaxis
