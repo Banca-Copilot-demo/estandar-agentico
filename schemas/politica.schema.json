@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://banca-copilot-demo.github.io/estandar-agentico/schemas/politica.schema.json",
+  "title": "Politica del estandar agentico",
+  "description": "Las decisiones de la ORGANIZACION que la cadena de publicacion honra. Son datos y no codigo repartido: cambiar de politica es cambiar un valor, no reescribir el flujo.",
+  "type": "object",
+  "required": ["promocion_al_catalogo"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "promocion_al_catalogo": {
+      "type": "string",
+      "title": "Cuando un artefacto entra al catalogo instalable",
+      "description": "`al_certificar` distribuye solo lo Certificado; lo Conforme queda publicado y verificable pero fuera del catalogo. `al_publicar` distribuye todo lo Conforme.",
+      "enum": ["al_certificar", "al_publicar"]
+    },
+    "x_notas": {
+      "type": "object",
+      "description": "Por que cada valor es el que es. No lo lee ningun programa.",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

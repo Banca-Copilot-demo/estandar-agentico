@@ -1,0 +1,95 @@
+name: Promocionar a Certificado
+
+# LO QUE ESTE WORKFLOW HACE, y no existia: llevar un artefacto de Conforme a Certificado.
+#
+# Hasta ahora `certified` era un estado alcanzable en el diseño y por nadie en la practica: la
+# publicacion escribia siempre `conformant` y no habia nada que promocionara. Un estado al que no se
+# llega no es un estado, es documentacion.
+#
+# PROMOCIONAR ES QUITAR LA MARCA DE PRELANZAMIENTO, no republicar. El paquete, su digesto y su
+# atestacion son los MISMOS: lo unico que cambia es que el indice deja de excluirlo, asi que el
+# artefacto entra al catalogo y pasa a instalarse por nombre. Por eso corregir una suite defectuosa
+# NO obliga a sacar una version nueva del artefacto.
+#
+# Y ES REVERSIBLE: volver a marcar prelanzamiento lo saca del catalogo de inmediato sin borrar el
+# release ni romper las atestaciones que cuelgan de el. Es el mismo mecanismo que usa la suspension.
+on:
+  workflow_call:
+    inputs:
+      etiqueta:
+        description: La etiqueta publicada que se promociona.
+        required: true
+        type: string
+    # El llamador puede estar en otro repositorio -- un repo de DOMINIO --, y `github.token` del
+    # workflow reutilizable lo apunta a el, que es justo donde vive el release. No hace falta ningun
+    # secreto adicional.
+  workflow_dispatch:
+    inputs:
+      etiqueta:
+        description: La etiqueta publicada que se promociona.
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  promocionar:
+    name: Promocionar
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comprobar que la etiqueta existe y esta sin promocionar
+        id: estado
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # SE CONSULTA EL ESTADO ANTES DE TOCARLO. Promocionar algo que ya esta promocionado no
+          # rompe nada, pero deja un registro que dice que hubo un cambio donde no lo hubo, y ese
+          # tipo de ruido es lo que hace que nadie mire los registros.
+          # `--jq` de `gh` emite `true`/`false` en minusculas, que es lo que compara el `if:` de abajo.
+          # NO se deriva el valor con otra herramienta a proposito: Python imprimiria `True` con
+          # mayuscula, la comparacion fallaria y el paso de promocion NO SE EJECUTARIA -- sin error,
+          # sin aviso y sin promocionar --. Un `if:` que nunca se cumple es invisible.
+          if ! prelanzamiento="$(gh release view "${{ inputs.etiqueta }}" \
+                --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease' 2>&1)"; then
+            echo "::error::la etiqueta ${{ inputs.etiqueta }} no tiene release publicado: no hay nada que promocionar"
+            exit 1
+          fi
+          case "$prelanzamiento" in
+            true|false) ;;
+            *)
+              # Ni `true` ni `false` significa que la consulta devolvio otra cosa. Se aborta en vez de
+              # seguir: continuar con un valor desconocido llevaria al `if:` a no cumplirse y el
+              # workflow terminaria en verde sin haber promocionado nada.
+              echo "::error::estado de prelanzamiento inesperado: '$prelanzamiento'"
+              exit 1 ;;
+          esac
+          echo "era_prelanzamiento=$prelanzamiento" >> "$GITHUB_OUTPUT"
+          if [ "$prelanzamiento" = "false" ]; then
+            echo "La etiqueta ya estaba promocionada: no se toca nada."
+          fi
+
+      - name: Quitar la marca de prelanzamiento
+        if: steps.estado.outputs.era_prelanzamiento == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "${{ inputs.etiqueta }}" --repo "$GITHUB_REPOSITORY" --prerelease=false
+          echo "Promocionado: ${{ inputs.etiqueta }} entra al catalogo en la proxima regeneracion del indice."
+
+      - name: Dejar constancia en el resumen
+        shell: bash
+        run: |
+          {
+            echo "## Promocion a Certificado"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Etiqueta | \`${{ inputs.etiqueta }}\` |"
+            echo "| Estaba sin promocionar | ${{ steps.estado.outputs.era_prelanzamiento }} |"
+            echo
+            echo "El paquete, su digesto y su atestacion NO cambian: promocionar solo decide si el"
+            echo "artefacto entra al catalogo instalable."
+          } >> "$GITHUB_STEP_SUMMARY"
