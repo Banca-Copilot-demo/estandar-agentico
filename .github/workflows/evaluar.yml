@@ -70,11 +70,37 @@ env:
   # indistinguible de una regresion del artefacto.
   VERSION_PROMPTFOO: "0.118.16"
   REPO_DEL_ESTANDAR: Banca-Copilot-demo/estandar-agentico
+  # LLAMADAS EN VUELO POR CORRIDA. Lo que satura el token no es el numero de trabajos sino el
+  # PRODUCTO «trabajos en paralelo x concurrencia interna». Por defecto el motor usa 4; con varias
+  # corridas a la vez eso se multiplica, y el agotamiento no se ve como cuota sino como casos en
+  # rojo. Acotarlo aqui protege tambien entre repositorios distintos, donde el grupo de concurrencia
+  # -- que es por repositorio -- no alcanza.
+  LLAMADAS_EN_VUELO: "2"
 
 jobs:
   evaluar:
     name: Evaluacion de comportamiento
     runs-on: ubuntu-latest
+
+    # EL RECURSO QUE COMPITE NO ES EL RUNNER: ES EL TOKEN DE INFERENCIA, uno solo para todo.
+    #
+    # Y lo peligroso es COMO se manifiesta su agotamiento: no llega como un error de cuota, llega
+    # como casos que fallan. Se mide rojo y se cree que el artefacto empeoro. Es el mismo daño que ya
+    # aparecio dos veces en esta cadena -- acusar al ARTEFACTO de un fallo de la INFRAESTRUCTURA --,
+    # y este es el mas dificil de reconocer porque el resultado parece legitimo.
+    #
+    # Con el grupo, una segunda evaluacion no arranca: queda pendiente y entra cuando la primera
+    # termina. `cancel-in-progress: false` a proposito -- una corrida a medias deja el cambio sin
+    # veredicto, y un veredicto ausente es peor que uno lento --.
+    #
+    # LIMITE CONOCIDO: los grupos de concurrencia son POR REPOSITORIO. Esto serializa las
+    # evaluaciones de un repositorio de dominio entre si, pero NO entre dominios distintos, que
+    # siguen compartiendo el mismo token. Por eso ademas se acotan las llamadas en vuelo de cada
+    # corrida, abajo.
+    concurrency:
+      group: evaluacion-de-comportamiento
+      cancel-in-progress: false
+
     outputs:
       resultado: ${{ steps.correr.outputs.resultado || steps.detectar.outputs.resultado }}
     steps:
@@ -230,7 +256,8 @@ jobs:
             [ -n "$EVALS_AGENTE" ] && echo "se invoca al agente $EVALS_AGENTE"
             # `--no-cache` porque una suite que pasa por cache no ha probado nada.
             if npx --yes "promptfoo@${VERSION_PROMPTFOO}" eval \
-                 -c "$suite" -r "file://$cable" --grader "file://$cable" --no-cache; then
+                 -c "$suite" -r "file://$cable" --grader "file://$cable" \
+                 -j "$LLAMADAS_EN_VUELO" --no-cache; then
               echo "superada: $suite"
             else
               echo "::error::la suite $suite NO pasa"
