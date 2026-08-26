@@ -45,6 +45,45 @@ def test_es_yaml_valido(ruta):
     assert isinstance(documento, dict), f"{_identificador(ruta)} no define un mapa en la raiz"
 
 
+def _pasos_de(documento: dict) -> list[tuple[str, dict]]:
+    """Todos los pasos del archivo, con el nombre de su job o `runs` para poder senalarlos."""
+    pasos = []
+    for nombre, job in (documento.get("jobs") or {}).items():
+        pasos += [(nombre, paso) for paso in (job.get("steps") or [])]
+    pasos += [("runs", paso) for paso in ((documento.get("runs") or {}).get("steps") or [])]
+    return pasos
+
+
+@pytest.mark.parametrize("ruta", _TODOS, ids=[_identificador(r) for r in _TODOS])
+def test_ningun_paso_consulta_secrets_en_su_if(ruta):
+    """REGRESION del defecto mas caro encontrado en los workflows, y llevaba tiempo activo.
+
+    `if: ${{ secrets.app-id != '' }}` a nivel de PASO no es sintaxis valida: el contexto `secrets` no
+    existe ahi. GitHub lo rechaza al ARRANCAR con «Unrecognized named-value: 'secrets'», antes de
+    ejecutar nada.
+
+    LO QUE COSTO: el gate de conformidad llevaba fallando en `startup_failure` en TODOS los pull
+    requests, asi que no corria ninguna comprobacion y los cambios se mergeaban sin validar. Y falla
+    de la peor forma imaginable -- en 0 segundos, sin jobs, sin anotaciones y sin log --. La unica
+    señal era que la lista de workflows mostraba el NOMBRE DEL ARCHIVO en lugar del nombre declarado,
+    porque GitHub ni siquiera habia podido leerlo.
+
+    La forma correcta es pasar el secreto por `env` del job y consultar `env` en el `if`.
+    """
+    documento = yaml.safe_load(ruta.read_text(encoding="utf-8"))
+
+    culpables = [
+        f"{job}: {paso.get('name', '(sin nombre)')}"
+        for job, paso in _pasos_de(documento)
+        if "secrets." in str(paso.get("if", ""))
+    ]
+
+    assert not culpables, (
+        f"{_identificador(ruta)} consulta `secrets` en el `if` de un paso: {culpables}. "
+        "El contexto `secrets` no existe ahi y GitHub rechaza el workflow AL ARRANCAR. "
+        "Pasa el secreto por `env` del job y comprueba `env` en el `if`")
+
+
 @pytest.mark.parametrize("ruta", _TODOS, ids=[_identificador(r) for r in _TODOS])
 def test_declara_lo_minimo_para_ejecutarse(ruta):
     """Un YAML valido puede seguir sin ser un workflow. Un archivo sin `jobs` ni `runs` es sintaxis

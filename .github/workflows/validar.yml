@@ -42,6 +42,19 @@ permissions:
 jobs:
   validar:
     runs-on: ubuntu-latest
+    # EL SECRETO SE PASA POR `env` DEL JOB, y no se consulta directamente en el `if` de un paso.
+    #
+    # EL DEFECTO QUE ESTO CORRIGE, y es de los caros: `if: ${{ secrets.app-id != '' }}` a nivel de
+    # PASO no es sintaxis valida -- el contexto `secrets` no existe ahi --, y GitHub lo rechaza al
+    # ARRANCAR el workflow: «Unrecognized named-value: 'secrets'».
+    #
+    # CONSECUENCIA MEDIDA: el gate llevaba fallando en `startup_failure` en TODOS los pull requests,
+    # o sea que no corria ninguna comprobacion y todo se mergeaba sin validar. Y fallaba de la peor
+    # forma posible: en 0 segundos, sin jobs, sin anotaciones y sin log -- la interfaz solo mostraba
+    # el nombre del ARCHIVO en vez del nombre del workflow, que es la unica señal de que ni siquiera
+    # llego a cargarse --.
+    env:
+      APP_ID: ${{ secrets.app-id }}
     steps:
       - name: Descargar el repositorio evaluado
         uses: actions/checkout@v4
@@ -51,7 +64,7 @@ jobs:
       # comprobar el equipo. Un repositorio sin la App configurada tiene que poder validar.
       - name: Token de la App (para resolver los equipos de la organizacion)
         id: token
-        if: ${{ secrets.app-id != '' }}
+        if: ${{ env.APP_ID != '' }}
         continue-on-error: true
         uses: actions/create-github-app-token@v1
         with:
