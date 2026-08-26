@@ -82,6 +82,30 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
+          # HISTORIAL COMPLETO porque en una solicitud de cambio hay que comparar contra la rama base
+          # para saber que se toco. Con la profundidad 1 de por defecto, `origin/<base>` no existe y
+          # `git diff` falla -- o peor, devuelve vacio y se evaluaria de menos EN SILENCIO --.
+          fetch-depth: 0
+
+      # ANTES DE DETECTAR, no despues: la deteccion necesita saber que UNIDADES publica el
+      # repositorio para acotar lo que evalua, y esa regla vive en el validador del estandar. Sin
+      # esto, el paso de deteccion fallaba porque el puente aun no estaba descargado.
+      - name: Descargar el puente y las reglas del estandar
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.REPO_DEL_ESTANDAR }}
+          path: .estandar
+
+      - name: Preparar Python (puente y reglas del estandar)
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.VERSION_PYTHON }}
+
+      - name: Instalar el validador del estandar
+        shell: bash
+        # Aporta `listar_plugins`, que es la MISMA regla que usan el gate, el etiquetado y el
+        # empaquetado para decidir que es una unidad. Redefinirla aqui seria como divergen las cosas.
+        run: pip install --quiet "$GITHUB_WORKSPACE/.estandar/validador"
 
       - name: Buscar las suites de evaluacion
         id: detectar
@@ -99,6 +123,27 @@ jobs:
           [ -n "$donde" ] || donde="."
           echo "buscando suites en: $donde"
           suites="$(find "$donde" -path "*/.git" -prune -o -name promptfooconfig.yaml -print | sort)"
+
+          # EN UNA SOLICITUD DE CAMBIO SOLO SE EVALUA LO QUE EL CAMBIO TOCA.
+          #
+          # Con todas las suites corriendo, UNA en rojo bloquea a cualquiera que toque el
+          # repositorio, aunque no sea suya y no pueda arreglarla -- MEDIDO: un cambio de cableado
+          # quedo bloqueado por la suite de un agente ajeno --. Y el coste crece con el inventario:
+          # las suites corren en secuencia y cada una tarda minutos.
+          #
+          # AL PUBLICAR NO SE ACOTA por aqui, y es correcto: ahi no hay «lo que cambia», hay un
+          # estado que evaluar. El acotado de la publicacion es `inputs.subruta`, que es otra cosa.
+          if [ -n "$suites" ] && [ "${{ github.event_name }}" = "pull_request" ]; then
+            printf '%s\n' "$suites" > "$RUNNER_TEMP/todas.txt"
+            python -m validador_agentico.listar_plugins . 2>/dev/null \
+              | awk '{print $1}' > "$RUNNER_TEMP/unidades.txt"
+            git diff --name-only "origin/${{ github.base_ref }}...HEAD" > "$RUNNER_TEMP/cambiados.txt"
+            suites="$(python "$GITHUB_WORKSPACE/.estandar/evals/suites_a_evaluar.py" \
+                        --suites "$RUNNER_TEMP/todas.txt" \
+                        --unidades "$RUNNER_TEMP/unidades.txt" \
+                        --cambiados "$RUNNER_TEMP/cambiados.txt")"
+          fi
+
           if [ -z "$suites" ]; then
             echo "hay_suites=false" >> "$GITHUB_OUTPUT"
             echo "resultado=sin_suites" >> "$GITHUB_OUTPUT"
@@ -116,12 +161,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.VERSION_NODE }}
-
-      - name: Preparar Python (puente con el proveedor de modelo)
-        if: steps.detectar.outputs.hay_suites == 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.VERSION_PYTHON }}
 
       - name: Instalar el CLI de Copilot
         if: steps.detectar.outputs.hay_suites == 'true'
@@ -157,13 +196,6 @@ jobs:
             [ -e "$destino" ] || cp "$definicion" "$destino"
             echo "agente disponible: $(basename "$definicion")"
           done < <(find . -path ./.github -prune -o -name "*.agent.md" -print)
-
-      - name: Descargar el puente del estandar
-        if: steps.detectar.outputs.hay_suites == 'true'
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.REPO_DEL_ESTANDAR }}
-          path: .estandar
 
       - name: Ejecutar las suites
         id: correr
