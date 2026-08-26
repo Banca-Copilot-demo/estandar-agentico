@@ -1,0 +1,129 @@
+name: Detectar las suites de evaluacion
+description: >
+  Responde a UNA pregunta y no la contesta un modelo: que suites de evaluacion corresponde ejecutar
+  aqui. Vive en una accion compuesta porque ahora se la hacen DOS sitios -- la evaluacion, que las
+  ejecuta, y la publicacion, que solo necesita saber si la unidad publicada TRAE alguna --, y una
+  segunda definicion de «que es una suite» divergiria de la primera en el primer arreglo que alguien
+  hiciera con prisa (G2/Y1).
+
+  QUE DEVUELVE Y QUE NO: dice que hay que evaluar; no evalua. Quien la use decide si ejecuta las
+  suites o si le basta con `hay-suites`.
+
+inputs:
+  subruta:
+    description: >
+      Acota la busqueda a UNA unidad. Vacio = todo el repositorio, que es lo correcto en una
+      solicitud de cambio. Al PUBLICAR hay que acotar, porque se publica una unidad y su
+      certificacion no puede depender de las suites de sus vecinas.
+    required: false
+    default: ""
+  rama-base:
+    description: >
+      Rama base contra la que acotar por lo que el cambio TOCA, sin el prefijo `origin/`. Vacio = no
+      se acota por cambios. Solo tiene sentido en una solicitud de cambio: fuera de ella no hay «lo
+      que cambia», hay un estado que evaluar entero.
+    required: false
+    default: ""
+  directorio-a-podar:
+    description: >
+      Directorio del workspace que NO forma parte del repositorio evaluado y que hay que saltarse al
+      buscar. Lo inyecta quien clona el estandar dentro del workspace para traerse el puente.
+    required: false
+    default: ""
+
+outputs:
+  hay-suites:
+    description: "`true` o `false`. Es la unica pregunta que necesita quien no va a ejecutarlas."
+    value: ${{ steps.detectar.outputs.hay-suites }}
+  archivo-suites:
+    description: Archivo con una ruta de suite por linea. Vacio si no hay ninguna.
+    value: ${{ steps.detectar.outputs.archivo-suites }}
+
+runs:
+  using: composite
+  steps:
+    # LA VERSION SALE DE `.python-version` DEL ESTANDAR, igual que en la accion de validacion y por
+    # el mismo motivo (Y2): un default propio aqui seria un sitio mas donde divergir. Un `uses:`
+    # relativo no sirve -- estas acciones se invocan cross-repo y la ruta se resolveria contra el
+    # repositorio del llamador --; `python-version-file` funciona en los dos casos.
+    - name: Preparar Python (version del estandar)
+      uses: actions/setup-python@v5
+      with:
+        python-version-file: ${{ github.action_path }}/../../../.python-version
+
+    # Aporta `listar_plugins` y `reglas_layout`, que son la MISMA regla que usan el gate, el
+    # etiquetado y el empaquetado para decidir que es una unidad. Redefinirla aqui es como divergen
+    # las cosas.
+    - name: Instalar el validador del estandar
+      shell: bash
+      run: pip install --quiet "${{ github.action_path }}/../../../validador"
+
+    - name: Buscar las suites de evaluacion
+      id: detectar
+      shell: bash
+      env:
+        SUBRUTA: ${{ inputs.subruta }}
+        RAMA_BASE: ${{ inputs.rama-base }}
+        DIRECTORIO_A_PODAR: ${{ inputs.directorio-a-podar }}
+        RUTA_DEL_ESTANDAR: ${{ github.action_path }}/../../../
+      run: |
+        # Una suite es `*/evals/promptfooconfig.yaml` a cualquier profundidad: la de un skill vive
+        # junto a el, y la de un artefacto suelto publicado por separado, dentro de su unidad.
+        # SE ACOTA A LA UNIDAD CUANDO SE PIDE, y eso decide de quien es la certificacion.
+        #
+        # MEDIDO en una publicacion real: sin acotar, la certificacion de `revisar-jql` -- que pasa
+        # sus 3 de 3 -- fallaba porque la suite de un AGENTE de otro plugin estaba en rojo. Un
+        # artefacto no puede quedarse sin certificar por el estado de su vecino: cada unidad se
+        # publica por separado, con su version y su digesto, y responde solo de lo suyo.
+        donde="${SUBRUTA:-.}"
+        echo "buscando suites en: $donde"
+        # SE PODA EL DIRECTORIO INYECTADO, no solo `.git`. Quien clona el estandar dentro del
+        # workspace mete ahi archivos que no son del repositorio evaluado. MEDIDO en el push a main
+        # de `agentes-sdlc` (run 33016050350): el trabajo quedo rojo por
+        # `.estandar/plantillas/artefactos/evals/promptfooconfig.yaml`, una PLANTILLA del estandar,
+        # mientras las 3 suites del repositorio pasaban 3 de 3.
+        #
+        # LA PODA SE HACE AQUI ADEMAS DEL FILTRO POR PERTENENCIA DE ABAJO, y no en su lugar, porque
+        # cubren huecos distintos: en un repositorio cuya unica unidad publicable es la RAIZ,
+        # `listar_plugins` la emite como `.` y entonces TODO el workspace cuelga de ella, asi que la
+        # pertenencia no puede distinguirlo. Podar aqui es lo unico que sabe que ese directorio es
+        # inyectado; el filtro de abajo es lo unico que cubre cualquier OTRO directorio ajeno que
+        # aparezca en el futuro sin que nadie se acuerde de esta linea.
+        podar=(-path "*/.git" -prune)
+        [ -n "$DIRECTORIO_A_PODAR" ] && podar+=(-o -path "./$DIRECTORIO_A_PODAR" -prune)
+        suites="$(find "$donde" "${podar[@]}" -o -name promptfooconfig.yaml -print | sort)"
+
+        # DOS ACOTADOS DISTINTOS, Y UNO DE ELLOS SE APLICA SIEMPRE.
+        #
+        # 1) DESCARTAR LO QUE NO ES DEL REPOSITORIO. Una suite solo cuenta si pertenece a una unidad
+        #    publicable. Corre en TODOS los eventos, porque lo que no se publica no puede
+        #    certificarse y evaluarlo solo puede poner en rojo a quien no lo controla.
+        #
+        # 2) CON RAMA BASE, ADEMAS, SOLO CUENTA LO QUE EL CAMBIO TOCA. Con todas las suites
+        #    corriendo, UNA en rojo bloquea a cualquiera que toque el repositorio, aunque no sea suya
+        #    y no pueda arreglarla -- MEDIDO: un cambio de cableado quedo bloqueado por la suite de
+        #    un agente ajeno --.
+        if [ -n "$suites" ]; then
+          printf '%s\n' "$suites" > "$RUNNER_TEMP/todas.txt"
+          python -m validador_agentico.listar_plugins . 2>/dev/null \
+            | awk '{print $1}' > "$RUNNER_TEMP/unidades.txt"
+          # P10/lista y no concatenacion: el flag opcional se anade como elemento, no como texto.
+          acotado=(--suites "$RUNNER_TEMP/todas.txt" --unidades "$RUNNER_TEMP/unidades.txt")
+          if [ -n "$RAMA_BASE" ]; then
+            git diff --name-only "origin/${RAMA_BASE}...HEAD" > "$RUNNER_TEMP/cambiados.txt"
+            acotado+=(--cambiados "$RUNNER_TEMP/cambiados.txt")
+          fi
+          suites="$(python "${RUTA_DEL_ESTANDAR}/evals/suites_a_evaluar.py" "${acotado[@]}")"
+        fi
+
+        if [ -z "$suites" ]; then
+          echo "hay-suites=false" >> "$GITHUB_OUTPUT"
+          echo "archivo-suites=" >> "$GITHUB_OUTPUT"
+        else
+          echo "hay-suites=true" >> "$GITHUB_OUTPUT"
+          printf 'suites encontradas:\n%s\n' "$suites"
+          # Se guardan en un archivo y no en un output: una lista multilinea en `$GITHUB_OUTPUT`
+          # exige delimitador y se rompe en silencio si alguna ruta lleva un caracter raro.
+          printf '%s\n' "$suites" > "$RUNNER_TEMP/suites.txt"
+          echo "archivo-suites=$RUNNER_TEMP/suites.txt" >> "$GITHUB_OUTPUT"
+        fi

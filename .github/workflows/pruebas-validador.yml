@@ -20,6 +20,14 @@ name: Pruebas del estandar
 # haber corregido, reintroducido en el archivo de al lado -- que es lo que pasa cuando la correccion se
 # escribe como comentario y no como regla comprobable --.
 #
+# `.github/workflows/**` FALTABA ENTERO, y es el hueco mas grande de esta lista. Aqui viven las
+# pruebas de FORMA de los workflows -- que un paso no consulte `secrets` en su `if`, que quien llama a
+# un workflow reutilizable nombre sus secretos, que la promocion siga colgando de un guardian --, o
+# sea que un workflow es una ENTRADA de la suite igual que un esquema. Sin este filtro, el unico
+# cambio que esas pruebas existen para vigilar -- editar un workflow -- era precisamente el que NO las
+# disparaba. `.github/actions/publicar/**` se abre a `.github/actions/**` por lo mismo: las composite
+# actions se comprueban todas, no solo la de empaquetado.
+#
 # `schemas/**` ESTA EN LA LISTA, y faltaba. Las pruebas dejaron de ser independientes de los esquemas
 # el dia que empezaron a validar contra los REALES del repositorio -- cuatro archivos de prueba los
 # leen --, asi que un esquema es hoy una ENTRADA de la suite. Sin este filtro, cambiar un esquema no
@@ -32,10 +40,10 @@ name: Pruebas del estandar
 # pull requests y no en `main`, o al contrario.
 on:
   pull_request:
-    paths: ["validador/**", "indice/**", "evals/**", "schemas/**", "port/**", ".github/actions/publicar/**", "plugins/**", "plantillas/**"]
+    paths: ["validador/**", "indice/**", "evals/**", "schemas/**", "port/**", ".github/actions/**", ".github/workflows/**", "plugins/**", "plantillas/**"]
   push:
     branches: [main]
-    paths: ["validador/**", "indice/**", "evals/**", "schemas/**", "port/**", ".github/actions/publicar/**", "plugins/**", "plantillas/**"]
+    paths: ["validador/**", "indice/**", "evals/**", "schemas/**", "port/**", ".github/actions/**", ".github/workflows/**", "plugins/**", "plantillas/**"]
 
 permissions:
   contents: read

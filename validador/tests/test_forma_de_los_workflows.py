@@ -149,3 +149,136 @@ def test_declara_lo_minimo_para_ejecutarse(ruta):
 
     assert "jobs" in documento or "runs" in documento, \
         f"{_identificador(ruta)} no declara `jobs` ni `runs`: no lo ejecutaria nadie"
+
+
+# --- La suite de evaluacion se ejecuta UNA sola vez por artefacto -------------------------------
+
+_PUBLICAR = _RAIZ / ".github" / "workflows" / "publicar.yml"
+_EVALUAR = _RAIZ / ".github" / "workflows" / "evaluar.yml"
+
+
+def _jobs_de(ruta: Path) -> dict:
+    return yaml.safe_load(ruta.read_text(encoding="utf-8")).get("jobs") or {}
+
+
+def test_publicar_no_vuelve_a_ejecutar_la_suite_de_evaluacion():
+    """MEDIDO, y es la razon de que la segunda corrida se retirara: el veredicto de la suite NO es
+    reproducible. La MISMA suite sobre el MISMO contenido dio 3 de 3 en el pull request, 2 de 3 al
+    certificar y verde al reejecutar.
+
+    Con un juez asi, evaluar dos veces no confirma nada: solo anade una segunda tirada de dado sobre
+    un artefacto ya revisado, y gasta otra vez el UNICO token de inferencia de la organizacion. Y en
+    la practica salen mas de dos, porque cada push al pull request reejecuta.
+
+    El contenido es ademas literalmente el mismo: el etiquetado es automatico justo tras el merge,
+    asi que la etiqueta apunta al commit del merge.
+    """
+    culpables = [
+        nombre for nombre, job in _jobs_de(_PUBLICAR).items()
+        if "workflows/evaluar.yml" in str(job.get("uses", ""))
+    ]
+
+    assert not culpables, (
+        f"publicar.yml vuelve a invocar la evaluacion en {culpables}. La suite se ejecuta UNA vez, "
+        "en la solicitud de cambio: una segunda corrida de un juez no reproducible no confirma la "
+        "primera, solo duplica el gasto del token y las ocasiones de contradecirse")
+
+
+def test_promocionar_depende_de_un_job_que_comprueba_la_certificacion():
+    """REGRESION del defecto que aparece si se quita la segunda evaluacion sin poner nada en su sitio.
+
+    `promocionar` colgaba de `certificar` y de su veredicto. Al retirar esa corrida, la tentacion es
+    dejar `promocionar` con `needs: publicar` y sin condicion -- y entonces TODO lo que se publica se
+    certifica, incluido lo que nadie evaluo --. Esta prueba exige que siga habiendo un job entre
+    medias y que su salida siga condicionando la promocion.
+    """
+    jobs = _jobs_de(_PUBLICAR)
+    promocionar = jobs.get("promocionar")
+    assert promocionar, "publicar.yml ya no tiene job `promocionar`"
+
+    assert _guardian_de_la_promocion(jobs), (
+        f"`promocionar` no esta condicionado por la salida de ningun job guardian "
+        f"(needs={promocionar.get('needs')!r}, if={promocionar.get('if')!r}). Sin el, se promociona todo lo que se publica: "
+        "un artefacto SIN suites tambien queda en verde, porque un trabajo saltado reporta «Success»")
+
+
+def _guardian_de_la_promocion(jobs: dict) -> str | None:
+    """El job que se interpone entre publicar y promocionar y cuya salida condiciona la promocion."""
+    promocionar = jobs.get("promocionar") or {}
+    depende = promocionar.get("needs")
+    depende = [depende] if isinstance(depende, str) else list(depende or [])
+    condicion = str(promocionar.get("if", ""))
+    return next((j for j in depende if j != "publicar" and f"needs.{j}.outputs" in condicion), None)
+
+
+def test_el_guardian_de_la_promocion_comprueba_que_haya_suites_y_no_solo_el_color():
+    """EL FALLO MAS FACIL DE COMETER AQUI, y esta MEDIDO: un artefacto sin suites sale VERDE. El
+    trabajo de comportamiento se salta, y un trabajo saltado reporta «Success» -- el pull request
+    queda CLEAN --. Un guardian que solo mirase el color certificaria artefactos que nadie evaluo,
+    que es lo contrario del proposito del estado.
+
+    Por eso se exige que el guardian use la MISMA deteccion de suites que la evaluacion, y no una
+    tercera definicion escrita a mano de «que es una suite» (G2/P9).
+    """
+    jobs = _jobs_de(_PUBLICAR)
+    guardian = _guardian_de_la_promocion(jobs)
+    assert guardian, "no hay ningun job guardian entre `publicar` y `promocionar`"
+
+    acciones = [str(paso.get("uses", "")) for paso in (jobs[guardian].get("steps") or [])]
+    assert any("actions/detectar-suites" in a for a in acciones), (
+        f"el job `{guardian}` no usa la accion `detectar-suites`: no sabe si la unidad publicada "
+        "trae suites, asi que promocionaria lo que nadie evaluo -- o traeria una segunda definicion "
+        f"de que es una suite. Pasos con `uses`: {acciones}")
+
+
+def test_el_guardian_no_confunde_un_fallo_de_la_consulta_con_una_comprobacion_ausente():
+    """MEDIDO ejecutando el bloque `run:` del guardian contra un `gh` que devuelve 1: sin
+    `set -o pipefail` el veredicto era «ausente», no «no se pudo consultar».
+
+    La consulta es una tuberia (`gh ... | tail -1`) y el estado de una tuberia es el de su ULTIMO
+    comando, que aqui es `tail` y siempre vale 0. Sin `pipefail`, un 403 por falta de `checks: read`
+    se leeria como «este commit no tiene comprobacion» y el aviso mandaria a mirar la suite en vez
+    del bloque de permisos. Es el mismo modo de fallo que ya costo una medicion en este repositorio,
+    donde `comprobar-estado.sh | head` devolvia el codigo de `head`.
+    """
+    jobs = _jobs_de(_PUBLICAR)
+    guardian = _guardian_de_la_promocion(jobs)
+    consultas = [
+        paso for paso in (jobs[guardian].get("steps") or [])
+        if "gh api" in str(paso.get("run", ""))
+    ]
+
+    assert consultas, f"el job `{guardian}` ya no consulta la API: esta prueba quedo obsoleta"
+    culpables = [p.get("name") for p in consultas if "set -o pipefail" not in p["run"]]
+    assert not culpables, (
+        f"{culpables} consulta la API a traves de una tuberia sin `set -o pipefail`: el fallo de "
+        "`gh` se pierde tras el codigo de salida del ultimo comando, y un 403 se leeria como que "
+        "el commit no tiene comprobacion")
+
+
+def test_el_guardian_busca_la_comprobacion_por_el_nombre_que_le_da_quien_la_emite():
+    """El guardian localiza el check-run del commit por su NOMBRE, y ese nombre lo declara el job de
+    `evaluar.yml`. Son dos archivos distintos, asi que el texto puede divergir -- y su divergencia NO
+    hace ruido: la busqueda simplemente no encuentra nada, se lee como «no existe comprobacion» y
+    NADA se certifica nunca. Un estado inalcanzable en silencio es justo el defecto que la promocion
+    existe para cerrar.
+
+    Se compara por sufijo a proposito: GitHub nombra el check-run de un workflow reutilizable
+    `<job del llamador> / <nombre del job llamado>`, y el prefijo lo elige cada repositorio de
+    dominio. Lo unico que el estandar controla es la segunda mitad.
+    """
+    emitido = _jobs_de(_EVALUAR)["evaluar"]["name"]
+
+    buscados = [
+        valor
+        for _, paso in _pasos_de(yaml.safe_load(_PUBLICAR.read_text(encoding="utf-8")))
+        for clave, valor in (paso.get("env") or {}).items()
+        if "NOMBRE_DE_LA_COMPROBACION" in clave
+    ]
+
+    assert buscados, ("publicar.yml no declara el nombre de la comprobacion que busca en un `env` "
+                      "nombrado, asi que esta prueba no puede vigilar que coincida")
+    assert all(b == emitido for b in buscados), (
+        f"publicar.yml busca {buscados} y `evaluar.yml` emite {emitido!r}. Si no coinciden, la "
+        "busqueda no encuentra la comprobacion, se lee como «no existe» y ningun artefacto se "
+        "certifica jamas -- sin un solo error en rojo")

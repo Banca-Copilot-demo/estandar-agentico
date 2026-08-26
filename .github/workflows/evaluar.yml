@@ -8,6 +8,20 @@ name: Evaluar el comportamiento
 # esta declarando que quiere certificar, y entonces una suite en rojo detiene el cambio (MEDIDO:
 # queda BLOCKED). Es como funcionan las pruebas en cualquier repositorio: lo opcional es tenerlas.
 #
+# SE EJECUTA UNA SOLA VEZ POR ARTEFACTO, EN LA SOLICITUD DE CAMBIO, y ya no al publicar. La
+# publicacion tenia su propia corrida sobre el commit etiquetado, y esa segunda pasada hacia dano en
+# vez de dar garantia: el veredicto NO es reproducible -- MEDIDO sobre el MISMO contenido: 3 de 3 en
+# el pull request, 2 de 3 al certificar y verde al reejecutar --, asi que evaluar dos veces solo
+# multiplica las ocasiones de que el azar diga cosas distintas del mismo artefacto, y duplica el
+# consumo del unico token de inferencia de la organizacion. El etiquetado es automatico justo tras el
+# merge, asi que la etiqueta apunta al commit del merge y el contenido evaluado es EL MISMO.
+#
+# EL INPUT `subruta` SE RETIRO CON ELLA. Existia solo para acotar la certificacion a la unidad que se
+# publicaba; sin esa corrida no le quedaba ningun consumidor -- comprobado en los repositorios de
+# dominio --, y un input documentado y sin usar es una invitacion a volver a cablear la segunda
+# pasada. La capacidad de acotar no se perdio: vive en la accion `detectar-suites`, que es quien la
+# usa hoy desde la publicacion para preguntar si la unidad TRAE suites.
+#
 # EL FILTRO DE RUTAS NO SIRVE PARA ESTO y es el error clasico: con `on: pull_request: paths:` la
 # comprobacion NO SE REPORTA cuando no hay coincidencia, y una requerida que nunca reporta deja el
 # pull request bloqueado para siempre. Por eso la condicion vive en el JOB, no en el disparador.
@@ -24,17 +38,9 @@ on:
         required: false
         type: string
         default: ""
-      subruta:
-        description: >
-          Acota la busqueda de suites a UNA unidad. Vacio = todo el repositorio, que es lo correcto
-          en un pull request: ahi se revisa el cambio completo. Al PUBLICAR hay que acotar, porque se
-          publica una unidad y su certificacion no puede depender de las suites de sus vecinas.
-        required: false
-        type: string
-        default: ""
     outputs:
       resultado:
-        description: "`superada`, `sin_suites` o `fallida`. Lo consume la publicacion para decidir si promociona."
+        description: "`superada`, `sin_suites` o `fallida`. Es el veredicto que decide si el cambio avanza."
         value: ${{ jobs.evaluar.outputs.resultado }}
     secrets:
       copilot-token:
@@ -65,7 +71,11 @@ permissions:
 env:
   # Y2: las versiones son variables, en un solo sitio.
   VERSION_NODE: "22"
-  VERSION_PYTHON: "3.13"
+  # LA DE PYTHON NO ESTA AQUI a proposito: la pone la accion `detectar-suites` desde el
+  # `.python-version` del estandar, y ese interprete queda puesto para todo el job. Un literal aqui
+  # seria un segundo sitio donde divergir (Y2) -- y ya divergia: decia "3.13" mientras el estandar
+  # declaraba 3.12, o sea que el validador se instalaba en un interprete y las reglas se escribian
+  # contra otro.
   # `promptfoo` se fija: una suite que pasa hoy y falla mañana por un cambio del motor seria
   # indistinguible de una regresion del artefacto.
   VERSION_PROMPTFOO: "0.118.16"
@@ -107,7 +117,7 @@ jobs:
       cancel-in-progress: false
 
     outputs:
-      resultado: ${{ steps.correr.outputs.resultado || steps.detectar.outputs.resultado }}
+      resultado: ${{ steps.veredicto.outputs.resultado }}
     steps:
       - name: Descargar el repositorio que se evalua
         uses: actions/checkout@v4
@@ -127,97 +137,39 @@ jobs:
           repository: ${{ env.REPO_DEL_ESTANDAR }}
           path: ${{ env.DIRECTORIO_DEL_ESTANDAR }}
 
-      - name: Preparar Python (puente y reglas del estandar)
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.VERSION_PYTHON }}
-
-      - name: Instalar el validador del estandar
-        shell: bash
-        # Aporta `listar_plugins`, que es la MISMA regla que usan el gate, el etiquetado y el
-        # empaquetado para decidir que es una unidad. Redefinirla aqui seria como divergen las cosas.
-        run: pip install --quiet "$GITHUB_WORKSPACE/$DIRECTORIO_DEL_ESTANDAR/validador"
-
+      # QUE ES UNA SUITE Y CUALES CUENTAN LO DECIDE UNA SOLA DEFINICION, la de la accion, y no este
+      # archivo. La misma pregunta se la hace la PUBLICACION -- «¿la unidad que se publica trae
+      # suites?» -- para decidir si promociona, y dos busquedas escritas a mano divergirian en el
+      # primer arreglo (G2/Y1): una unidad podria tener suites para una y no para la otra, y entonces
+      # se certificaria por lo que la otra no midio.
+      #
+      # LA ACCION TAMBIEN DEJA PUESTO EL PYTHON DEL ESTANDAR y el validador instalado, que es lo que
+      # necesitan los pasos de mas abajo -- `agente_de_la_suite.py` y el puente --.
       - name: Buscar las suites de evaluacion
         id: detectar
+        uses: Banca-Copilot-demo/estandar-agentico/.github/actions/detectar-suites@main
+        with:
+          # SOLO EN UNA SOLICITUD DE CAMBIO se acota a lo que el cambio toca. En un push a main no hay
+          # «lo que cambia», hay un estado que evaluar entero.
+          rama-base: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
+          # El clon del estandar lo mete ESTE workflow en el workspace y no es del repositorio
+          # evaluado: la accion tiene que saltarselo o volveria a evaluar sus plantillas.
+          directorio-a-podar: ${{ env.DIRECTORIO_DEL_ESTANDAR }}
+
+      - name: Avisar de que no hay nada que evaluar
+        if: steps.detectar.outputs.hay-suites != 'true'
         shell: bash
         run: |
-          # Una suite es `*/evals/promptfooconfig.yaml` a cualquier profundidad: la de un skill vive
-          # junto a el, y la de un artefacto suelto publicado por separado, dentro de su unidad.
-          # SE ACOTA A LA UNIDAD CUANDO SE PIDE, y eso decide de quien es la certificacion.
-          #
-          # MEDIDO en una publicacion real: sin acotar, la certificacion de `revisar-jql` -- que pasa
-          # sus 3 de 3 -- fallaba porque la suite de un AGENTE de otro plugin estaba en rojo. Un
-          # artefacto no puede quedarse sin certificar por el estado de su vecino: cada unidad se
-          # publica por separado, con su version y su digesto, y responde solo de lo suyo.
-          donde="${{ inputs.subruta }}"
-          [ -n "$donde" ] || donde="."
-          echo "buscando suites en: $donde"
-          # SE PODA EL CLON DEL ESTANDAR, no solo `.git`. Ese directorio lo crea ESTE workflow dentro
-          # del workspace y no forma parte del repositorio evaluado. MEDIDO en el push a main de
-          # `agentes-sdlc` (run 33016050350): el trabajo quedo rojo por
-          # `.estandar/plantillas/artefactos/evals/promptfooconfig.yaml`, una PLANTILLA del estandar,
-          # mientras las 3 suites del repositorio pasaban 3 de 3.
-          #
-          # LA PODA SE HACE AQUI ADEMAS DEL FILTRO POR PERTENENCIA DE ABAJO, y no en su lugar, porque
-          # cubren huecos distintos: en un repositorio cuya unica unidad publicable es la RAIZ,
-          # `listar_plugins` la emite como `.` y entonces TODO el workspace -- `.estandar/` incluido --
-          # cuelga de ella, asi que la pertenencia no puede distinguirlo. Podar aqui es lo unico que
-          # sabe que ese directorio es inyectado; el filtro de abajo es lo unico que cubre cualquier
-          # OTRO directorio ajeno que aparezca en el futuro sin que nadie se acuerde de esta linea.
-          suites="$(find "$donde" -path "*/.git" -prune \
-                                  -o -path "./$DIRECTORIO_DEL_ESTANDAR" -prune \
-                                  -o -name promptfooconfig.yaml -print | sort)"
-
-          # DOS ACOTADOS DISTINTOS, Y UNO DE ELLOS SE APLICA SIEMPRE.
-          #
-          # 1) DESCARTAR LO QUE NO ES DEL REPOSITORIO. Una suite solo cuenta si pertenece a una unidad
-          #    publicable. Corre en TODOS los eventos -- tambien en push a main y al publicar --,
-          #    porque lo que no se publica no puede certificarse y evaluarlo solo puede poner en rojo
-          #    a quien no lo controla, ademas de gastar cuota.
-          #
-          # 2) EN UNA SOLICITUD DE CAMBIO, ADEMAS, SOLO SE EVALUA LO QUE EL CAMBIO TOCA. Con todas las
-          #    suites corriendo, UNA en rojo bloquea a cualquiera que toque el repositorio, aunque no
-          #    sea suya y no pueda arreglarla -- MEDIDO: un cambio de cableado quedo bloqueado por la
-          #    suite de un agente ajeno --. Y el coste crece con el inventario: las suites corren en
-          #    secuencia y cada una tarda minutos. Fuera del pull request no hay «lo que cambia», hay
-          #    un estado que evaluar entero, asi que este acotado no aplica.
-          #
-          # El acotado de la PUBLICACION es `inputs.subruta` y es una tercera cosa, ya resuelta arriba.
-          if [ -n "$suites" ]; then
-            printf '%s\n' "$suites" > "$RUNNER_TEMP/todas.txt"
-            python -m validador_agentico.listar_plugins . 2>/dev/null \
-              | awk '{print $1}' > "$RUNNER_TEMP/unidades.txt"
-            # P10/lista y no concatenacion: el flag opcional se anade como elemento, no como texto.
-            acotado=(--suites "$RUNNER_TEMP/todas.txt" --unidades "$RUNNER_TEMP/unidades.txt")
-            if [ "${{ github.event_name }}" = "pull_request" ]; then
-              git diff --name-only "origin/${{ github.base_ref }}...HEAD" > "$RUNNER_TEMP/cambiados.txt"
-              acotado+=(--cambiados "$RUNNER_TEMP/cambiados.txt")
-            fi
-            suites="$(python "$GITHUB_WORKSPACE/$DIRECTORIO_DEL_ESTANDAR/evals/suites_a_evaluar.py" \
-                        "${acotado[@]}")"
-          fi
-
-          if [ -z "$suites" ]; then
-            echo "hay_suites=false" >> "$GITHUB_OUTPUT"
-            echo "resultado=sin_suites" >> "$GITHUB_OUTPUT"
-            echo "::notice::sin suites de evaluacion: se publicara como Conforme, sin certificar."
-          else
-            echo "hay_suites=true" >> "$GITHUB_OUTPUT"
-            printf 'suites encontradas:\n%s\n' "$suites"
-            # Se guardan en un archivo y no en un output: una lista multilinea en `$GITHUB_OUTPUT`
-            # exige delimitador y se rompe en silencio si alguna ruta lleva un caracter raro.
-            printf '%s\n' "$suites" > "$RUNNER_TEMP/suites.txt"
-          fi
+          echo "::notice::sin suites de evaluacion: se publicara como Conforme, sin certificar."
 
       - name: Preparar Node (motor de evaluacion)
-        if: steps.detectar.outputs.hay_suites == 'true'
+        if: steps.detectar.outputs.hay-suites == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.VERSION_NODE }}
 
       - name: Instalar el CLI de Copilot
-        if: steps.detectar.outputs.hay_suites == 'true'
+        if: steps.detectar.outputs.hay-suites == 'true'
         shell: bash
         run: npm install -g @github/copilot
 
@@ -232,7 +184,7 @@ jobs:
       # cumplian por conocimiento general del modelo y la evaluacion no probaba nada del artefacto.
       # Un fallo que pasa se lee como cobertura y no lo es.
       - name: Colocar los artefactos donde el cliente los ve
-        if: steps.detectar.outputs.hay_suites == 'true'
+        if: steps.detectar.outputs.hay-suites == 'true'
         shell: bash
         run: |
           mkdir -p .github/skills .github/agents
@@ -253,7 +205,7 @@ jobs:
 
       - name: Ejecutar las suites
         id: correr
-        if: steps.detectar.outputs.hay_suites == 'true'
+        if: steps.detectar.outputs.hay-suites == 'true'
         shell: bash
         env:
           # DOS TOKENS, Y EL ORDEN IMPORTA. El CLI busca `COPILOT_GITHUB_TOKEN`, luego `GH_TOKEN` y
@@ -292,7 +244,7 @@ jobs:
               fallidas=$((fallidas + 1))
             fi
             echo "::endgroup::"
-          done < "$RUNNER_TEMP/suites.txt"
+          done < "${{ steps.detectar.outputs.archivo-suites }}"
 
           if [ "$fallidas" -gt 0 ]; then
             echo "resultado=fallida" >> "$GITHUB_OUTPUT"
@@ -301,11 +253,23 @@ jobs:
           fi
           echo "resultado=superada" >> "$GITHUB_OUTPUT"
 
+      # EL VEREDICTO SE RESUELVE UNA SOLA VEZ, en un paso, y no en dos expresiones gemelas repartidas
+      # entre el output del job y el resumen (Y3). Cuando divergen, el job dice una cosa y el resumen
+      # otra sobre la misma corrida -- y es el output el que decide, asi que el humano lee el que no
+      # manda.
       - name: Dejar constancia del resultado
+        id: veredicto
         if: always()
         shell: bash
         run: |
-          resultado="${{ steps.correr.outputs.resultado || steps.detectar.outputs.resultado }}"
+          # SIN SUITES SOLO SI LA DETECCION DIJO QUE NO HAY. Si las habia y el paso de ejecucion no
+          # llego a escribir su resultado, es que murio antes de terminar: eso es `fallida`, nunca
+          # «no habia nada que medir». Leerlo al reves certificaria por un fallo de infraestructura.
+          resultado="${{ steps.correr.outputs.resultado }}"
+          if [ -z "$resultado" ]; then
+            [ "${{ steps.detectar.outputs.hay-suites }}" = "true" ] && resultado=fallida || resultado=sin_suites
+          fi
+          echo "resultado=$resultado" >> "$GITHUB_OUTPUT"
           {
             echo "## Evaluacion de comportamiento"
             echo

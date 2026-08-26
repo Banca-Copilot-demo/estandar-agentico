@@ -6,6 +6,12 @@ name: Publicar version
 # Si cada dominio tuviera su propia copia, cada equipo podria quitarse el sello, el empaquetado
 # determinista o la revalidacion, y el indice no podria confiar en nada.
 #
+# LO QUE ESTE WORKFLOW YA NO HACE: EVALUAR. La suite se ejecuta UNA sola vez por artefacto, en la
+# solicitud de cambio. Aqui solo se PREGUNTA por el resultado de aquella corrida, con dos
+# comprobaciones deterministas y gratis -- ver el job `certificable` --. Ver tambien la cabecera de
+# `evaluar.yml`: el motivo es que el veredicto no es reproducible, asi que una segunda corrida no
+# confirma la primera; solo la contradice a veces y gasta el doble de cuota.
+#
 # LO QUE ESTE WORKFLOW NO HACE: no escribe en el repositorio del dominio. Lo que sale de aqui son
 # tres cosas inmutables -- una etiqueta, un paquete firmado y dos atestaciones --. El veredicto NO
 # se commitea en `GOVERNANCE.json`: seria un bucle de commits, y meter el digest dentro del
@@ -46,12 +52,11 @@ on:
       app-key:
         description: Clave privada de esa App. Solo sirve para pedir tokens, nunca es un token.
         required: false
-      copilot-token:
-        description: >
-          Token con permiso `Copilot Requests` para la evaluacion que decide la certificacion. Solo
-          hace falta mientras la organizacion no tenga asientos de Copilot propios. Sin el, el
-          artefacto se publica igual y se queda en Conforme.
-        required: false
+      # `copilot-token` SE RETIRO DE AQUI. Existia para la segunda corrida de la suite, la que
+      # certificaba sobre el commit etiquetado; sin ella, publicar no habla con ningun modelo y no
+      # tiene ningun uso para un token de inferencia. Sigue existiendo donde se evalua de verdad --
+      # el `evaluar.yml` que llama la validacion del pull request --. Un secreto declarado y sin
+      # consumidor es una invitacion a volver a cablear la evaluacion aqui.
 
 # EL PERMISO MINIMO PARA CADA COSA, y ni uno mas:
 #   contents: write        -> crear el release y subirle el paquete
@@ -90,31 +95,159 @@ jobs:
           app-id: ${{ secrets.app-id || secrets.APP_ID_AGENTICO }}
           app-key: ${{ secrets.app-key || secrets.APP_KEY_AGENTICO }}
 
-  # LA EVALUACION QUE DECIDE LA CERTIFICACION, y es distinta de la del pull request.
+  # DECIDE SI EL ARTEFACTO SE CERTIFICA, Y NO VUELVE A EVALUAR NADA.
   #
-  # LA DEL PULL REQUEST decide si el CAMBIO avanza; esta decide el ESTADO, y por eso recae sobre el
-  # commit ETIQUETADO -- el contenido que quedo sellado y que alguien instalara --, no sobre el de una
-  # rama. Suelen coincidir, pero certificar por lo que se vio en otro sitio seria certificar de oidas.
+  # POR QUE NO SE EVALUA AQUI. Hasta ahora este sitio lanzaba una segunda corrida de la suite, sobre
+  # el commit etiquetado. La justificacion era «certificar por lo que se vio en otro sitio seria
+  # certificar de oidas», y la medicion la desmintio: el veredicto NO es reproducible -- la MISMA
+  # suite sobre el MISMO contenido dio 3 de 3 en el pull request, 2 de 3 al certificar y verde al
+  # reejecutar --. Con un juez asi, la segunda corrida no confirma la primera: solo anade una segunda
+  # tirada de dado, y cuesta otra vez cuota del unico token de inferencia de la organizacion. Ademas
+  # el contenido es literalmente el mismo: el etiquetado es automatico justo tras el merge, asi que
+  # la etiqueta apunta al commit del merge.
   #
-  # NO BLOQUEA LA PUBLICACION porque llega despues: el artefacto ya esta publicado y sellado. Lo unico
-  # que decide es si se promociona.
-  certificar:
+  # LAS DOS PREGUNTAS QUE SI SE HACEN SON DETERMINISTAS Y GRATIS, y ninguna se la hace a un modelo:
+  #
+  #   1) ¿LA UNIDAD PUBLICADA TRAE SUITES? Con la MISMA deteccion que usa la evaluacion -- la accion
+  #      `detectar-suites` --, acotada a la subruta que se publica.
+  #   2) ¿ESTA EN VERDE LA COMPROBACION DE COMPORTAMIENTO DE ESE COMMIT? Por la API de check-runs.
+  #
+  # HACEN FALTA LAS DOS, y la primera es la que impide el fallo mas facil de cometer aqui: un
+  # artefacto SIN suites tambien sale VERDE, porque el trabajo se salta y un trabajo saltado reporta
+  # «Success» -- MEDIDO --. Mirar solo el color certificaria artefactos que nadie evaluo, que es lo
+  # contrario del proposito del estado.
+  certificable:
     needs: publicar
-    uses: Banca-Copilot-demo/estandar-agentico/.github/workflows/evaluar.yml@main
-    with:
-      ref: ${{ github.ref }}
-      # ACOTADA A LA UNIDAD QUE SE PUBLICA. Sin esto, la certificacion corre TODAS las suites del
-      # repositorio, y esta medido lo que pasa: `revisar-jql` pasaba sus 3 de 3 y aun asi no se
-      # certificaba, porque la suite de un agente de OTRO plugin estaba en rojo.
-      subruta: ${{ needs.publicar.outputs.subruta }}
-    secrets:
-      copilot-token: ${{ secrets.copilot-token || secrets.COPILOT_GITHUB_TOKEN }}
+    runs-on: ubuntu-latest
+    # NO SE DECLARA `checks: read` AUNQUE ES LO QUE HACE FALTA PARA LEER LA COMPROBACION, y la razon
+    # esta medida en este mismo repositorio con otro permiso. Un workflow reutilizable NO puede pedir
+    # mas permisos de los que le concede su llamador: los repositorios de dominio conceden hoy
+    # `contents`, `id-token` y `attestations`, asi que `checks` les vale `none`. Pedirlo aqui no
+    # degradaria este job -- mataria el workflow ENTERO en `startup_failure`, antes de empaquetar y
+    # sellar --, que es exactamente lo que ya paso cuando se pidio `copilot-requests: write` y una
+    # organizacion sin asientos no pudo concederlo: un permiso para CERTIFICAR mataba el PUBLICAR.
+    #
+    # Sin pedirlo, un llamador que aun no lo conceda recibe un 403 EN EJECUCION, no promociona y se
+    # entera de por que. Anadir `checks: read` a su bloque de permisos es entonces una linea.
+    outputs:
+      promociona: ${{ steps.decidir.outputs.promociona }}
+    steps:
+      - name: Descargar el contenido etiquetado
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
 
-  # SOLO SI LA EVALUACION SE SUPERO. Sin suites -- `sin_suites` -- el artefacto se queda en Conforme,
-  # que es el resultado correcto: nadie ha medido su comportamiento.
+      - name: ¿La unidad publicada trae suites?
+        id: suites
+        uses: Banca-Copilot-demo/estandar-agentico/.github/actions/detectar-suites@main
+        with:
+          # ACOTADA A LA UNIDAD QUE SE PUBLICA. Sin esto se miraria TODO el repositorio, y esta medido
+          # lo que pasa con eso: `revisar-jql` pasaba sus 3 de 3 y aun asi no se certificaba, porque
+          # la suite de un agente de OTRO plugin estaba en rojo. Cada unidad responde solo de lo suyo.
+          subruta: ${{ needs.publicar.outputs.subruta }}
+
+      - name: ¿Esta en verde la comprobacion de comportamiento del commit etiquetado?
+        id: decidir
+        if: steps.suites.outputs.hay-suites == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # EL NOMBRE DEL JOB QUE EMITE LA COMPROBACION lo declara `evaluar.yml`, y aqui se busca por
+          # SUFIJO: GitHub nombra el check-run de un workflow reutilizable
+          # `<job del llamador> / <nombre del job llamado>`, y el prefijo lo elige cada repositorio de
+          # dominio. Lo unico que el estandar controla -- y por tanto lo unico contra lo que se puede
+          # comparar sin acertar de casualidad -- es la segunda mitad. Hay una prueba de forma que
+          # falla si este texto y el `name:` de `evaluar.yml` dejan de coincidir.
+          NOMBRE_DE_LA_COMPROBACION: Evaluacion de comportamiento
+          # CUANTO SE ESPERA A QUE TERMINE, Y POR QUE SE ESPERA EN VEZ DE AVISAR Y SEGUIR.
+          #
+          # La carrera no es un caso raro: es el caso NORMAL. `Validar` corre en el push a main y el
+          # `Etiquetar` del mismo push tarda segundos en empujar la etiqueta, asi que la publicacion
+          # arranca casi a la vez que la comprobacion -- que tarda MEDIDOS ~2,5-3,5 minutos por suite,
+          # y ademas encola detras del gate de conformidad y de su propio grupo de concurrencia --. No
+          # esperar significaria leer «en curso» practicamente siempre, o sea que NADA se certificaria
+          # nunca y el estado volveria a ser inalcanzable, que es el defecto que la promocion existe
+          # para cerrar.
+          #
+          # SE ESPERA POCO Y SE AVISA SI SE AGOTA. El tope acota el coste de un runner parado y, sobre
+          # todo, evita el otro modo de fallo: quedarse colgado si la comprobacion nunca arranca. Al
+          # agotarse NO se promociona y se dice que fue por eso -- «en curso» jamas se registra como
+          # «en rojo» --, asi que el artefacto se queda en Conforme con la razon escrita y se puede
+          # promocionar a mano con `promocionar.yml`, que acepta `workflow_dispatch`.
+          ESPERA_MAXIMA_SEGUNDOS: "1500"
+          INTERVALO_DE_SONDEO_SEGUNDOS: "20"
+        run: |
+          # `pipefail` NO ES HIGIENE, ES LA CONDICION DE QUE EL 403 SE DETECTE. La consulta es una
+          # tuberia `gh ... | tail -1`, y sin esto el estado de la tuberia es el de `tail`, que
+          # siempre es 0: un `gh` que falla se leeria como «no hay comprobacion» -- COMPROBADO
+          # ejecutando el bloque contra un `gh` que devuelve 1: sin `pipefail` daba «ausente» --. Es
+          # el mismo modo de fallo que ya costo una medicion en este repositorio, donde
+          # `comprobar-estado.sh | head` devolvia el codigo de `head`.
+          set -o pipefail
+          sha="$(git rev-parse HEAD)"
+          echo "promociona=false" >> "$GITHUB_OUTPUT"
+          limite=$(( SECONDS + ESPERA_MAXIMA_SEGUNDOS ))
+          conclusion=""
+          estado="ausente"
+          while :; do
+            # `--jq` filtra en el servidor de `gh`, no en un `grep` sobre JSON: el nombre lleva
+            # espacios y barras y un filtro de texto acertaria por accidente.
+            if ! linea="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/check-runs" \
+                            --paginate --jq \
+                            ".check_runs[] | select(.name | endswith(\"${NOMBRE_DE_LA_COMPROBACION}\")) \
+                             | \"\(.status) \(.conclusion // \"\")\"" | tail -1)"; then
+              # SE DISTINGUE «NO PUEDO PREGUNTAR» DE «NO ESTA EN VERDE». Confundirlos dejaria a un
+              # repositorio sin promocionar nada para siempre por un permiso que falta, con el mismo
+              # aviso que un artefacto que de verdad fallo su suite.
+              estado="sin_permiso"
+              break
+            fi
+            estado="ausente"
+            [ -n "$linea" ] && estado="${linea%% *}" && conclusion="${linea##* }"
+            # `ausente` TAMBIEN ES ESPERAR, y no darse por vencido. Cuando la publicacion pregunta, la
+            # comprobacion puede no haberse CREADO todavia: el gate de conformidad va primero y el
+            # check-run del trabajo de comportamiento no existe hasta que ese trabajo arranca. Salir
+            # aqui leeria «aun no ha nacido» como «no existe», que es el mismo error que leer «en
+            # curso» como «en rojo», y con el mismo efecto: nada se certificaria nunca.
+            case "$estado" in
+              queued|in_progress|ausente) ;;
+              *) break ;;
+            esac
+            [ "$SECONDS" -ge "$limite" ] && { [ "$estado" = ausente ] || estado="sin_terminar"; break; }
+            echo "la comprobacion esta en $estado; se reintenta en ${INTERVALO_DE_SONDEO_SEGUNDOS}s"
+            sleep "$INTERVALO_DE_SONDEO_SEGUNDOS"
+          done
+
+          # `skipped` NO CUENTA COMO VERDE, y es la razon de ser de este job: solo `success` certifica.
+          if [ "$conclusion" = "success" ]; then
+            echo "promociona=true" >> "$GITHUB_OUTPUT"
+            echo "la comprobacion de comportamiento de $sha esta en verde: se promociona"
+            exit 0
+          fi
+          # SE DICE CUAL DE LAS DOS CONDICIONES FALLO. Sin esto, un artefacto que merece certificarse
+          # se queda en Conforme y nadie sabe si fue por no tener suites, por estar en rojo o por
+          # haber preguntado demasiado pronto.
+          case "$estado" in
+            ausente)      razon="tras ${ESPERA_MAXIMA_SEGUNDOS}s no aparecio ninguna comprobacion llamada «...$NOMBRE_DE_LA_COMPROBACION» sobre $sha" ;;
+            sin_permiso)  razon="no se pudo consultar la comprobacion: el llamador no concede \`checks: read\` a este workflow" ;;
+            sin_terminar) razon="seguia en curso tras ${ESPERA_MAXIMA_SEGUNDOS}s de espera" ;;
+            *)            razon="termino en «${conclusion:-sin conclusion}», que no es verde" ;;
+          esac
+          echo "::warning::el artefacto trae suites pero no se promociona: $razon. Se queda en Conforme; se puede promocionar a mano cuando la comprobacion este en verde."
+
+      - name: Avisar de que no hay comportamiento medido
+        if: steps.suites.outputs.hay-suites != 'true'
+        shell: bash
+        # NO ES UN ERROR: es el resultado correcto. Nadie ha medido el comportamiento de esta unidad,
+        # asi que no hay nada que certificar. Queda dicho para que el estado no se lea como un fallo.
+        run: |
+          echo "::notice::la unidad publicada no trae suites de evaluacion: se queda en Conforme, sin certificar."
+
+  # SOLO SI LAS DOS CONDICIONES SE CUMPLEN. Sin suites, o con la comprobacion del commit que no esta
+  # en verde, el artefacto se queda en Conforme: publicado y sellado, pero sin certificar.
   promocionar:
-    needs: certificar
-    if: needs.certificar.outputs.resultado == 'superada'
+    needs: certificable
+    if: needs.certificable.outputs.promociona == 'true'
     uses: Banca-Copilot-demo/estandar-agentico/.github/workflows/promocionar.yml@main
     with:
       etiqueta: ${{ github.ref_name }}
