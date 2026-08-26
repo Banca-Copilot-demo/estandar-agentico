@@ -118,6 +118,10 @@ jobs:
     uses: Banca-Copilot-demo/estandar-agentico/.github/workflows/promocionar.yml@main
     with:
       etiqueta: ${{ github.ref_name }}
+      # EL MISMO INDICE AL QUE AVISO LA PUBLICACION. Promocionar cambia lo que el indice debe mostrar
+      # -- el artefacto pasa a distribuirse -- y sin avisar se queda fuera del catalogo hasta la
+      # pasada diaria: certificado y no instalable.
+      repositorio-indice: ${{ inputs.repositorio-indice }}
     # LA PROMOCION TAMBIEN ESCRIBE EN EL CATALOGO, y por eso necesita las mismas credenciales que la
     # publicacion. Sin ellas quitaba la marca de prelanzamiento -- el artefacto YA se distribuia -- y
     # dejaba la ficha diciendo `conformant`: el catalogo de metadata contradecia al instalable.
@@ -138,3 +142,5 @@ jobs:
     secrets:
       port-client-id: ${{ secrets.port-client-id || secrets.PORT_CLIENT_ID }}
       port-client-secret: ${{ secrets.port-client-secret || secrets.PORT_CLIENT_SECRET }}
+      app-id: ${{ secrets.app-id || secrets.APP_ID_AGENTICO }}
+      app-key: ${{ secrets.app-key || secrets.APP_KEY_AGENTICO }}

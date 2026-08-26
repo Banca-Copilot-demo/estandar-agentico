@@ -1,0 +1,125 @@
+name: Avisar al indice
+description: >
+  Despierta al repositorio del indice para que regenere el catalogo. Dispara un EVENTO; no escribe
+  nada alli. Sin credenciales no falla: deja constancia de por que no se aviso.
+
+# POR QUE ESTO ES UNA ACCION Y NO CUATRO PASOS COPIADOS EN CADA SITIO.
+#
+# El aviso hacia falta en DOS momentos y solo estaba en uno. `publicar` lo hacia; `promocionar` no,
+# y MEDIDO en la certificacion real de `demo.sdlc.revisar-jql--v0.1.2`: el release quedo promocionado
+# -- sin marca de prelanzamiento, o sea distribuible -- y el catalogo siguio ofreciendo la version
+# ANTERIOR hasta que se regenero el indice a mano. El artefacto estaba certificado y no se podia
+# instalar. El sintoma es el peor de los conocidos: todo en verde.
+#
+# Y NO SON DOS MOMENTOS CUALESQUIERA: son los dos unicos en los que cambia lo que el indice debe
+# mostrar. Publicar anade una version; promocionar decide si esa version se distribuye. Cualquier
+# tercero que mueva esa frontera -- suspender, retirar -- tendra el mismo deber, y por eso el aviso
+# vive donde se pueda invocar en vez de donde se escribio primero (G2/Y1).
+#
+# LA ALTERNATIVA ERA COPIAR EL BLOQUE, y se descarto: son cuatro pasos con la acunacion del token
+# efimero, el acotado a un solo repositorio y el rastro del aviso omitido. Duplicar eso significa que
+# el dia que cambie -- otro tipo de evento, otro permiso -- se arregle en un sitio y no en el otro, y
+# el que se quede atras seguira terminando en verde.
+
+inputs:
+  repositorio-indice:
+    description: Repositorio del indice al que se avisa, como `propietario/nombre`. Vacio = no se avisa.
+    required: false
+    default: ""
+  app-id:
+    description: >
+      App ID de la App del ciclo de vida. Solo sirve para acunar un token efimero con el que disparar
+      un evento; no se escribe nada en el repositorio del indice.
+    required: false
+    default: ""
+  app-key:
+    description: Clave privada de esa App. Solo sirve para pedir tokens, nunca es un token.
+    required: false
+    default: ""
+  motivo:
+    description: >
+      Que provoco el aviso, para el resumen del run del indice: `version-publicada` o
+      `version-promocionada`. El indice NO se lo cree -- hace su barrido completo desde cero --, asi
+      que es trazabilidad y no una instruccion.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # ══ EL AVISO AL INDICE: DISPARA UN EVENTO, NO ESCRIBE NADA ═════════════════════════════════
+    #
+    # QUE HACE, exactamente: una llamada a `/dispatches`, que provoca un EVENTO en el repositorio del
+    # indice. Nada mas. No crea, no modifica y no borra ni un archivo alli. El evento DESPIERTA el
+    # workflow del indice, y a partir de ese momento todo ocurre DENTRO de ese repositorio con SU
+    # PROPIO `GITHUB_TOKEN`: los permisos que escriben el catalogo son INTERNOS del repositorio del
+    # indice, no los aporta nadie de fuera.
+    #
+    # Y EL INDICE NO SE CREE EL AVISO. El `client_payload` solo se escribe en el resumen del run,
+    # para saber quien aviso. El indice hace su barrido completo desde cero: descubre por topico,
+    # lista etiquetas, descarga y VERIFICA las atestaciones. Un dominio que mintiera en el payload no
+    # conseguiria nada. Es un DESPERTADOR, no una instruccion.
+    #
+    # POR QUE HACE FALTA UNA CREDENCIAL, entonces: el `GITHUB_TOKEN` de un workflow esta acotado a SU
+    # repositorio -- es lo que impide que un repo comprometido toque los demas --, asi que no alcanza
+    # al del indice. Y `/dispatches` exige permiso de ESCRITURA sobre el repositorio destino: GitHub
+    # no ofrece un permiso de «solo tocar el timbre». Es el UNICO punto de todo el diseno donde una
+    # credencial cruza de un repositorio a otro.
+    #
+    # DE AHI QUE SEA UN TOKEN DE LA APP Y NO UN PAT. Lo que se guarda en el repositorio de dominio es
+    # la clave privada de la App, que NO es un token: solo sirve para PEDIR uno. El que se acuna dura
+    # una hora, va acotado con `repositories:` al repositorio del indice, y muere con el runner. Un
+    # PAT seria una credencial de escritura PERMANENTE sobre el catalogo, guardada en cada
+    # repositorio de dominio, atada a una persona y que caduca sin avisar.
+    # `repositories:` quiere el NOMBRE del repositorio, no `propietario/nombre`, y las expresiones de
+    # Actions no tienen `split`. Se calcula aqui en vez de pedir el nombre suelto como input: quien
+    # invoca ya declara `propietario/nombre` para la llamada a la API, y pedirlo dos veces seria un
+    # sitio mas donde se pueden contradecir.
+    - name: Nombre del repositorio del indice
+      id: indice
+      if: inputs.repositorio-indice != ''
+      shell: bash
+      run: echo "nombre=${INDICE##*/}" >> "$GITHUB_OUTPUT"
+      env:
+        INDICE: ${{ inputs.repositorio-indice }}
+
+    - name: Token efimero para despertar al indice
+      id: token_indice
+      if: inputs.repositorio-indice != '' && inputs.app-id != '' && inputs.app-key != ''
+      uses: actions/create-github-app-token@v1
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.app-key }}
+        owner: ${{ github.repository_owner }}
+        # ACOTADO A UN SOLO REPOSITORIO. Sin esto, el token alcanzaria todo lo que la App tenga
+        # instalado; para tocar un timbre no hace falta la llave de todo el edificio.
+        repositories: ${{ steps.indice.outputs.nombre }}
+
+    - name: Avisar al repositorio del indice
+      if: steps.token_indice.outputs.token != ''
+      shell: bash
+      run: |
+        gh api "repos/${{ inputs.repositorio-indice }}/dispatches" \
+          -f event_type=version-publicada \
+          -F "client_payload[repositorio]=${GITHUB_REPOSITORY}" \
+          -F "client_payload[etiqueta]=${GITHUB_REF_NAME}" \
+          -F "client_payload[motivo]=${{ inputs.motivo }}"
+      env:
+        GH_TOKEN: ${{ steps.token_indice.outputs.token }}
+
+    # EL AVISO OMITIDO DEJA RASTRO. Saltarse este paso es legitimo -- el aviso es un ACELERADOR, y el
+    # indice reconstruye el catalogo en su pasada programada -- pero saltarselo EN SILENCIO no: el
+    # artefacto no aparece en la vitrina hasta el dia siguiente y nada dice por que. MEDIDO: las dos
+    # publicaciones de un repositorio de dominio se saltaron el aviso por falta de credencial, y solo
+    # se descubrio leyendo el log paso por paso.
+    - name: ¿Por que no se aviso al indice?
+      if: steps.token_indice.outputs.token == ''
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.repositorio-indice }}" ]; then
+          motivo="este workflow no declara \`repositorio-indice\`"
+        elif [ -z "${{ inputs.app-id }}" ] || [ -z "${{ inputs.app-key }}" ]; then
+          motivo="faltan los secretos de la App con los que se acuna el token efimero"
+        else
+          motivo="la App no pudo acunar un token para ${{ inputs.repositorio-indice }}; comprueba que este INSTALADA en ese repositorio y con permiso de contenidos"
+        fi
+        echo "::notice::no se avisa al indice: ${motivo}. El catalogo se pondra al dia en la siguiente pasada programada del indice, no al instante."
