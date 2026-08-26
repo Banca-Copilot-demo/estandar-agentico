@@ -127,6 +127,15 @@ jobs:
           fallidas=0
           while IFS= read -r suite; do
             echo "::group::$suite"
+            # UNA SUITE DE AGENTE SE EJECUTA COMO AGENTE, y una de skill no. No es un matiz:
+            #   - de un SKILL se mide si el cliente lo ACTIVA solo, asi que se invoca SIN `--agent`;
+            #   - un AGENTE se INVOCA, y sin `--agent` la suite ejecuta al asistente por defecto,
+            #     mide otra cosa y falla por una razon que no tiene que ver con el artefacto.
+            # MEDIDO: la primera ejecucion de este gate corrio las dos igual y la del agente dio 1 de
+            # 3 -- el informe acusaba al ARTEFACTO de un fallo de la HERRAMIENTA --.
+            EVALS_AGENTE="$(python "${GITHUB_WORKSPACE}/.estandar/evals/agente_de_la_suite.py" "$suite")"
+            export EVALS_AGENTE
+            [ -n "$EVALS_AGENTE" ] && echo "se invoca al agente $EVALS_AGENTE"
             # `--no-cache` porque una suite que pasa por cache no ha probado nada.
             if npx --yes "promptfoo@${VERSION_PROMPTFOO}" eval \
                  -c "$suite" -r "file://$cable" --grader "file://$cable" --no-cache; then
