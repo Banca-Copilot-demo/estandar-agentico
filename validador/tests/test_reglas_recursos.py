@@ -1,8 +1,8 @@
 """Pruebas de G2 sobre los recursos referenciados. Puras: reciben el cuerpo y el conjunto de rutas.
 
-El defecto que cubren se MIDIO en el harness del CoE: de 70 rutas de archivos de apoyo declaradas en
-sus `METADATA.json`, ninguna resolvia -- se escribieron para un layout anterior y ningun gate las
-comprobaba.
+El defecto que cubren se MIDIO sobre un inventario real de skills: de 70 rutas de archivos de apoyo
+declaradas en su metadata, ninguna resolvia -- se escribieron para un layout anterior y ningun gate
+las comprobaba.
 """
 from __future__ import annotations
 
