@@ -20,6 +20,13 @@ on:
         description: La etiqueta publicada que se promociona.
         required: true
         type: string
+      repositorio-indice:
+        description: >
+          Repositorio del indice al que avisar de que el artefacto entra al catalogo. Vacio = no se
+          avisa, y el catalogo se pone al dia en su pasada programada -- diaria --.
+        required: false
+        type: string
+        default: ""
     # El llamador puede estar en otro repositorio -- un repo de DOMINIO --, y `github.token` del
     # workflow reutilizable lo apunta a el, que es justo donde vive el release.
     secrets:
@@ -29,12 +36,25 @@ on:
       port-client-secret:
         description: Client secret de Port.
         required: false
+      app-id:
+        description: >
+          App ID de la App del ciclo de vida, con la que se acuna el token efimero que despierta al
+          indice. Sin ella la promocion se completa igual y el catalogo espera a la pasada programada.
+        required: false
+      app-key:
+        description: Clave privada de esa App. Solo sirve para pedir tokens, nunca es un token.
+        required: false
   workflow_dispatch:
     inputs:
       etiqueta:
         description: La etiqueta publicada que se promociona.
         required: true
         type: string
+      repositorio-indice:
+        description: Repositorio del indice al que avisar. Vacio = no se avisa.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -97,8 +117,11 @@ jobs:
       # vitrina que lo cuenta. Si la ficha se escribiera antes y el release fallara, el catalogo
       # anunciaria como distribuido algo que no lo esta: prometer de mas es peor que ir un paso por
       # detras, que es lo que pasa en el orden contrario y se corrige repitiendo la promocion.
-      - name: Checkout del estandar para su accion de estado
-        if: env.PORT_CLIENT_ID != ''
+      # SIN CONDICION, y antes la tenia. Estaba atado a que hubiera credenciales de Port porque su
+      # unico consumidor era la accion de estado; ahora tambien lo necesita el aviso al indice, que no
+      # depende de Port en absoluto. Condicionarlo a una de las dos cosas dejaba la otra sin su
+      # accion, y el fallo seria «no such file» en un paso que nadie relaciona con un secreto ausente.
+      - name: Checkout del estandar para sus acciones
         uses: actions/checkout@v4
         with:
           repository: Banca-Copilot-demo/estandar-agentico
@@ -134,6 +157,26 @@ jobs:
           nombre-plugin: ${{ steps.plugin.outputs.nombre }}
           port-client-id: ${{ secrets.port-client-id }}
           port-client-secret: ${{ secrets.port-client-secret }}
+
+      # EL AVISO AL INDICE, QUE ES LO QUE HACE QUE LA PROMOCION SE NOTE. Quitar la marca de
+      # prelanzamiento cambia lo que el indice DEBE mostrar, pero el indice no lo sabe: solo se
+      # entera cuando alguien le avisa o en su pasada programada, que es diaria.
+      #
+      # MEDIDO con `demo.sdlc.revisar-jql--v0.1.2`: la cadena entera funciono -- sello, 3 de 3 sobre
+      # el paquete y promocion --, el release quedo distribuible, y el catalogo siguio ofreciendo la
+      # version ANTERIOR. El artefacto estaba CERTIFICADO Y NO SE PODIA INSTALAR, y solo entro tras
+      # regenerar el indice a mano. Nada fallo: todo termino en verde.
+      #
+      # VA DESPUES DE QUITAR LA MARCA, y el orden es el mismo criterio que el de la ficha: primero el
+      # hecho, luego contarlo. Avisar antes despertaria al indice para que reconstruyera el catalogo
+      # con el artefacto todavia excluido, o sea para nada.
+      - name: Avisar al indice de que el artefacto entra al catalogo
+        uses: ./.estandar/.github/actions/avisar-al-indice
+        with:
+          repositorio-indice: ${{ inputs.repositorio-indice }}
+          app-id: ${{ secrets.app-id }}
+          app-key: ${{ secrets.app-key }}
+          motivo: version-promocionada
 
       - name: Avisar de que la ficha del catalogo no se actualizo
         if: env.PORT_CLIENT_ID == ''
