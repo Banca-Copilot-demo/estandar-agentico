@@ -65,6 +65,10 @@ permissions:
 jobs:
   publicar:
     runs-on: ubuntu-latest
+    outputs:
+      # La subruta de la unidad publicada. La necesita la certificacion para acotarse a ELLA: sin
+      # eso, un artefacto se quedaria sin certificar por el estado de la suite de un vecino.
+      subruta: ${{ steps.sellar.outputs.subruta }}
     steps:
       - name: Descargar el contenido que se va a sellar
         uses: actions/checkout@v4
@@ -73,6 +77,7 @@ jobs:
           fetch-depth: 1
 
       - name: Sellar y publicar
+        id: sellar
         uses: Banca-Copilot-demo/estandar-agentico/.github/actions/publicar@main
         with:
           repositorio-indice: ${{ inputs.repositorio-indice }}
@@ -98,6 +103,10 @@ jobs:
     uses: Banca-Copilot-demo/estandar-agentico/.github/workflows/evaluar.yml@main
     with:
       ref: ${{ github.ref }}
+      # ACOTADA A LA UNIDAD QUE SE PUBLICA. Sin esto, la certificacion corre TODAS las suites del
+      # repositorio, y esta medido lo que pasa: `revisar-jql` pasaba sus 3 de 3 y aun asi no se
+      # certificaba, porque la suite de un agente de OTRO plugin estaba en rojo.
+      subruta: ${{ needs.publicar.outputs.subruta }}
     secrets:
       copilot-token: ${{ secrets.copilot-token || secrets.COPILOT_GITHUB_TOKEN }}
 

@@ -37,6 +37,11 @@ outputs:
   version:
     description: Version publicada, derivada de la etiqueta.
     value: ${{ steps.etiqueta.outputs.version }}
+  subruta:
+    description: >
+      La subruta de la UNIDAD publicada -- `plugins/<n>`, `skills/<n>` o `.` --. La consume la
+      evaluacion que decide la certificacion, para acotarse a esta unidad y no a todo el repositorio.
+    value: ${{ steps.plugin.outputs.subruta }}
 
 runs:
   using: composite

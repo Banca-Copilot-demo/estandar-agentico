@@ -24,6 +24,14 @@ on:
         required: false
         type: string
         default: ""
+      subruta:
+        description: >
+          Acota la busqueda de suites a UNA unidad. Vacio = todo el repositorio, que es lo correcto
+          en un pull request: ahi se revisa el cambio completo. Al PUBLICAR hay que acotar, porque se
+          publica una unidad y su certificacion no puede depender de las suites de sus vecinas.
+        required: false
+        type: string
+        default: ""
     outputs:
       resultado:
         description: "`superada`, `sin_suites` o `fallida`. Lo consume la publicacion para decidir si promociona."
@@ -81,7 +89,16 @@ jobs:
         run: |
           # Una suite es `*/evals/promptfooconfig.yaml` a cualquier profundidad: la de un skill vive
           # junto a el, y la de un artefacto suelto publicado por separado, dentro de su unidad.
-          suites="$(find . -path ./.git -prune -o -name promptfooconfig.yaml -print | sort)"
+          # SE ACOTA A LA UNIDAD CUANDO SE PIDE, y eso decide de quien es la certificacion.
+          #
+          # MEDIDO en una publicacion real: sin acotar, la certificacion de `revisar-jql` -- que pasa
+          # sus 3 de 3 -- fallaba porque la suite de un AGENTE de otro plugin estaba en rojo. Un
+          # artefacto no puede quedarse sin certificar por el estado de su vecino: cada unidad se
+          # publica por separado, con su version y su digesto, y responde solo de lo suyo.
+          donde="${{ inputs.subruta }}"
+          [ -n "$donde" ] || donde="."
+          echo "buscando suites en: $donde"
+          suites="$(find "$donde" -path "*/.git" -prune -o -name promptfooconfig.yaml -print | sort)"
           if [ -z "$suites" ]; then
             echo "hay_suites=false" >> "$GITHUB_OUTPUT"
             echo "resultado=sin_suites" >> "$GITHUB_OUTPUT"
