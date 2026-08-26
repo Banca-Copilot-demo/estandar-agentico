@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from validador_agentico.dominio.reglas_layout import (
     es_multiunidad,
+    raices_de_artefacto_individual,
     raices_de_plugin,
     tiene_artefactos_propios,
     unidades_publicables,
@@ -165,8 +166,82 @@ def test_raices_de_plugin_responde_SOLO_por_los_plugins(tmp_path):
 
 
 def test_tiene_artefactos_propios_distingue_vacio_de_ausente(tmp_path):
-    assert not tiene_artefactos_propios(tmp_path, _DIRECTORIOS, _ARCHIVOS)
+    assert not tiene_artefactos_propios(tmp_path, _DIRECTORIOS, _ARCHIVOS, RUTAS)
     (tmp_path / "skills").mkdir()
-    assert not tiene_artefactos_propios(tmp_path, _DIRECTORIOS, _ARCHIVOS)
+    assert not tiene_artefactos_propios(tmp_path, _DIRECTORIOS, _ARCHIVOS, RUTAS)
     _crear_skill(tmp_path)
-    assert tiene_artefactos_propios(tmp_path, _DIRECTORIOS, _ARCHIVOS)
+    assert tiene_artefactos_propios(tmp_path, _DIRECTORIOS, _ARCHIVOS, RUTAS)
+
+
+# ── artefactos sueltos con manifiesto propio ────────────────────────────────────────────────
+#
+# EL DEFECTO QUE CUBREN, medido contra los DOS clientes: un artefacto suelto sin manifiesto no se
+# puede instalar desde el catalogo cuando el contenido vive en otro repositorio -- que es la
+# topologia real --. Falla con «No plugin.json found in repository», asi que el suelto quedaba fuera
+# del catalogo y, por tanto, fuera del control de estado: se instalaba igual estuviera certificado,
+# conforme o suspendido.
+def test_un_skill_con_manifiesto_propio_es_su_propia_unidad(tmp_path):
+    _crear_skill(tmp_path, "revisar-jql")
+    _crear_plugin(tmp_path / "skills" / "revisar-jql")
+
+    assert _unidades(tmp_path) == (tmp_path / "skills" / "revisar-jql",)
+
+
+def test_el_conjunto_suelto_NO_reempaqueta_lo_que_ya_es_unidad(tmp_path):
+    """Si el conjunto suelto siguiera existiendo, cada artefacto viajaria en DOS paquetes con dos
+    digestos, y el catalogo tendria dos punteros al mismo contenido."""
+    _crear_skill(tmp_path, "revisar-jql")
+    _crear_plugin(tmp_path / "skills" / "revisar-jql")
+
+    assert tmp_path not in _unidades(tmp_path)
+
+
+def test_conviven_el_que_tiene_manifiesto_y_el_que_no(tmp_path):
+    """Poner manifiesto es opcional y gradual: quien no lo pone sigue en el conjunto suelto, asi que
+    anadir la regla no rompe ningun repositorio existente."""
+    _crear_skill(tmp_path, "con-manifiesto")
+    _crear_plugin(tmp_path / "skills" / "con-manifiesto")
+    _crear_skill(tmp_path, "sin-manifiesto")
+
+    unidades = _unidades(tmp_path)
+
+    assert tmp_path / "skills" / "con-manifiesto" in unidades
+    assert tmp_path in unidades, "el que no tiene manifiesto sigue publicandose con el conjunto"
+
+
+def test_un_directorio_de_artefacto_SIN_manifiesto_no_es_unidad(tmp_path):
+    _crear_skill(tmp_path, "x")
+
+    assert raices_de_artefacto_individual(tmp_path, RUTAS, _DIRECTORIOS) == ()
+
+
+def test_cada_tipo_suelto_puede_ser_unidad_propia(tmp_path):
+    """No solo los skills: un prompt o un agente con manifiesto tambien se publican por separado, que
+    es lo que les da version y digesto propios."""
+    for contenedor in ("skills", "commands", "agents"):
+        _crear_plugin(tmp_path / contenedor / "uno")
+
+    encontradas = raices_de_artefacto_individual(tmp_path, RUTAS, _DIRECTORIOS)
+
+    assert len(encontradas) == 3, f"faltan tipos: {encontradas}"
+
+
+def test_los_plugins_anidados_y_los_individuales_conviven(tmp_path):
+    _crear_plugin(tmp_path / "plugins" / "contratos")
+    _crear_skill(tmp_path, "revisar-jql")
+    _crear_plugin(tmp_path / "skills" / "revisar-jql")
+
+    unidades = _unidades(tmp_path)
+
+    assert tmp_path / "plugins" / "contratos" in unidades
+    assert tmp_path / "skills" / "revisar-jql" in unidades
+
+
+def test_un_artefacto_individual_NO_aparece_como_plugin_anidado(tmp_path):
+    """`raices_de_plugin` alimenta el marketplace con «que plugins hay». Un artefacto individual se
+    publica igual, pero se descubre por otra via: mezclarlos haria que un cambio en una de las dos
+    preguntas moviera la otra sin querer."""
+    _crear_skill(tmp_path, "revisar-jql")
+    _crear_plugin(tmp_path / "skills" / "revisar-jql")
+
+    assert raices_de_plugin(tmp_path, RUTAS) == ()

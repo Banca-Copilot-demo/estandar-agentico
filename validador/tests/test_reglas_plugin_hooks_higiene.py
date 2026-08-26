@@ -68,6 +68,30 @@ def test_id_del_gobierno_debe_coincidir_con_el_name_del_plugin():
     assert "no coincide" in _mensajes(errores)
 
 
+def test_un_gobierno_HEREDADO_no_se_compara_con_el_manifiesto_de_la_unidad():
+    """REGRESION medida ejecutando el gate sobre un artefacto suelto publicado por separado.
+
+    Ese artefacto no declara gobierno propio -- exigirselo obligaria a un archivo por cada skill del
+    inventario para repetir los mismos tres campos -- y hereda el del repositorio. Pero ese gobierno
+    describe el REPOSITORIO, asi que compararlo daba DOS errores garantizados y ninguno accionable:
+    «`id` (demo.sdlc.sueltos) no coincide con `name` (demo.sdlc.revisar-jql)» y «declara `version` y
+    ademas hay un `plugin.json`». Los dos son ciertos por construccion y no hay forma de corregirlos.
+    """
+    del_repositorio = {"id": "demo.sdlc.sueltos", "version": "1.0.2", "owner": {"team": "t"}}
+
+    assert _errores(revisar_gobierno(del_repositorio, MANIFIESTO_CONFORME, heredado=True)) == []
+
+
+def test_un_gobierno_heredado_SIGUE_exigiendo_dueno():
+    """Lo que se hereda es el dueno, y es justo lo que no puede faltar: un artefacto sin dueno real
+    no se puede deprecar, corregir ni retirar. Si la herencia relajara tambien esto, publicar suelto
+    seria la via para saltarse el unico control que no admite excepcion."""
+    sin_dueno = {"id": "demo.sdlc.sueltos", "owner": {}}
+
+    assert "owner.team" in _mensajes(_errores(revisar_gobierno(sin_dueno, MANIFIESTO_CONFORME,
+                                                                heredado=True)))
+
+
 def test_dueno_sin_equipo_es_error():
     errores = _errores(revisar_gobierno({"owner": {}}, None))
     assert "RESOLUBLE" in _mensajes(errores)

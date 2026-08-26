@@ -46,6 +46,42 @@ abortar() {
   exit 1
 }
 
+# EL PREFIJO DE DOMINIO, para nombrar la unidad de un artefacto suelto publicado por separado.
+#
+# Sale del `id` del `GOVERNANCE.json` de la raiz quitandole su ultimo segmento: `demo.sdlc.sueltos`
+# da `demo.sdlc`, y con el nombre del artefacto queda `demo.sdlc.revisar-jql`. Se deriva en vez de
+# preguntarse para que dos artefactos del mismo dominio no acaben con prefijos distintos, que es el
+# defecto medido en el activo del cliente con los campos que se copian a mano.
+prefijo_del_dominio() {  # prefijo_del_dominio <ruta a GOVERNANCE.json>
+  python -c "import json,sys
+d = json.load(open(sys.argv[1], encoding='utf-8'))
+identificador = d.get('id') or ''
+print(identificador.rsplit('.', 1)[0] if '.' in identificador else identificador)" "$1"
+}
+
+# Escribe el manifiesto de una unidad de UN SOLO artefacto.
+#
+# `commands` SOLO PARA LOS PROMPTS, y no es un capricho: la referencia de plugins de Copilot lista
+# `commands` como componente pero es el unico SIN RUTA POR DEFECTO, asi que un prompt sin declararlo
+# se instala y no lo registra nadie -- los archivos aterrizan y no los ve el cliente --. Al
+# declararlo cambia lo que Copilot copia, que es como se comprobo que lo lee. `skills/` y `agents/`
+# si son rutas por defecto en los dos clientes y declararlas seria ruido.
+escribir_manifiesto_de_unidad() {  # ... <destino> <nombre> <descripcion> <tipo>
+  local destino="$1" nombre="$2" descripcion="$3" tipo="$4"
+  mkdir -p "$(dirname "$destino")"
+  python -c "import json,sys
+manifiesto = {
+    '\$schema': 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+    'name': sys.argv[2],
+    'version': '0.1.0',
+    'description': sys.argv[3],
+}
+if sys.argv[4] == 'prompt':
+    manifiesto['commands'] = './commands'
+open(sys.argv[1], 'w', encoding='utf-8').write(json.dumps(manifiesto, indent=2) + '\n')
+" "$destino" "$nombre" "$descripcion" "$tipo"
+}
+
 # DOS FORMAS DE ETIQUETA, y desde aqui no se puede deducir cual usa un repositorio. Un repositorio
 # de un solo plugin en su raiz etiqueta `vX.Y.Z`; uno que aloja varios etiqueta `<nombre>--vX.Y.Z`,
 # porque `vX.Y.Z` no diria de cual es. Las dos se derivan del manifiesto -- `name` y `version` -- y

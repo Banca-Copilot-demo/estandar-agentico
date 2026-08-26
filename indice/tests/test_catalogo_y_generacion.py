@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from indice_agentico.adaptadores import catalogo, github
 from indice_agentico.adaptadores.paquete import LecturaManifiesto
 from indice_agentico.aplicacion.generar import generar
@@ -21,10 +23,11 @@ ESQUEMAS = Path(__file__).resolve().parents[2] / "schemas"
 CLAUDE = catalogo.Proyeccion.CLAUDE_CODE
 
 
-def _entrada(name: str, version: str = "0.2.0") -> Entrada:
+def _entrada(name: str, version: str = "0.2.0", subruta: str | None = None) -> Entrada:
+    extra = {"subruta": subruta} if subruta else {}
     return Entrada(name=name, description="d", version=version,
                    repositorio=f"organizacion/agentes-{name}", etiqueta=f"v{version}",
-                   sha="c" * 40)
+                   sha="c" * 40, **extra)
 
 
 # ── catalogo ───────────────────────────────────────────────────────────────────────────────
@@ -325,3 +328,28 @@ def test_la_combinacion_QUE_FALLA_EN_SILENCIO_se_rechaza(tmp_path):
                                 "path": "plugins/a", "ref": "main"}}]})
 
     assert cli.escribir(indice, tmp_path, {CLAUDE: letal}, ESQUEMAS) == cli.SALIDA_ERROR
+
+
+# ── el artefacto suelto publicado como su propia unidad ─────────────────────────────────────
+@pytest.mark.parametrize("subruta", ["skills/revisar-jql", "commands/resumir", "agents/auditor"],
+                         ids=["skill", "prompt", "agente"])
+@pytest.mark.parametrize("proyeccion", list(catalogo.Proyeccion),
+                         ids=[p.name.lower() for p in catalogo.Proyeccion])
+def test_un_suelto_apunta_a_SU_subruta_en_las_dos_proyecciones(subruta, proyeccion):
+    """LAS DOS PROYECCIONES O NINGUNA. Esta medido que los clientes no aceptan lo mismo: Copilot
+    rechaza la fuente `git-subdir`, y Claude Code acepta `github` con `path` pero IGNORA el path e
+    instala el repositorio ENTERO sin dar error. Una proyeccion correcta y la otra no no seria medio
+    arreglo: seria una instalacion silenciosamente equivocada en uno de los dos clientes.
+
+    Y el `sha` importa tanto como el `path`: es lo que ata lo que el catalogo instala con lo que la
+    atestacion firmo. Comprobado que los dos clientes lo honran -- se fijo el catalogo a un commit,
+    se movio la rama a otro posterior con un marcador y el marcador NO aparecio en lo instalado --.
+    """
+    entrada = _entrada("revisar-jql", version="0.1.0", subruta=subruta)
+    generado = json.loads(catalogo.render(Indice((entrada,), ()), "agentico", PROPIETARIO,
+                                          "0.1.0", proyeccion))
+
+    fuente = generado["plugins"][0]["source"]
+
+    assert fuente["path"] == subruta, fuente
+    assert fuente["sha"] == "c" * 40, fuente

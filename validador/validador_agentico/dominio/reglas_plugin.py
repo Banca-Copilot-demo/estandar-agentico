@@ -44,19 +44,29 @@ def revisar_manifiesto(ruta_relativa: str, manifiesto: dict) -> list[Hallazgo]:
     return hallazgos
 
 
-def revisar_gobierno(gobierno: dict, manifiesto: dict | None) -> list[Hallazgo]:
-    """El `GOVERNANCE.json` del conjunto, con plugin o sin el."""
+def revisar_gobierno(gobierno: dict, manifiesto: dict | None,
+                      heredado: bool = False) -> list[Hallazgo]:
+    """El `GOVERNANCE.json` del conjunto, con plugin o sin el.
+
+    `heredado` significa que el gobierno NO es de esta unidad sino del repositorio que la aloja, que
+    es el caso de un artefacto suelto publicado por separado. Entonces se comprueba lo que SI se
+    hereda -- el dueno -- y se omite lo que describe al repositorio y no a la unidad: su `id` y su
+    `version`. Compararlos daria dos errores garantizados y ninguno accionable: el `id` del
+    repositorio nunca va a ser el `name` del artefacto, y su `version` no es la del paquete.
+    """
     donde = "GOVERNANCE.json"
     hallazgos: list[Hallazgo] = []
+    if not (gobierno.get("owner") or {}).get("team"):
+        hallazgos.append(error(donde, "`owner.team` vacio: el dueno debe ser RESOLUBLE contra la "
+                                      "organizacion. Un artefacto sin dueno real no se puede "
+                                      "deprecar, corregir ni retirar"))
+    if heredado:
+        return hallazgos
     identificador = gobierno.get("id")
     nombre_plugin = (manifiesto or {}).get("name")
     if identificador and nombre_plugin and identificador != nombre_plugin:
         hallazgos.append(error(donde, f"`id` ({identificador}) no coincide con `name` de "
                                       f"plugin.json ({nombre_plugin})"))
-    if not (gobierno.get("owner") or {}).get("team"):
-        hallazgos.append(error(donde, "`owner.team` vacio: el dueno debe ser RESOLUBLE contra la "
-                                      "organizacion. Un artefacto sin dueno real no se puede "
-                                      "deprecar, corregir ni retirar"))
     hallazgos += _revisar_version_del_paquete(donde, gobierno, manifiesto)
     return hallazgos
 

@@ -10,10 +10,25 @@ source "$(dirname "${BASH_SOURCE[0]}")/_comun.sh"
 
 readonly TIPOS_SOPORTADOS="skill agent prompt"
 
+# `--unidad` publica el artefacto COMO SU PROPIA UNIDAD, con manifiesto propio, en vez de dentro del
+# plugin que lo aloje.
+#
+# POR QUE HACE FALTA. Un artefacto suelto SIN manifiesto no entra al catalogo, y esta medido contra
+# los dos clientes: con el contenido en otro repositorio -- que es la topologia real -- la
+# instalacion falla con «No plugin.json found in repository». Sin entrada de catalogo, el ESTADO no
+# lo gobierna: se instala igual este certificado, conforme o suspendido. Con unidad propia obtiene
+# ademas version, etiqueta y digesto propios, en vez de compartirlos con todos los sueltos del
+# repositorio -- donde tocar un prompt cambiaba el digesto del skill que nadie habia tocado --.
+modo_unidad="no"
+if [ "${1:-}" = "--unidad" ]; then
+  modo_unidad="si"
+  shift
+fi
+
 tipo="${1:-}"
 nombre="${2:-}"
 if [ -z "$tipo" ] || [ -z "$nombre" ]; then
-  abortar "uso: generar.sh <tipo> <nombre>   (tipos: $TIPOS_SOPORTADOS)"
+  abortar "uso: generar.sh [--unidad] <tipo> <nombre>   (tipos: $TIPOS_SOPORTADOS)"
 fi
 case " $TIPOS_SOPORTADOS " in
   *" $tipo "*) ;;
@@ -24,9 +39,18 @@ if ! printf '%s' "$nombre" | grep -Eq '^[a-z0-9]+(-[a-z0-9]+)*$'; then
   abortar "el nombre debe ser minusculas, digitos y guiones simples: $nombre"
 fi
 
-raiz="$(raiz_del_plugin)" || abortar "no estoy dentro de un repositorio con $RUTA_MANIFIESTO"
 skill="$(raiz_del_skill)"
-id_plugin="$(campo_del_manifiesto "$raiz/$RUTA_MANIFIESTO" name)"
+if [ "$modo_unidad" = "si" ]; then
+  # La unidad se crea en la RAIZ DEL REPOSITORIO, no dentro de un plugin: es una unidad hermana.
+  raiz="$(git rev-parse --show-toplevel 2>/dev/null)" \
+    || abortar "--unidad necesita estar dentro de un repositorio git"
+  [ -f "$raiz/GOVERNANCE.json" ] \
+    || abortar "--unidad necesita el GOVERNANCE.json de la raiz para heredar dueno y dominio"
+  id_plugin="$(prefijo_del_dominio "$raiz/GOVERNANCE.json").$nombre"
+else
+  raiz="$(raiz_del_plugin)" || abortar "no estoy dentro de un repositorio con $RUTA_MANIFIESTO"
+  id_plugin="$(campo_del_manifiesto "$raiz/$RUTA_MANIFIESTO" name)"
+fi
 
 # El dueno sale del gobierno del repositorio si existe; si no, queda por rellenar y el gate lo dira.
 equipo="EQUIPO"; contacto="CONTACTO"
@@ -35,13 +59,29 @@ if [ -f "$raiz/GOVERNANCE.json" ]; then
   contacto="$(campo_del_dueno "$raiz/GOVERNANCE.json" contact)"
 fi
 
+# DONDE ATERRIZA CADA TIPO. Con `--unidad` el artefacto cuelga de un directorio propio que es la raiz
+# del plugin, y dentro conserva la ruta que su cliente espera. El skill es el unico que NO se anida:
+# un plugin de un solo skill puede llevar su `SKILL.md` en la raiz -- comprobado instalando en los
+# dos clientes --, y entonces el nombre de invocacion sale del frontmatter, sin prefijo de plugin.
 case "$tipo" in
-  skill)  destino="$raiz/skills/$nombre/SKILL.md"
-          plantilla="$skill/assets/skill/SKILL.md" ;;
-  agent)  destino="$raiz/agents/$nombre.agent.md"
-          plantilla="$skill/assets/agent/agent.md" ;;
-  prompt) destino="$raiz/commands/$nombre.prompt.md"
-          plantilla="$skill/assets/prompt/prompt.md" ;;
+  skill)  plantilla="$skill/assets/skill/SKILL.md"
+          if [ "$modo_unidad" = "si" ]; then
+            unidad="$raiz/skills/$nombre"; destino="$unidad/SKILL.md"
+          else
+            destino="$raiz/skills/$nombre/SKILL.md"
+          fi ;;
+  agent)  plantilla="$skill/assets/agent/agent.md"
+          if [ "$modo_unidad" = "si" ]; then
+            unidad="$raiz/agents/$nombre"; destino="$unidad/agents/$id_plugin.agent.md"
+          else
+            destino="$raiz/agents/$nombre.agent.md"
+          fi ;;
+  prompt) plantilla="$skill/assets/prompt/prompt.md"
+          if [ "$modo_unidad" = "si" ]; then
+            unidad="$raiz/commands/$nombre"; destino="$unidad/commands/$id_plugin.prompt.md"
+          else
+            destino="$raiz/commands/$nombre.prompt.md"
+          fi ;;
 esac
 
 [ -e "$destino" ] && abortar "ya existe: $destino"
@@ -53,6 +93,21 @@ sed -e "s/NOMBRE/$nombre/g" \
     "$plantilla" > "$destino"
 
 echo "Creado: ${destino#"$raiz"/}"
+
+if [ "$modo_unidad" = "si" ]; then
+  escribir_manifiesto_de_unidad "$unidad/$RUTA_MANIFIESTO" "$id_plugin" \
+    "PENDIENTE: la misma descripcion del artefacto." "$tipo"
+  echo "Creado: ${unidad#"$raiz"/}/$RUTA_MANIFIESTO   (se publica como $id_plugin v0.1.0)"
+  echo
+  echo "Falta lo que solo tu sabes: la description y el cuerpo. Todo lo marcado PENDIENTE."
+  echo "La description va en DOS sitios y el gate comprueba que coincidan: el frontmatter del"
+  echo "artefacto y el manifiesto de su unidad."
+  echo
+  echo "NO toques el inventario del GOVERNANCE.json de la raiz: esta unidad no forma parte del"
+  echo "conjunto suelto, se publica sola y hereda de la raiz solo el dueno y el dominio."
+  exit 0
+fi
+
 echo
 echo "Falta lo que solo tu sabes: la description y el cuerpo. Todo lo marcado PENDIENTE."
 echo "Y acuerdate de subir el contador de este tipo en GOVERNANCE.json: el gate compara"

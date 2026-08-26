@@ -66,11 +66,24 @@ _TIEMPO_LIMITE_S = 30
 # `upsert` actualiza si ya existe, y `merge` conserva las propiedades que este payload no trae.
 _RUTA_ENTIDADES = f"/v1/blueprints/{BLUEPRINT}/entities?upsert=true&merge=true"
 
-# Los tipos que un plugin TRANSPORTA. Agent Plugins v1 cubre skills y MCP; Copilot documenta
-# cinco componentes -- agents, skills, hooks, .mcp.json, lsp.json --. NI `prompt` NI `instructions`
-# estan en ninguna de las dos listas, asi que viajan por otro canal aunque vivan en el mismo
-# repositorio y esten dentro del paquete sellado.
-_TIPOS_EN_PLUGIN = frozenset({"skill", "agent", "mcp", "hooks"})
+# Los tipos que un plugin TRANSPORTA.
+#
+# `prompt` SE AÑADIO DESPUES, y el comentario anterior decia lo contrario: que ni `prompt` ni
+# `instructions` estaban en ninguna lista de componentes y por eso «viajan por otro canal». Estaba
+# incompleto, y se vio MIDIENDO en vez de leyendo:
+#
+#   - la referencia de plugins de Copilot SI lista `commands` como componente, con un matiz que lo
+#     explica todo: es el unico SIN RUTA POR DEFECTO. Por eso un prompt dentro de un plugin se
+#     instalaba sin registrarse -- los archivos aterrizaban y no los veia nadie --;
+#   - al declarar `commands` en el manifiesto, el comportamiento CAMBIA de forma observable: Copilot
+#     copia SOLO el directorio declarado en vez de copiarlo todo a ciegas, lo que prueba que lee la
+#     declaracion. En Claude Code `commands/` si es ruta por defecto y se registra sin declararla.
+#
+# CONSECUENCIA PARA QUIEN GENERE EL MANIFIESTO: una unidad de tipo `prompt` tiene que declarar
+# `commands`; skills y agentes no lo necesitan porque sus rutas SI son las de por defecto.
+#
+# `instructions` sigue fuera: dejo de ser un tipo gobernado porque no hay canal que la distribuya.
+_TIPOS_EN_PLUGIN = frozenset({"skill", "agent", "prompt", "mcp", "hooks"})
 
 
 def plugin_que_contiene(ruta_del_artefacto: str, plugins: list[dict]) -> str:
@@ -118,9 +131,13 @@ def _pista_de_instalacion(artefacto: dict, en_marketplace: bool, repositorio: st
         nombre = artefacto["ruta"].rsplit("/", 2)[-2]
         return f"gh skill install {repositorio} {nombre}@{etiqueta}"
 
-    # Un `prompt` no lo instala ninguna herramienta oficial: no es componente de plugin y `gh skill`
-    # es exclusivo de skills. Se trae el archivo FIJADO AL SHA -- no a la etiqueta -- porque el sha
-    # es lo que quedo sellado, y el nombre del destino lo fija el cliente, no nosotros.
+    # UN PROMPT FUERA DE TODO PLUGIN. Es el unico camino que queda sin catalogo, y por eso tambien es
+    # el unico que el estado no gobierna: quien lo siga instalara el archivo este certificado,
+    # conforme o suspendido. La salida es publicarlo como su propia unidad -- con manifiesto que
+    # declare `commands` --, no mejorar esta pista.
+    #
+    # Se trae el archivo FIJADO AL SHA -- no a la etiqueta -- porque el sha es lo que quedo sellado, y
+    # el nombre del destino lo fija el cliente, no nosotros.
     destino = f"{_DESTINO_PROMPT}/{artefacto['ruta'].rsplit('/', 1)[-1]}"
     return (f"curl -fsSL https://raw.githubusercontent.com/{repositorio}/{sha}/"
             f"{artefacto['ruta']} -o {destino}")
@@ -144,8 +161,13 @@ def _pista_de_verificacion(artefacto: dict, en_marketplace: bool, repositorio: s
 
 
 def _entidad(artefacto: dict, veredicto: dict, argumentos: argparse.Namespace) -> dict:
-    en_marketplace = veredicto["inventario"]["tiene_plugin"] and \
-        artefacto["tipo"] in _TIPOS_EN_PLUGIN
+    # EL PLUGIN DE ESTE ARTEFACTO, no el del repositorio. `tiene_plugin` es del repositorio entero, y
+    # usarlo aqui daba por instalable-por-catalogo a un artefacto suelto SIN plugin solo porque un
+    # vecino si lo tenia -- y entonces la pista salia como `plugin install @agentico`, con el nombre
+    # vacio: un comando que no resuelve. Con la publicacion por artefacto suelto individual el caso
+    # deja de ser teorico, porque en un mismo repositorio conviven sueltos con manifiesto y sin el.
+    plugin_del_artefacto = plugin_que_contiene(artefacto["ruta"], veredicto.get("plugins") or [])
+    en_marketplace = bool(plugin_del_artefacto) and artefacto["tipo"] in _TIPOS_EN_PLUGIN
     return {
         "identifier": artefacto["id"],
         "title": f"{artefacto['id']} ({artefacto['tipo']})",
@@ -163,9 +185,7 @@ def _entidad(artefacto: dict, veredicto: dict, argumentos: argparse.Namespace) -
             "digest": argumentos.digest,
             "install_hint": _pista_de_instalacion(
                 artefacto, en_marketplace, argumentos.repositorio, argumentos.sha,
-                argumentos.etiqueta,
-                # El plugin de ESTE artefacto, no el del repositorio: ver `plugin_que_contiene`.
-                plugin_que_contiene(artefacto["ruta"], veredicto.get("plugins") or [])),
+                argumentos.etiqueta, plugin_del_artefacto),
             "verify_hint": _pista_de_verificacion(
                 artefacto, en_marketplace, argumentos.repositorio, artefacto["ruta"]),
             "sha256_archivo": artefacto.get("sha256", ""),

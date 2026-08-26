@@ -180,3 +180,36 @@ def test_un_nombre_de_carpeta_FUERA_de_la_lista_conocida_cuenta_como_referencia(
 
 def test_un_artefacto_sin_carpetas_no_avisa():
     assert revisar_recursos_no_referenciados("skills/x/SKILL.md", "", frozenset({"skills/x/SKILL.md"})) == []
+
+
+def test_el_manifiesto_del_plugin_NO_se_pide_referenciar():
+    """REGRESION medida al publicar un artefacto suelto POR SEPARADO, que exige manifiesto propio --
+    comprobado instalando en los dos clientes: sin `plugin.json` la instalacion falla con «No
+    plugin.json found in repository» --.
+
+    Al anadirlo, el gate avisaba «la carpeta `.claude-plugin/` existe y el artefacto no la
+    referencia». Era un aviso IMPOSIBLE DE ATENDER: el manifiesto no es un recurso del artefacto, lo
+    lee el CLIENTE, y mencionarlo desde el SKILL.md no tendria ningun sentido. Un aviso que solo se
+    puede callar ignorandolo ensena a ignorar los avisos.
+    """
+    arbol = frozenset({
+        "skills/crear/SKILL.md",
+        "skills/crear/.claude-plugin/plugin.json",
+    })
+
+    assert revisar_recursos_no_referenciados(DONDE, "", arbol) == []
+
+
+def test_una_carpeta_de_recursos_SIGUE_avisando_junto_al_manifiesto():
+    """La exclusion es de la maquinaria, no de todo: si tambien callara los recursos reales, el
+    arreglo habria desactivado la regla en vez de acotarla."""
+    arbol = frozenset({
+        "skills/crear/SKILL.md",
+        "skills/crear/.claude-plugin/plugin.json",
+        "skills/crear/library-source/Lib.java",
+    })
+
+    avisos = _avisos(revisar_recursos_no_referenciados(DONDE, "", arbol))
+
+    assert "library-source" in _mensajes(avisos)
+    assert ".claude-plugin" not in _mensajes(avisos)

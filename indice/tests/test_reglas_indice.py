@@ -6,6 +6,8 @@ lo demas siga en verde.
 """
 from __future__ import annotations
 
+import pytest
+
 from indice_agentico.dominio.candidato import Candidato, Destino, Motivo
 from indice_agentico.dominio.reglas_etiquetas import etiquetas_vigentes, version_de_la_etiqueta
 from indice_agentico.dominio.reglas_indice import evaluar
@@ -211,3 +213,52 @@ def test_se_leen_los_DOS_formatos_de_predicado():
     for veredicto in (viejo, nuevo):
         version = veredicto["formato_version"]
         assert evaluar(_candidato(veredicto=veredicto)).destino is Destino.INDEXAR, version
+
+
+# ── el artefacto suelto publicado como su propia unidad ─────────────────────────────────────
+_SUELTOS = [
+    ("demo.sdlc.revisar-jql", "skills/revisar-jql"),
+    ("demo.sdlc.resumir", "commands/resumir"),
+    ("demo.sdlc.auditor", "agents/auditor"),
+]
+
+
+@pytest.mark.parametrize("nombre, subruta", _SUELTOS,
+                         ids=["skill", "prompt", "agente"])
+def test_un_suelto_con_unidad_propia_SE_INDEXA_con_su_subruta(nombre, subruta):
+    """Sin entrada en el catalogo un artefacto no queda sujeto al ESTADO: se instalaria igual
+    estuviera certificado, conforme o suspendido. Por eso lo que decide esta regla es si el control
+    que pidio el cliente alcanza tambien a los sueltos.
+
+    LA SUBRUTA ES LO CRITICO. Sale del veredicto FIRMADO y no del paquete -- el paquete trae el
+    manifiesto en su raiz, asi que sus bytes no dicen de que subdirectorio salieron --. Si faltara,
+    la regla rechaza en vez de emitir la fuente del repositorio entero: esta medido que Claude Code
+    ignora el `path` con un tipo de origen e instalaria el repositorio completo sin dar error.
+    """
+    manifiesto = {**MANIFIESTO, "name": nombre, "version": "0.1.0"}
+    candidato = _candidato(
+        etiqueta=f"{nombre}--v0.1.0",
+        manifiesto=manifiesto,
+        veredicto={**VEREDICTO_CONFORME,
+                   "plugins": [{"nombre": nombre, "subruta": subruta, "version": "0.1.0"}]})
+
+    decision = evaluar(candidato)
+
+    assert decision.destino is Destino.INDEXAR
+    assert decision.entrada.name == nombre
+    assert decision.entrada.subruta == subruta
+
+
+def test_un_suelto_cuya_subruta_no_declara_el_veredicto_se_RECHAZA():
+    """No se degrada a la raiz del repositorio: eso seria un puntero valido en forma y equivocado en
+    contenido, y el cliente instalaria el repositorio entero creyendo que instala un skill."""
+    manifiesto = {**MANIFIESTO, "name": "demo.sdlc.revisar-jql", "version": "0.1.0"}
+    candidato = _candidato(
+        etiqueta="demo.sdlc.revisar-jql--v0.1.0",
+        manifiesto=manifiesto,
+        veredicto={**VEREDICTO_CONFORME, "plugins": [{"nombre": "otro", "subruta": "plugins/otro"}]})
+
+    decision = evaluar(candidato)
+
+    assert decision.destino is not Destino.INDEXAR
+    assert decision.motivo is Motivo.SUBRUTA_NO_RESUELTA

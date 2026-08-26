@@ -28,8 +28,8 @@ from validador_agentico.dominio.reglas_layout import tiene_artefactos_propios
 
 
 def artefactos_sin_unidad(raiz: Path, hay_plugins: bool, publica_el_conjunto_suelto: bool,
-                           directorios: tuple[str, ...],
-                           archivos: tuple[str, ...]) -> tuple[str, ...]:
+                           directorios: tuple[str, ...], archivos: tuple[str, ...],
+                           rutas_manifiesto: tuple[str, ...]) -> tuple[str, ...]:
     """Las rutas de artefacto de la raiz que no las publica nadie.
 
     `publica_el_conjunto_suelto` es si la raiz declara `version` en su gobierno. Llega como dato
@@ -38,16 +38,28 @@ def artefactos_sin_unidad(raiz: Path, hay_plugins: bool, publica_el_conjunto_sue
 
     Vacio en los dos casos en que si hay quien publique: cuando la raiz declara su version, y cuando
     no hay plugins -- ahi el repositorio entero es la unidad y sus artefactos SON el paquete --.
+
+    UN ARTEFACTO CON MANIFIESTO PROPIO NO ES HUERFANO: es su propia unidad publicable, con version,
+    digesto y entrada de catalogo propios. `rutas_manifiesto` es lo que permite distinguirlo, y sin
+    ese dato esta regla acusaba de huerfano justo al artefacto mejor publicado del repositorio.
+    MEDIDO: con un plugin anidado, un skill suelto CON manifiesto y una raiz que no declara version,
+    reportaba `skills/`. No salio antes porque el repositorio de prueba SI declaraba version, asi que
+    la regla salia por la primera condicion -- otro control que pasaba por coincidencia --.
     """
     if not hay_plugins or publica_el_conjunto_suelto:
         return ()
-    if not tiene_artefactos_propios(raiz, directorios, archivos):
+    if not tiene_artefactos_propios(raiz, directorios, archivos, rutas_manifiesto):
         return ()
 
     sin_unidad: list[str] = []
     for nombre in directorios:
         directorio = raiz / nombre
-        if directorio.is_dir() and any(directorio.iterdir()):
+        if not directorio.is_dir():
+            continue
+        huerfanos = [hijo for hijo in directorio.iterdir()
+                     if not (hijo.is_dir()
+                             and any((hijo / ruta).is_file() for ruta in rutas_manifiesto))]
+        if huerfanos:
             sin_unidad.append(f"{nombre}/")
     sin_unidad += [nombre for nombre in archivos if (raiz / nombre).is_file()]
     return tuple(sorted(sin_unidad))

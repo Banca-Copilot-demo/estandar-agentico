@@ -103,8 +103,14 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
     artefactos: list = []
     plugins: list = []
     custodia: dict = {}
+    # SOLO los artefactos sueltos publicados por separado heredan el gobierno de la raiz. Un plugin
+    # declara el suyo: agrupa varios artefactos y puede tener dueno distinto del repositorio.
+    individuales = frozenset(reglas_layout.raices_de_artefacto_individual(
+        raiz, RUTAS_MANIFIESTO, _DIRECTORIOS_DE_ARTEFACTOS))
     for raiz_plugin in raices:
-        contenido = repositorio.leer(raiz_plugin, lector)
+        contenido = repositorio.leer(
+            raiz_plugin, lector,
+            gobierno_de_respaldo=raiz / RUTA_GOBIERNO if raiz_plugin in individuales else None)
         prefijo = _prefijo_de(raiz_plugin, raiz, varios)
         parcial = proyeccion.construir_inventario(contenido)
         inventario = proyeccion.sumar_inventarios(inventario, parcial)
@@ -191,11 +197,19 @@ def _revisar_gobierno(contenido: ContenidoRepositorio, inventario: Inventario) -
     if not contenido.gobierno.es_legible:
         return _hallazgo_de_formato(contenido.gobierno)
     manifiesto = contenido.manifiesto.contenido if inventario.tiene_plugin else None
-    return [
-        *reglas_plugin.revisar_gobierno(contenido.gobierno.contenido, manifiesto),
-        *reglas_plugin.revisar_inventario(
-            (contenido.gobierno.contenido.get("artifacts") or {}), inventario),
-    ]
+    hallazgos = list(reglas_plugin.revisar_gobierno(contenido.gobierno.contenido, manifiesto,
+                                                    heredado=contenido.gobierno_heredado))
+    if contenido.gobierno_heredado:
+        # EL INVENTARIO DEL GOBIERNO HEREDADO CUENTA LOS ARTEFACTOS DEL REPOSITORIO, no los de esta
+        # unidad, asi que cotejarlo contra el arbol de la unidad da errores garantizados: un agente
+        # suelto individual produce «declara 1 skills y el arbol real tiene 0».
+        #
+        # SE MIDIO QUE EL SKILL PASABA POR CASUALIDAD: la raiz declaraba 1 skill y esa unidad tenia
+        # exactamente 1, asi que el cotejo cuadraba por coincidencia. Con dos sueltos habria fallado
+        # igual. Que un control pase por azar es peor que si fallara: parece que cubre algo.
+        return hallazgos
+    return [*hallazgos, *reglas_plugin.revisar_inventario(
+        (contenido.gobierno.contenido.get("artifacts") or {}), inventario)]
 
 
 def _revisar_skills(contenido: ContenidoRepositorio) -> list[Hallazgo]:
@@ -356,7 +370,8 @@ def _revisar_sin_unidad(raiz: Path, contenido_de_la_raiz: ContenidoRepositorio) 
         hay_plugins=bool(reglas_layout.raices_de_plugin(raiz, RUTAS_MANIFIESTO)),
         publica_el_conjunto_suelto=publica,
         directorios=_DIRECTORIOS_DE_ARTEFACTOS,
-        archivos=_ARCHIVOS_DE_ARTEFACTOS)
+        archivos=_ARCHIVOS_DE_ARTEFACTOS,
+        rutas_manifiesto=RUTAS_MANIFIESTO)
     return reglas_huerfanos.revisar_sin_unidad(rutas)
 
 

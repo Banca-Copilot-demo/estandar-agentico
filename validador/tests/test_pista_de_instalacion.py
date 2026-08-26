@@ -94,3 +94,45 @@ def test_un_prefijo_PARCIAL_no_cuenta_como_pertenencia():
     plugins = [{"nombre": "demo.sdlc.referencia", "subruta": "plugins/referencia"}]
 
     assert fichas.plugin_que_contiene("plugins/referencia-vieja/skills/x/SKILL.md", plugins) == ""
+
+
+# ── el artefacto suelto publicado como su propia unidad ─────────────────────────────────────
+_SUELTOS = [
+    {"nombre": "demo.sdlc.revisar-jql", "subruta": "skills/revisar-jql"},
+    {"nombre": "demo.sdlc.resumir", "subruta": "commands/resumir"},
+    {"nombre": "demo.sdlc.auditor", "subruta": "agents/auditor"},
+]
+
+
+@pytest.mark.parametrize("tipo, ruta, esperado", [
+    ("skill", "skills/revisar-jql/SKILL.md", "demo.sdlc.revisar-jql"),
+    ("prompt", "commands/resumir/commands/demo.sdlc.resumir.prompt.md", "demo.sdlc.resumir"),
+    ("agent", "agents/auditor/agents/demo.sdlc.auditor.agent.md", "demo.sdlc.auditor"),
+])
+def test_un_suelto_con_unidad_propia_se_instala_DESDE_EL_CATALOGO(tipo, ruta, esperado):
+    """El `install_hint` es lo unico que el consumidor EJECUTA, asi que es donde se decide si pasa
+    por el catalogo o se lo salta. Un suelto que se instalara por su canal propio -- `gh skill
+    install` o `curl` -- resolveria contra el repositorio y la etiqueta, sin tocar el catalogo: y
+    entonces el ESTADO no lo gobierna, que es justo lo que la publicacion por unidad evita.
+
+    EL PROMPT ES EL CASO QUE FALTABA: se excluia por un comentario que decia que no era componente de
+    plugin. La referencia de Copilot SI lo lista, con la particularidad de no tener ruta por defecto,
+    y al declararla el cliente cambia lo que copia -- prueba de que la lee --.
+    """
+    artefacto = {"tipo": tipo, "ruta": ruta}
+    plugin = fichas.plugin_que_contiene(ruta, _SUELTOS)
+
+    assert plugin == esperado
+    pista = fichas._pista_de_instalacion(artefacto, True, "org/repo", "0" * 40, "x--v0.1.0", plugin)
+    assert pista == f"copilot plugin install {esperado}@{fichas.CATALOGO}", pista
+
+
+def test_un_suelto_SIN_plugin_no_manda_a_instalar_del_catalogo():
+    """REGRESION de un defecto latente: `en_marketplace` miraba si el REPOSITORIO tenia algun plugin,
+    no si ESTE artefacto pertenecia a uno. Un suelto sin manifiesto en un repositorio con plugins
+    daba `plugin install @agentico` -- con el nombre vacio, un comando que no resuelve --.
+
+    Dejo de ser teorico al poder publicar sueltos por unidad: en el mismo repositorio conviven ahora
+    sueltos con manifiesto y sin el.
+    """
+    assert fichas.plugin_que_contiene("skills/sin-manifiesto/SKILL.md", _SUELTOS) == ""
