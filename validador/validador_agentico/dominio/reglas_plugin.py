@@ -44,15 +44,12 @@ def revisar_manifiesto(ruta_relativa: str, manifiesto: dict) -> list[Hallazgo]:
     return hallazgos
 
 
-def revisar_gobierno(gobierno: dict, manifiesto: dict | None,
-                      heredado: bool = False) -> list[Hallazgo]:
-    """El `GOVERNANCE.json` del conjunto, con plugin o sin el.
+def revisar_gobierno(gobierno: dict, manifiesto: dict | None) -> list[Hallazgo]:
+    """El `GOVERNANCE.json` de la unidad, con plugin o sin el.
 
-    `heredado` significa que el gobierno NO es de esta unidad sino del repositorio que la aloja, que
-    es el caso de un artefacto suelto publicado por separado. Entonces se comprueba lo que SI se
-    hereda -- el dueno -- y se omite lo que describe al repositorio y no a la unidad: su `id` y su
-    `version`. Compararlos daria dos errores garantizados y ninguno accionable: el `id` del
-    repositorio nunca va a ser el `name` del artefacto, y su `version` no es la del paquete.
+    SIEMPRE ES EL DE ESTA UNIDAD. Hubo un modo `heredado` que omitia `id` y `version` porque el
+    gobierno podia ser el del repositorio que aloja al artefacto suelto; se retiro con la herencia,
+    asi que los dos campos describen lo que se publica aqui y se comprueban sin excepcion.
     """
     donde = "GOVERNANCE.json"
     hallazgos: list[Hallazgo] = []
@@ -60,11 +57,10 @@ def revisar_gobierno(gobierno: dict, manifiesto: dict | None,
         hallazgos.append(error(donde, "`owner.team` vacio: el dueno debe ser RESOLUBLE contra la "
                                       "organizacion. Un artefacto sin dueno real no se puede "
                                       "deprecar, corregir ni retirar"))
-    if heredado:
-        # Un gobierno heredado es el del repositorio que aloja la unidad, y ese MISMO archivo ya se
-        # revisa como gobierno propio de la raiz. Lo que quede aqui se repetiria una vez por cada
-        # artefacto suelto del repositorio.
-        return hallazgos
+    # EL AVISO DEL `status` RETIRADO YA NO SE CONDICIONA A NADA, y antes si: vivia detras de un
+    # `if heredado` que retornaba temprano, para no repetirlo una vez por cada artefacto suelto que
+    # compartia el gobierno de la raiz. Sin herencia no hay nada que compartir -- cada unidad trae el
+    # suyo --, asi que cada aviso corresponde a un archivo distinto y ninguno se duplica.
     hallazgos += _revisar_estado_retirado(donde, gobierno)
     identificador = gobierno.get("id")
     nombre_plugin = (manifiesto or {}).get("name")
@@ -140,9 +136,24 @@ def _revisar_version_del_paquete(donde: str, gobierno: dict,
     return []
 
 
-def revisar_gobierno_ausente() -> list[Hallazgo]:
-    """El repositorio declara un plugin pero no su gobierno."""
-    return [error("GOVERNANCE.json", "el repositorio declara un plugin pero no su gobierno")]
+def revisar_gobierno_ausente(unidad: str, que_publica: str) -> list[Hallazgo]:
+    """Una unidad publicable que no declara su `GOVERNANCE.json`.
+
+    ES UN ERROR Y NO UN SILENCIO, y el silencio era el defecto. Antes esto solo se reclamaba cuando
+    la unidad traia `plugin.json`; un artefacto suelto con manifiesto propio se quedaba sin gobierno
+    y el gate lo suplia con el de la raiz del repositorio. Medido en `agentes-sdlc`: seis unidades
+    publicables y `skills/revisar-jql` acababa con el `owner.team` de la raiz sin declararlo nadie.
+    Heredar el dueno por vecindad es exactamente lo que este marco existe para impedir: el dueno es a
+    quien se le pide la aprobacion y a quien se le abre el issue.
+
+    `unidad` y `que_publica` van en el mensaje porque el hallazgo se lee en un repositorio con varias
+    unidades, y «falta el gobierno» a secas no dice cual ni por que le toca declararlo.
+    """
+    return [error("GOVERNANCE.json",
+                  f"la unidad `{unidad}` se publica por separado -- {que_publica} -- y no declara su "
+                  "GOVERNANCE.json. Cada unidad publicable declara el suyo: el dueno, el estado y la "
+                  "clasificacion NO se heredan del repositorio que la aloja, o todos los artefactos "
+                  "de un repositorio acabarian con el mismo dueno por vecindad")]
 
 
 def revisar_inventario(declarado: dict, inventario: Inventario) -> list[Hallazgo]:

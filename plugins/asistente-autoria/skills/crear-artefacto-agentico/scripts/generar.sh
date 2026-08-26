@@ -44,12 +44,15 @@ if [ "$modo_unidad" = "si" ]; then
   # La unidad se crea en la RAIZ DEL REPOSITORIO, no dentro de un plugin: es una unidad hermana.
   raiz="$(git rev-parse --show-toplevel 2>/dev/null)" \
     || abortar "--unidad necesita estar dentro de un repositorio git"
+  # El gobierno de la raiz no gobierna a esta unidad: es de donde se COPIAN el dominio, el dueno y la
+  # version del estandar al gobierno PROPIO que se genera abajo. Copiados quedan escritos y se
+  # revisan; heredados en tiempo de validacion no los veia nadie.
   [ -f "$raiz/GOVERNANCE.json" ] \
-    || abortar "--unidad necesita el GOVERNANCE.json de la raiz para heredar dueno y dominio"
+    || abortar "--unidad necesita el GOVERNANCE.json de la raiz de donde copiar dominio y dueno"
   id_plugin="$(prefijo_del_dominio "$raiz/GOVERNANCE.json").$nombre"
 else
   raiz="$(raiz_del_plugin)" || abortar "no estoy dentro de un repositorio con $RUTA_MANIFIESTO"
-  id_plugin="$(campo_del_manifiesto "$raiz/$RUTA_MANIFIESTO" name)"
+  id_plugin="$(campo_json "$raiz/$RUTA_MANIFIESTO" name)"
 fi
 
 # El dueno sale del gobierno del repositorio si existe; si no, queda por rellenar y el gate lo dira.
@@ -98,13 +101,23 @@ if [ "$modo_unidad" = "si" ]; then
   escribir_manifiesto_de_unidad "$unidad/$RUTA_MANIFIESTO" "$id_plugin" \
     "PENDIENTE: la misma descripcion del artefacto." "$tipo"
   echo "Creado: ${unidad#"$raiz"/}/$RUTA_MANIFIESTO   (se publica como $id_plugin v0.1.0)"
+  # EL GOBIERNO DE LA UNIDAD SE GENERA AQUI, y es lo que hace viable exigirlo. Sin generarlo, cada
+  # suelto obligaria a escribir a mano un archivo con los mismos campos -- y ese coste fue justo el
+  # argumento con el que el gate acabo heredando el gobierno de la raiz, con su dueno incluido.
+  escribir_gobierno_de_unidad "$unidad/$RUTA_GOBIERNO" "$id_plugin" "$tipo" "$raiz/$RUTA_GOBIERNO"
+  echo "Creado: ${unidad#"$raiz"/}/$RUTA_GOBIERNO   (dueno: $equipo)"
   echo
   echo "Falta lo que solo tu sabes: la description y el cuerpo. Todo lo marcado PENDIENTE."
   echo "La description va en DOS sitios y el gate comprueba que coincidan: el frontmatter del"
   echo "artefacto y el manifiesto de su unidad."
   echo
+  echo "COMPRUEBA EL DUENO de ${unidad#"$raiz"/}/$RUTA_GOBIERNO. Se copio el de la raiz del"
+  echo "repositorio para que arranques, pero esta unidad se publica sola: si quien la mantiene no"
+  echo "es $equipo, corrigelo ahora -- es a ese equipo a quien se le pedira la aprobacion y a"
+  echo "quien se le abrira el issue cuando el artefacto falle."
+  echo
   echo "NO toques el inventario del GOVERNANCE.json de la raiz: esta unidad no forma parte del"
-  echo "conjunto suelto, se publica sola y hereda de la raiz solo el dueno y el dominio."
+  echo "conjunto suelto y lleva el suyo."
   exit 0
 fi
 

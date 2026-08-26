@@ -85,15 +85,8 @@ class ContenidoRepositorio:
 
     manifiesto: ArchivoJson | None = None
     gobierno: ArchivoJson | None = None
-    gobierno_heredado: bool = False
-    """El gobierno no es de esta unidad sino del repositorio que la aloja. Pasa con un ARTEFACTO
-    SUELTO publicado por separado, que no declara gobierno propio.
-
-    IMPORTA PARA LAS REGLAS DE IDENTIDAD: un gobierno heredado describe el REPOSITORIO, asi que su
-    `id` y su `version` no son los de esta unidad y compararlos con el manifiesto da un error falso
-    -- medido: «`id` (demo.sdlc.sueltos) no coincide con `name` (demo.sdlc.revisar-jql)», que es
-    exactamente lo que debe pasar y no un defecto --. Lo que si se hereda y si aplica es el DUENO,
-    el dominio y la clasificacion del dato."""
+    """El `GOVERNANCE.json` DE ESTA UNIDAD, o `None` cuando no lo trae -- y entonces el gate lo
+    reclama, no lo suple con el de nadie. No hay herencia (ver `leer`)."""
     hooks: ArchivoJson | None = None
     # El `.mcp.json` LEIDO, no solo contado: hay reglas que se aplican sobre lo que declara -- que
     # sus referencias esten FIJADAS a una version, por ejemplo -- y para eso hace falta su contenido.
@@ -286,32 +279,30 @@ def _leer_archivos_escaneables(raiz: Path) -> tuple[tuple[str, str], ...]:
     return tuple(escaneables)
 
 
-def leer(raiz: Path, lector, gobierno_de_respaldo: Path | None = None) -> ContenidoRepositorio:
+def leer(raiz: Path, lector) -> ContenidoRepositorio:
     """Lee el repositorio completo una sola vez. `lector` es el adaptador de frontmatter.
 
-    `gobierno_de_respaldo` es el `GOVERNANCE.json` que se usa cuando la unidad no trae el suyo. Solo
-    lo pasa el composition root, y solo para un ARTEFACTO SUELTO publicado por separado: ese artefacto
-    vive en el repositorio del dominio, cuyo gobierno de la raiz ya declara dueno, dominio y
-    clasificacion. Exigirle uno propio obligaria a escribir un archivo de gobierno por cada skill del
-    inventario -- decenas -- para repetir los mismos tres campos. Un PLUGIN si declara el suyo: agrupa
-    varios artefactos y puede tener dueno distinto del repositorio que lo aloja.
+    EL GOBIERNO SE LEE DE LA UNIDAD Y DE NINGUN OTRO SITIO. Hubo un respaldo -- un artefacto suelto
+    con manifiesto propio que no traia `GOVERNANCE.json` se quedaba con el de la raiz del
+    repositorio -- y se retira porque lo que heredaba era justo lo que no se puede heredar: el DUENO.
+    Medido en `agentes-sdlc`: `skills/revisar-jql/` es su propia unidad publicable -- etiqueta,
+    paquete y ficha propios -- y acababa con el `owner.team` de la raiz por el mero hecho de vivir
+    ahi, EN SILENCIO y sin que ningun hallazgo lo dijera. El dueno es el eje del gobierno -- a quien
+    se pide aprobacion y a quien se abre el issue --, asi que atribuirlo por vecindad convierte todos
+    los sueltos de un repositorio en propiedad del mismo equipo sin que eso sea cierto.
+
+    El argumento que sostenia el respaldo -- «obligaria a escribir un archivo por cada suelto para
+    repetir los mismos tres campos» -- decae: el gobierno del suelto lo GENERA el asistente de
+    autoria junto al manifiesto, no se teclea.
     """
     log.debug("leyendo el repositorio %s", raiz)
     manifiesto = _primera_existente(raiz, RUTAS_MANIFIESTO)
     gobierno = raiz / RUTA_GOBIERNO
-    # La BASE del gobierno se lleva aparte porque un gobierno heredado NO cuelga de la unidad, y
-    # `_leer_json` calcula su ruta relativa contra la base que se le da.
-    base_del_gobierno = raiz
-    if not gobierno.exists() and gobierno_de_respaldo is not None and gobierno_de_respaldo.exists():
-        log.debug("%s hereda el gobierno de %s", raiz, gobierno_de_respaldo)
-        gobierno = gobierno_de_respaldo
-        base_del_gobierno = gobierno_de_respaldo.parent
     hooks = _primera_existente(raiz, RUTAS_HOOKS)
     agentes_leidos = _leer_agentes(raiz, lector)
     return ContenidoRepositorio(
         manifiesto=_leer_json(raiz, manifiesto) if manifiesto else None,
-        gobierno=_leer_json(base_del_gobierno, gobierno) if gobierno.exists() else None,
-        gobierno_heredado=base_del_gobierno != raiz,
+        gobierno=_leer_json(raiz, gobierno) if gobierno.exists() else None,
         hooks=_leer_json(raiz, hooks) if hooks else None,
         mcp=_leer_json(raiz, _archivo_mcp(raiz)) if _archivo_mcp(raiz) else None,
         suites_de_evals=_leer_suites_de_evals(raiz),

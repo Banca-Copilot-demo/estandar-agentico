@@ -10,7 +10,7 @@ metadata:
   owner_contact: plataforma-agentica@ejemplo.dev
   data_classification: internal
   status: draft
-  version: "0.1.0"
+  version: "0.2.0"
   standard_version: "7.0.0"
 ---
 
@@ -97,9 +97,19 @@ Lo que el modo `--unidad` resuelve por su cuenta, y conviene no rehacerlo a mano
   necesitan. `commands` es el unico componente **sin ruta por defecto** en Copilot, asi que sin
   declararlo el prompt se instala y no lo registra nadie: los archivos aterrizan y no los ve el
   cliente.
+- **Su `GOVERNANCE.json` propio**, en la raiz de la unidad — **hermano de `.claude-plugin/`, nunca
+  dentro**. Ese directorio lo lee el cliente y su contenido lo fija una especificacion que no
+  controlamos; y todo lo que cuelga de la unidad viaja en el paquete sellado hasta la maquina de
+  quien instala, mientras que el gobierno lleva equipo dueño, correo de contacto y clasificación del
+  dato: información interna que un consumidor no necesita.
 
-**El inventario del `GOVERNANCE.json` de la raiz no se toca**: la unidad no forma parte del conjunto
-suelto, se publica sola y de la raiz solo hereda el dueno y el dominio.
+**Comprueba el dueño del gobierno generado.** El equipo y el contacto se **copian** de la raíz del
+repositorio para que arranques; no se heredan. Quedan escritos en el archivo de la unidad y se ven en
+la revisión. Si quien mantiene este artefacto no es ese equipo, corrígelo antes de abrir el PR: es a
+ese equipo al que se le pedirá la aprobación y al que se le abrirá el issue cuando el artefacto falle.
+
+**El inventario del `GOVERNANCE.json` de la raíz no se toca**: la unidad no forma parte del conjunto
+suelto y lleva el suyo.
 
 ## Paso 4 · Completa lo que solo el desarrollador sabe
 

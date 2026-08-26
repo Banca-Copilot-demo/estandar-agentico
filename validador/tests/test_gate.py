@@ -47,10 +47,25 @@ Cuerpo del skill.
 
 def _repositorio_minimo(raiz: Path) -> Path:
     """Un repositorio con un unico skill conforme y sin plugin: el caso mas simple que el gate
-    considera CONFORME (la ausencia de plugin es solo un aviso)."""
+    considera CONFORME (la ausencia de plugin es solo un aviso).
+
+    EL GOBIERNO ES PARTE DEL MINIMO desde que se retiro la herencia: la raiz es aqui la unidad
+    publicable del conjunto suelto, y una unidad que publica algo declara su dueno. Sin el archivo
+    esta fixture dejo de ser «lo minimo conforme» y paso a montar el caso del defecto.
+    """
     directorio = raiz / "skills" / "validar-algo"
     directorio.mkdir(parents=True)
     (directorio / "SKILL.md").write_text(_SKILL_CONFORME, encoding="utf-8")
+    (raiz / "GOVERNANCE.json").write_text(json.dumps({
+        "id": "demo.sdlc.sueltos",
+        "domain": "sdlc",
+        "owner": {"team": "squad-sdlc", "contact": "squad-sdlc@ejemplo.dev"},
+        "status": "draft",
+        "data_classification": "internal",
+        "version": "1.0.0",
+        "standard_version": "8.0.0",
+        "artifacts": {"skills": 1, "agents": 0, "prompts": 0},
+    }), encoding="utf-8")
     return raiz
 
 
