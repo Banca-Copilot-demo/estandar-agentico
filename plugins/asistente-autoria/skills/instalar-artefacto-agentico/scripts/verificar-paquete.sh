@@ -45,11 +45,35 @@ if ! salida="$("${verificacion[@]}" 2>&1)"; then
   abortar "atestacion NO verificada: no instales este paquete"
 fi
 
+# EL COMMIT SE SACA DE LA ATESTACION, NO DEL ARGUMENTO. Es la costura que este paso cierra.
+#
+# Lo que se VERIFICA es un .tar.gz; lo que se INSTALA es un CLON del repositorio en un commit -- esta
+# medido: el cliente no despliega el paquete, clona --. Son objetos distintos, y lo unico que los une
+# es el commit. Hasta aqui `$sha` era un argumento que este script copiaba al comprobante sin
+# comprobarlo contra nada, asi que el comprobante afirmaba algo que nadie habia verificado.
+#
+# `sourceRepositoryDigest` viene del CERTIFICADO de firma, no de un campo que alguien pueda rellenar:
+# es el commit desde el que el workflow construyo el paquete. Compararlo con el commit que se va a
+# instalar convierte «verifique un paquete de ese repositorio» en «verifique lo que voy a instalar».
+commit_atestado="$("${verificacion[@]}" --format json \
+  -q '[.[].verificationResult.signature.certificate.sourceRepositoryDigest] | unique | .[0]' 2>/dev/null || true)"
+if [ -z "$commit_atestado" ] || [ "$commit_atestado" = "null" ]; then
+  abortar "la atestacion no declara commit de origen: no se puede atar lo verificado a lo que se instala"
+fi
+if [ "$commit_atestado" != "$sha" ]; then
+  echo "El commit ATESTADO no es el que se va a instalar." >&2
+  echo "  atestado por la firma: $commit_atestado" >&2
+  echo "  declarado para instalar: $sha" >&2
+  echo "Verificarias un paquete y instalarias otro contenido. Confirma el sha con el equipo dueno." >&2
+  abortar "commit atestado distinto del declarado"
+fi
+
 comprobante="$destino/$NOMBRE_COMPROBANTE"
 {
   echo "repo=$repo"
   echo "ref=$ref"
   echo "sha=$sha"
+  echo "commit_atestado=$commit_atestado"
   echo "paquete=$(basename "$paquete")"
   echo "signer_repo=$REPO_FIRMANTE"
 } > "$comprobante"
