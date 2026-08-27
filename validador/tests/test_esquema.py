@@ -131,6 +131,79 @@ def test_sin_otros_fallos_el_no_evaluadas_SI_se_reporta():
     assert any("Unevaluated" in m for m in fallos)
 
 
+# ── el estandar no puede vetar lo que la plataforma ejecuta ─────────────────────────────────
+# Los agentes cierran con `unevaluatedProperties: false`, asi que TODO campo que el esquema no
+# declare es un ERROR, no una clave ignorada. Eso convierte cada olvido del esquema en un veto a un
+# artefacto legal, que es el fallo mas grave que puede tener un gate de conformidad: no mide el
+# estandar, impone el catalogo de campos que a alguien se le ocurrio escribir.
+
+# Los campos que la documentacion oficial de subagentes admite en el frontmatter de un `.agent.md` y
+# que el esquema NO declaraba. MEDIDO ejecutando el esquema publicado contra un agente valido: cada
+# uno daba «Unevaluated properties are not allowed».
+_CAMPOS_OFICIALES_DEL_SUBAGENTE = {
+    "skills": ["api-conventions"],
+    "disallowedTools": ["Bash"],
+    "permissionMode": "plan",
+    "maxTurns": 5,
+    "memory": "project",
+    "background": True,
+    "effort": "high",
+    "isolation": "worktree",
+    "color": "red",
+    "initialPrompt": "Empieza por leer el diff.",
+    "mcpServers": {"catalogo": {"command": "uvx"}},
+}
+
+
+def _agente(**cambios) -> dict:
+    frontmatter = {"name": "code-reviewer", "description": "Revisa el codigo del PR.",
+                   "metadata": dict(_ENVELOPE_VALIDO), **cambios}
+    return ensamblar(frontmatter, None, "agent")
+
+
+def test_un_agente_conforme_no_incumple_nada():
+    assert _incumplimientos(_agente(), "agent.schema.json") == []
+
+
+def test_ningun_campo_oficial_del_subagente_se_rechaza_como_inesperado():
+    """REGRESION MEDIDA contra el esquema publicado: `skills` -- que la documentacion oficial de
+    subagentes muestra en su primer ejemplo de frontmatter -- se rechazaba con «Unevaluated
+    properties are not allowed ('skills' was unexpected)», y con el otros diez campos documentados.
+    El agente era VALIDO para el cliente y nuestro gate lo declaraba no conforme.
+
+    Se recorren en bucle con el campo en el mensaje (T5) para que el fallo diga CUAL falta y no solo
+    que algo falla: cada campo es un veto independiente."""
+    for campo, valor in _CAMPOS_OFICIALES_DEL_SUBAGENTE.items():
+        fallos = _incumplimientos(_agente(**{campo: valor}), "agent.schema.json")
+        assert fallos == [], f"el esquema rechaza `{campo}`, que la plataforma admite: {fallos}"
+
+
+def test_mcpServers_en_camelCase_es_la_grafia_QUE_LEE_claude_code():
+    """El esquema solo declaraba `mcp-servers` (la grafia de Copilot). Consecuencia doble: un agente
+    de Claude Code que acotara un MCP se rechazaba, y el aviso de gobierno que ese campo describe
+    -- un MCP fuera del bloque `mcp` del GOVERNANCE.json, sin aprobacion ni `tools_digest` -- era
+    inalcanzable para el unico cliente que usa camelCase. Las DOS grafias son conformes porque son
+    dos clientes, no dos nombres del mismo campo."""
+    for grafia in ("mcp-servers", "mcpServers"):
+        objeto = _agente(**{grafia: {"catalogo": {"command": "uvx"}}})
+        assert _incumplimientos(objeto, "agent.schema.json") == [], grafia
+
+
+def test_tools_admite_LAS_DOS_formas_que_los_clientes_aceptan():
+    """La documentacion oficial escribe `tools: Read, Glob, Grep` -- una CADENA separada por comas --
+    y el agente real de BCP escribe un ARRAY. El esquema pedia solo array, asi que un agente copiado
+    literalmente de la documentacion del cliente se rechazaba por «is not of type 'array'»."""
+    for forma in ("Read, Glob, Grep", ["execute", "read", "search"]):
+        assert _incumplimientos(_agente(tools=forma), "agent.schema.json") == [], forma
+
+
+def test_una_clave_inventada_en_un_agente_SIGUE_siendo_error():
+    """El arreglo anterior no debe convertirse en «el esquema del agente ya no comprueba nada»: lo que
+    se abre es el conjunto de campos OFICIALES, no la puerta a cualquier clave."""
+    fallos = _incumplimientos(_agente(**{"clave-inventada": "si"}), "agent.schema.json")
+    assert any("Unevaluated" in m for m in fallos)
+
+
 # ── sin esquemas es error, no silencio ──────────────────────────────────────────────────────
 def test_un_directorio_sin_esquemas_es_ERROR_y_no_silencio(tmp_path):
     """Un gate que no puede comprobar y calla es indistinguible de uno que comprobo y aprobo."""

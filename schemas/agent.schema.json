@@ -107,12 +107,19 @@
       }
     },
     "tools": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
       "x-read-from": "frontmatter",
-      "description": "Herramientas que el agente puede usar. `tools` y no `allowed_tools`: es la clave que Copilot lee para un agente, y un agente real de BCP ya la declara asi. Nota: para un SKILL la clave equivalente es `allowed-tools` y su valor es una cadena separada por espacios — mismo concepto, dos formas segun el tipo, y no las unificamos porque las fija el cliente."
+      "description": "Herramientas que el agente puede usar. `tools` y no `allowed_tools`: es la clave que Copilot lee para un agente, y un agente real de BCP ya la declara asi. CADENA O ARRAY, y es una correccion MEDIDA del mismo tipo que la de `model`: el esquema pedia solo array -- la forma que usa el agente real de BCP, `['execute','read','search']` -- y la documentacion oficial de subagentes documenta la forma de CADENA SEPARADA POR COMAS (`tools: Read, Glob, Grep`). Un agente copiado literalmente de la documentacion del cliente se rechazaba con «is not of type 'array'». Las dos formas son legales para el cliente, asi que las dos son conformes aqui. Nota: para un SKILL la clave equivalente es `allowed-tools` y su valor es una cadena separada por ESPACIOS — mismo concepto, tres formas segun el tipo y el cliente, y no las unificamos porque las fija el cliente.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
     },
     "model": {
       "x-read-from": "frontmatter",
@@ -181,6 +188,79 @@
       "type": "object",
       "x-read-from": "frontmatter",
       "description": "Hooks acotados a este agente. Funcion en PREVIEW segun la documentacion. Mismo problema de gobierno que `mcp-servers`: es codigo que se ejecuta solo, declarado fuera del `hooks/hooks.json` que la firma de seguridad revisa. El gate debe AVISAR."
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "x-read-from": "frontmatter",
+      "x-portabilidad": "Solo Claude Code: Copilot no lo lee.",
+      "description": "Skills que el cliente precarga al arrancar el agente. MEDIDO: el esquema no lo declaraba y la raiz cierra con `unevaluatedProperties: false`, asi que un agente con `skills:` -- forma que la documentacion oficial de subagentes admite -- se rechazaba con «Unevaluated properties are not allowed». Rechazar por esquema algo que la plataforma ejecuta sin problema es el peor fallo que puede tener un estandar: no mide conformidad, veta al cliente. SOLO SE VALIDA LA FORMA, y es deliberado: ninguno de los 10 agentes reales de BCP declara `skills`, asi que exigir que cada nombre resuelva contra una skill del arbol seria gobernar un campo sin uso, y ademas fallaria de todos modos porque una skill puede venir instalada de otro plugin y el gate no ve fuera de la unidad. Cuando haya poblacion real que lo use, la comprobacion de existencia es la misma de grafo que piden `handoffs` y `agents` -- las tres se resuelven juntas --."
+    },
+    "disallowedTools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "x-read-from": "frontmatter",
+      "x-portabilidad": "Solo Claude Code.",
+      "description": "Lista de negacion que se resta de las herramientas heredadas. Se declara por la misma razon que `skills`: la documentacion oficial la admite y sin declararla el esquema rechazaba al agente."
+    },
+    "permissionMode": {
+      "type": "string",
+      "x-read-from": "frontmatter",
+      "x-portabilidad": "Solo Claude Code.",
+      "description": "Modo de permisos del subagente. SIN ENUM A PROPOSITO: la lista la fija el cliente y fijarla aqui caducaria en cuanto la plataforma anada uno -- el mismo motivo por el que `model` no lleva enum --. ATENCION AL GOBIERNO: es el campo de mayor riesgo de este tipo, porque un valor que desactiva las confirmaciones convierte al agente en codigo que actua sin que nadie apruebe cada paso. El gate debe AVISAR cuando aparezca, y el estandar decidir si se restringe; declararlo aqui es lo que hace posible ese aviso, porque hasta ahora el agente se rechazaba entero y el campo nunca se llegaba a mirar."
+    },
+    "maxTurns": {
+      "type": "integer",
+      "minimum": 1,
+      "x-read-from": "frontmatter",
+      "x-portabilidad": "Solo Claude Code.",
+      "description": "Tope de turnos del subagente."
+    },
+    "memory": {
+      "type": "string",
+      "x-read-from": "frontmatter",
+      "x-portabilidad": "Solo Claude Code.",
+      "description": "Ambito de memoria del subagente. Sin enum por el mismo motivo que `permissionMode`."
+    },
+    "background": {
+      "type": "boolean",
+      "x-read-from": "frontmatter",
+      "x-portabilidad": "Solo Claude Code.",
+      "description": "Si el subagente corre en segundo plano."
+    },
+    "effort": {
+      "type": "string",
+      "x-read-from": "frontmatter",
+      "x-portabilidad": "Solo Claude Code.",
+      "description": "Nivel de esfuerzo de razonamiento. Sin enum: la escala la fija el cliente."
+    },
+    "isolation": {
+      "type": "string",
+      "x-read-from": "frontmatter",
+      "x-portabilidad": "Solo Claude Code.",
+      "description": "Aislamiento de la ejecucion -- p. ej. un worktree propio --."
+    },
+    "color": {
+      "type": "string",
+      "x-read-from": "frontmatter",
+      "x-portabilidad": "Solo Claude Code.",
+      "description": "Color con el que el cliente muestra al agente. Puramente cosmetico; se declara para no rechazarlo."
+    },
+    "initialPrompt": {
+      "type": "string",
+      "x-read-from": "frontmatter",
+      "x-portabilidad": "Solo Claude Code.",
+      "description": "Primer turno que se envia solo al abrir el agente como sesion principal."
+    },
+    "mcpServers": {
+      "type": "object",
+      "x-read-from": "frontmatter",
+      "x-portabilidad": "Solo Claude Code; el equivalente de Copilot es `mcp-servers`.",
+      "description": "Servidores MCP acotados a este agente, en la grafia que el cliente lee de verdad. MEDIDO: el esquema solo declaraba `mcp-servers` en kebab, que es la grafia de Copilot; la documentacion de subagentes usa `mcpServers` en camelCase. La consecuencia era doble y silenciosa: un agente de Claude Code que acotara un MCP se rechazaba por clave inesperada, y el AVISO de gobierno que `mcp-servers` describe -- «un servidor declarado aqui es un MCP sin gobierno», fuera del bloque `mcp` del GOVERNANCE.json donde viven la aprobacion y el `tools_digest` -- era inalcanzable para el unico cliente que usa esa grafia. Se declaran LAS DOS porque son dos clientes, no dos nombres del mismo campo, y el aviso del gate debe cubrirlas por igual."
     },
     "evals": {
       "type": "object",
