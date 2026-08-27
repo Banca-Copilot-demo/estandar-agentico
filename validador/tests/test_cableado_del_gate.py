@@ -99,6 +99,13 @@ def _agente_sin_description(raiz: Path) -> None:
         f'---\nname: demo.sdlc.a\ndescription: ""\nmetadata:\n{_ENVELOPE}\n---\n', encoding="utf-8")
 
 
+def _artefacto_con_otra_version_que_su_unidad(raiz: Path) -> None:
+    """Medido: `planificar-migracion` declaraba 0.1.0 con su plugin en 0.1.3, llevaban asi todo el dia
+    y se habia publicado tres veces sin que nadie lo notara. Nada comparaba los dos numeros."""
+    _escribir_skill(raiz, texto=_SKILL_CONFORME.replace("version: 1.0.0", "version: 0.9.0"))
+    _escribir_manifiesto(raiz)
+
+
 def _hooks_sin_aprobacion(raiz: Path) -> None:
     _escribir_skill(raiz)
     _escribir_manifiesto(raiz)
@@ -212,6 +219,8 @@ _CABLES = (
      "falta `description`: es lo que decide si el modelo le delega"),
     ("_revisar_hooks", _hooks_sin_aprobacion,
      "no declara `hooks.approval`"),
+    ("_revisar_versiones_de_los_artefactos", _artefacto_con_otra_version_que_su_unidad,
+     "su unidad publica la 1.0.0"),
     ("_revisar_recursos", _recurso_inexistente,
      "y ese archivo NO existe"),
     ("_revisar_higiene", _secreto_literal,

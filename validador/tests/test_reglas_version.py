@@ -14,6 +14,7 @@ from validador_agentico.dominio.hallazgo import Severidad
 from validador_agentico.dominio.reglas_version import (
     VersionDeUnidad,
     revisar_subida_de_version,
+    revisar_version_del_artefacto,
 )
 
 REFERENCIA = VersionDeUnidad(ruta="plugins/referencia", nombre="demo.sdlc.referencia",
@@ -144,3 +145,27 @@ def test_la_unidad_ANIDADA_gana_sobre_la_que_la_contiene():
 
     assert "demo.dentro" in mensaje
     assert "demo.fuera" not in mensaje
+
+
+# ── la version del artefacto es la de su unidad ──────────────────────────────────────────────
+def test_un_artefacto_con_otra_version_que_su_unidad_es_error():
+    # EL CASO MEDIDO, tal cual: `planificar-migracion` declaraba 0.1.0 y su plugin iba por 0.1.3.
+    # Llevaban asi todo el dia y se habia publicado tres veces sin que nadie lo notara, porque el
+    # numero del manifiesto decide la ETIQUETA y el del frontmatter viaja en la FICHA: se leen en
+    # sitios distintos y nunca juntos.
+    errores = _errores(revisar_version_del_artefacto(
+        "plugins/migracion/skills/planificar-migracion/SKILL.md", "0.1.0", "0.1.3"))
+    assert "0.1.0" in _mensajes(errores)
+    assert "0.1.3" in _mensajes(errores)
+
+
+def test_dos_versiones_iguales_no_producen_hallazgos():
+    assert revisar_version_del_artefacto("x/SKILL.md", "0.1.3", "0.1.3") == []
+
+
+def test_una_version_ausente_no_se_reprocha_dos_veces():
+    # Que falte ya lo dicen la regla del envelope y la del manifiesto. Afirmarlo tambien aqui daria
+    # dos hallazgos por un solo defecto, y el segundo mandaria a igualar un numero que no existe.
+    for artefacto, unidad in (("", "0.1.3"), ("0.1.3", ""), ("", "")):
+        assert revisar_version_del_artefacto("x/SKILL.md", artefacto, unidad) == [], (
+            artefacto, unidad)

@@ -10,7 +10,7 @@ metadata:
   owner_contact: plataforma-agentica@ejemplo.dev
   data_classification: internal
   status: draft
-  version: "0.2.0"
+  version: "0.3.0"
   standard_version: "7.0.0"
 ---
 

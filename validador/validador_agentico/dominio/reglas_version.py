@@ -93,3 +93,44 @@ def revisar_subida_de_version(unidades: tuple[VersionDeUnidad, ...],
         and unidad.version_en_base is not None
         and unidad.version == unidad.version_en_base
     ]
+
+
+def revisar_version_del_artefacto(donde: str, version_del_artefacto: str,
+                                   version_de_la_unidad: str) -> list[Hallazgo]:
+    """La `metadata.version` de un artefacto es LA DE SU UNIDAD. Error, no aviso.
+
+    EL DEFECTO, MEDIDO. `planificar-migracion` declaraba `0.1.0` mientras su plugin iba por `0.1.3`.
+    Llevaban asi todo el dia y se habia publicado tres veces sin que nadie lo notara, porque nada
+    comparaba los dos numeros: el del manifiesto decide la ETIQUETA y el del frontmatter viaja en la
+    FICHA del catalogo, o sea que las dos cifras se leen en sitios distintos y nunca juntas.
+
+    POR QUE IMPORTA, y no es pulcritud. Lo que se instala es la unidad ENTERA, en su version, y lo
+    que el catalogo muestra por artefacto es esta otra. Quien mira la ficha ve `0.1.0`, se descarga
+    `0.1.3` y no tiene forma de saber si le falta algo: el numero que le ensenaron no identifica nada
+    instalable. En un incidente es peor, porque «que version de este skill esta desplegada» pasa a
+    tener dos respuestas y ninguna se puede descartar.
+
+    POR QUE NO SE DERIVA Y SE BORRA EL CAMPO. Porque un artefacto tiene que ser AUDITABLE SUELTO, que
+    es el motivo entero del envelope: `gh skill install` PRESERVA su `metadata`, y ahi fuera -- sin
+    plugin y sin catalogo -- ese numero es lo unico que dice que version es. Borrarlo lo dejaria en
+    blanco justo cuando es la unica fuente.
+
+    QUIEN LO MANTIENE AL DIA NO ES UNA PERSONA. `generar.sh` toma la version de la unidad al crear el
+    artefacto, y el asistente de autoria hace lo mismo al subirla. Una regla que exige coincidencia
+    sin que nada la mantenga solo mueve el trabajo manual de sitio, y lo manual vuelve a divergir.
+    """
+    if not version_del_artefacto or not version_de_la_unidad:
+        # Sin uno de los dos numeros no hay coincidencia que afirmar. Que falten ya lo reprochan sus
+        # propias reglas -- la del envelope y la del manifiesto --, y repetirlo aqui daria dos
+        # hallazgos por un solo defecto.
+        return []
+    if version_del_artefacto == version_de_la_unidad:
+        return []
+    return [error(donde,
+                  f"declara la version {version_del_artefacto} y su unidad publica la "
+                  f"{version_de_la_unidad}. Lo que se instala es la unidad ENTERA, asi que el numero "
+                  f"de la ficha no identifica nada instalable: quien la lea vera "
+                  f"{version_del_artefacto}, se descargara {version_de_la_unidad} y no podra saber "
+                  f"si le falta algo. Medido: un skill declaraba 0.1.0 con su plugin en 0.1.3 y se "
+                  f"publico tres veces sin que nadie lo notara. Igualalas -- `generar.sh` y el "
+                  f"asistente de autoria ya las escriben desde la unidad")]
