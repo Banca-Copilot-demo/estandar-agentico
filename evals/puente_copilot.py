@@ -97,27 +97,6 @@ def ruta_del_cli() -> str:
     return os.getenv(VARIABLE_DE_ENTORNO_CLI) or NOMBRE_DEL_CLI
 
 
-def _en_una_linea(consulta: str) -> str:
-    """La consulta con los saltos de linea colapsados a espacios.
-
-    EL DEFECTO QUE ESTO ARREGLA, medido corriendo una suite real y no leyendo nada: en Windows la orden
-    llega al proceso hijo como UNA cadena y `cmd` la parte en el primer salto de linea. Un caso cuya
-    consulta ocupaba dos lineas -- «Revisa esta consulta JQL:» y debajo la consulta -- llegaba SOLO con la
-    primera, y el modelo respondia «no has incluido la consulta». El caso fallaba, el informe decia que el
-    artefacto no cumplia, y el artefacto estaba bien: el defecto era del cable.
-
-    Es el peor tipo de fallo de un arnes de evaluacion, porque acusa al artefacto de algo que hizo la
-    herramienta.
-
-    LO QUE SE PIERDE, y hay que decirlo: para una consulta JQL o una peticion en prosa, colapsar saltos es
-    inocuo. Para un caso cuya entrada sea un fragmento de codigo con sangrado significativo -- Python,
-    YAML -- esto lo altera. Ese caso necesita otra via: montar el insumo como ARCHIVO en el proyecto y
-    pedir en la consulta que lo lea, que es ademas como el formato de `skill-creator` modela su campo
-    `files`.
-    """
-    return " ".join(consulta.split())
-
-
 def agente_declarado() -> str | None:
     """El agente a evaluar, o `None` para el agente por defecto del cliente."""
     return os.getenv(VARIABLE_DE_ENTORNO_AGENTE) or None

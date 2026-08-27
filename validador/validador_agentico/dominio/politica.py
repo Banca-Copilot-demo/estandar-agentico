@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from enum import Enum
 
-RUTA_POLITICA = "POLITICA.json"
-
 # El estado que la publicacion escribe siempre. La promocion a `certified` la decide la evaluacion,
 # despues, y nunca este paso.
 ESTADO_AL_PUBLICAR = "conformant"
