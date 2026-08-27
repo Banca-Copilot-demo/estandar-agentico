@@ -44,7 +44,7 @@ un `<<` en un artefacto real es un error visible, no un valor plausible.
 | `<<NOMBRE>>` | Nombre corto, en minúsculas y guiones | `revisar-jql` |
 | `<<EQUIPO>>` | Slug del equipo dueño, **que debe existir en la organización** | `squad-sdlc` |
 | `<<CONTACTO>>` | Correo del equipo | `squad-sdlc@ejemplo.dev` |
-| `<<VERSION>>` | SemVer, **entre comillas** | `"1.0.0"` |
+| `<<VERSION>>` | SemVer, **entre comillas**, y **la misma que la de su unidad** | `"1.0.0"` |
 | `<<DESCRIPCION>>` | Qué hace y **cuándo usarlo** | ver más abajo |
 
 ## Cuál elegir: plugin o suelto

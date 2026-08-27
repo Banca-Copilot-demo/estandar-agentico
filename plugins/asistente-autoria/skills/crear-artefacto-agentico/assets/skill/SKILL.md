@@ -7,9 +7,9 @@ metadata:
   owner_team: EQUIPO
   owner_contact: CONTACTO
   status: draft
-  version: 0.1.0
+  version: VERSION_DE_LA_UNIDAD
   data_classification: internal
-  standard_version: 7.0.0
+  standard_version: 8.0.0
 ---
 
 # NOMBRE

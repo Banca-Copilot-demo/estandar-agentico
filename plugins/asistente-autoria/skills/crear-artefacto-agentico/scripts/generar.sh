@@ -62,6 +62,17 @@ if [ -f "$raiz/GOVERNANCE.json" ]; then
   contacto="$(campo_del_dueno "$raiz/GOVERNANCE.json" contact)"
 fi
 
+# LA VERSION DEL ARTEFACTO ES LA DE SU UNIDAD, y el gate lo EXIGE. Con `--unidad` la unidad se crea
+# aqui mismo, asi que arranca en `VERSION_DE_ARRANQUE`; dentro de un plugin existente se toma la suya,
+# que es justo el caso donde divergian -- medido: un skill nacia en 0.1.0 dentro de un plugin que iba
+# por 0.1.3, y nadie lo notaba porque los dos numeros se leen en sitios distintos.
+if [ "$modo_unidad" = "si" ]; then
+  version="$VERSION_DE_ARRANQUE"
+else
+  version="$(version_de_la_unidad "$raiz")"
+  [ -n "$version" ] || abortar "la unidad $raiz no declara version: sin ella no se sabe con que numero nace el artefacto, y el gate exige que coincidan"
+fi
+
 # DONDE ATERRIZA CADA TIPO. Con `--unidad` el artefacto cuelga de un directorio propio que es la raiz
 # del plugin, y dentro conserva la ruta que su cliente espera. El skill es el unico que NO se anida:
 # un plugin de un solo skill puede llevar su `SKILL.md` en la raiz -- comprobado instalando en los
@@ -93,6 +104,7 @@ sed -e "s/NOMBRE/$nombre/g" \
     -e "s/ID_DEL_PLUGIN/$id_plugin/g" \
     -e "s/EQUIPO/$equipo/g" \
     -e "s/CONTACTO/$contacto/g" \
+    -e "s/VERSION_DE_LA_UNIDAD/$version/g" \
     "$plantilla" > "$destino"
 
 echo "Creado: ${destino#"$raiz"/}"

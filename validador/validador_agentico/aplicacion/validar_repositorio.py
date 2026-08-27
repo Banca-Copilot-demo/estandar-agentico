@@ -117,6 +117,7 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
             *_revisar_skills(contenido),
             *_revisar_prompts(contenido),
             *_revisar_agentes(contenido),
+            *_revisar_versiones_de_los_artefactos(contenido),
             *_revisar_hooks(contenido, raiz_plugin),
             *_revisar_mcp(contenido),
             *_revisar_evals(contenido, raiz_plugin, directorio_de_esquemas),
@@ -274,6 +275,34 @@ def _revisar_hooks(contenido: ContenidoRepositorio, raiz_unidad: Path) -> list[H
     return hallazgos + reglas_hooks.revisar_hooks(
         contenido.hooks.ruta_relativa, contenido.hooks.contenido, aprobacion,
         scripts_presentes=presentes)
+
+
+def _revisar_versiones_de_los_artefactos(contenido: ContenidoRepositorio) -> list[Hallazgo]:
+    """G5 — la version de cada artefacto es la de la unidad que lo publica.
+
+    LA VERSION DE LA UNIDAD SALE DE UN SOLO SITIO, y cual es depende de si hay manifiesto: con
+    `plugin.json` es la suya -- es lo que el marketplace resuelve --, y sin el, la `version` del
+    gobierno. Las dos reglas que ya existen garantizan que hay exactamente una: el gate prohibe
+    declararla en el gobierno cuando hay manifiesto, y la exige cuando no lo hay. Asi que aqui no se
+    elige entre dos verdades, solo se lee la que corresponda.
+    """
+    version_de_la_unidad = _version_de_la_unidad(contenido)
+    if not version_de_la_unidad:
+        return []
+    hallazgos: list[Hallazgo] = []
+    for artefacto in (*contenido.skills, *contenido.prompts, *contenido.agentes_leidos):
+        metadata = (artefacto.frontmatter or {}).get("metadata") or {}
+        hallazgos += reglas_version.revisar_version_del_artefacto(
+            artefacto.ruta_relativa, str(metadata.get("version", "")), version_de_la_unidad)
+    return hallazgos
+
+
+def _version_de_la_unidad(contenido: ContenidoRepositorio) -> str:
+    if contenido.manifiesto is not None and contenido.manifiesto.es_legible:
+        return str(contenido.manifiesto.contenido.get("version", ""))
+    if contenido.gobierno is not None and contenido.gobierno.es_legible:
+        return str(contenido.gobierno.contenido.get("version", ""))
+    return ""
 
 
 def _revisar_higiene(contenido: ContenidoRepositorio) -> list[Hallazgo]:
