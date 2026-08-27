@@ -56,7 +56,7 @@ def etiquetas_vigentes(etiquetas_de_mas_nueva_a_mas_vieja: tuple[str, ...]) -> t
     indice evaluaba uno.
 
     Y no se devuelven TODAS: de un mismo plugin hay varias versiones publicadas -- las etiquetas no
-    se reescriben -- y el catalogo lista la version vigente de cada plugin, no su historial.
+    se reescriben -- y el marketplace lista la version vigente de cada plugin, no su historial.
     """
     vigentes: list[str] = []
     vistos: set[str] = set()

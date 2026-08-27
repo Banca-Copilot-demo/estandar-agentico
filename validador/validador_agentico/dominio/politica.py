@@ -1,14 +1,14 @@
 """La politica de la organizacion: decisiones que la cadena de publicacion honra.
 
 POR QUE ES UN DATO Y NO UNA CONDICION EN EL WORKFLOW. La pregunta «¿lo Conforme se distribuye?» se
-responde en TRES sitios -- al crear el release, al generar el catalogo y al instalar --, y si cada uno
+responde en TRES sitios -- al crear el release, al generar el marketplace y al instalar --, y si cada uno
 la decidiera por su cuenta, cambiar de opinion obligaria a tocar los tres y a acertar en los tres. El
 cliente ya cambio de criterio una vez sobre esto; asumir que no volvera a cambiar seria ignorar la
 evidencia.
 
 LO QUE **NO** CAMBIA ENTRE POLITICAS, y conviene tenerlo claro antes de leer el resto: los estados del
 ciclo de vida, sus transiciones, el sellado, la atestacion y la ficha de Port son los mismos en las dos.
-Lo unico que cambia es EN QUE ESTADO se entra al catalogo instalable.
+Lo unico que cambia es EN QUE ESTADO se entra al marketplace.
 """
 from __future__ import annotations
 
@@ -21,11 +21,11 @@ ESTADO_CERTIFICADO = "certified"
 
 
 class Promocion(str, Enum):
-    """Cuando un artefacto entra al catalogo instalable."""
+    """Cuando un artefacto entra al marketplace."""
 
     AL_CERTIFICAR = "al_certificar"
     """Solo lo Certificado se distribuye. Lo Conforme queda publicado, sellado y verificable, pero
-    fuera del catalogo: no se encuentra buscando ni se instala por nombre."""
+    fuera del marketplace: no se encuentra buscando ni se instala por nombre."""
 
     AL_PUBLICAR = "al_publicar"
     """Todo lo Conforme se distribuye. Era el comportamiento antes de que el cliente pidiera separar
@@ -48,7 +48,7 @@ def promocion_declarada(politica: dict | None) -> Promocion:
     `politica` es el contenido YA LEIDO de `POLITICA.json`, no una ruta: esta regla es de dominio y no
     toca disco (G5).
     """
-    valor = (politica or {}).get("promocion_al_catalogo")
+    valor = (politica or {}).get("promocion_al_marketplace")
     try:
         return Promocion(valor)
     except ValueError:
@@ -56,8 +56,8 @@ def promocion_declarada(politica: dict | None) -> Promocion:
         return PROMOCION_POR_DEFECTO
 
 
-def entra_al_catalogo(estado: str, promocion: Promocion) -> bool:
-    """Si un artefacto en `estado` debe estar en el catalogo instalable.
+def entra_al_marketplace(estado: str, promocion: Promocion) -> bool:
+    """Si un artefacto en `estado` debe estar en el marketplace.
 
     Es la UNICA funcion que responde esa pregunta, y de ella dependen las tres decisiones que antes
     se tomaban por separado: si el release nace como prelanzamiento, si el indice lo incluye y si el
@@ -68,5 +68,5 @@ def entra_al_catalogo(estado: str, promocion: Promocion) -> bool:
     if estado == ESTADO_AL_PUBLICAR:
         return promocion is Promocion.AL_PUBLICAR
     # Cualquier otro estado -- suspendido, obsoleto, retirado -- no se distribuye por esta via: su
-    # salida del catalogo la decide su propio flujo, no la politica de promocion.
+    # salida del marketplace la decide su propio flujo, no la politica de promocion.
     return False

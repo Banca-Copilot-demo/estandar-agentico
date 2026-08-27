@@ -7,7 +7,7 @@ name = "indice-agentico"
 version = "0.1.0"
 description = "Genera el indice de plugins agenticos del estandar exigiendo atestacion verificada."
 requires-python = ">=3.11"
-# El catalogo se valida contra `marketplace.schema.json` ANTES de escribirlo: publicar un indice que
+# El marketplace se valida contra `marketplace.schema.json` ANTES de escribirlo: publicar un indice que
 # algun cliente no sabra instalar es peor que no publicar.
 dependencies = ["jsonschema>=4.21"]
 

@@ -25,7 +25,7 @@ del paquete es la del manifiesto.
 
 **2. El inventario enumera IDS, no cuenta.** `artifacts` lleva la lista de `metadata.id` de cada skill,
 agente y prompt, y el gate la compara con el árbol real. Un contador tenía un falso negativo: borrar un
-artefacto y añadir otro deja el número igual, así que el gate no veía nada mientras el catálogo publicaba
+artefacto y añadir otro deja el número igual, así que el gate no veía nada mientras Port publicaba
 una lista que ya no existía.
 
 **3. Un `mcp` o unos `hooks` obligan a declarar su bloque de aprobación** en el gobierno. Copia el bloque

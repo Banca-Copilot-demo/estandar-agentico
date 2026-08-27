@@ -1,13 +1,13 @@
 name: Avisar al indice
 description: >
-  Despierta al repositorio del indice para que regenere el catalogo. Dispara un EVENTO; no escribe
+  Despierta al repositorio del indice para que regenere el marketplace. Dispara un EVENTO; no escribe
   nada alli. Sin credenciales no falla: deja constancia de por que no se aviso.
 
 # POR QUE ESTO ES UNA ACCION Y NO CUATRO PASOS COPIADOS EN CADA SITIO.
 #
 # El aviso hacia falta en DOS momentos y solo estaba en uno. `publicar` lo hacia; `promocionar` no,
 # y MEDIDO en la certificacion real de `demo.sdlc.revisar-jql--v0.1.2`: el release quedo promocionado
-# -- sin marca de prelanzamiento, o sea distribuible -- y el catalogo siguio ofreciendo la version
+# -- sin marca de prelanzamiento, o sea distribuible -- y el marketplace siguio ofreciendo la version
 # ANTERIOR hasta que se regenero el indice a mano. El artefacto estaba certificado y no se podia
 # instalar. El sintoma es el peor de los conocidos: todo en verde.
 #
@@ -51,7 +51,7 @@ runs:
     # QUE HACE, exactamente: una llamada a `/dispatches`, que provoca un EVENTO en el repositorio del
     # indice. Nada mas. No crea, no modifica y no borra ni un archivo alli. El evento DESPIERTA el
     # workflow del indice, y a partir de ese momento todo ocurre DENTRO de ese repositorio con SU
-    # PROPIO `GITHUB_TOKEN`: los permisos que escriben el catalogo son INTERNOS del repositorio del
+    # PROPIO `GITHUB_TOKEN`: los permisos que escriben el marketplace son INTERNOS del repositorio del
     # indice, no los aporta nadie de fuera.
     #
     # Y EL INDICE NO SE CREE EL AVISO. El `client_payload` solo se escribe en el resumen del run,
@@ -68,7 +68,7 @@ runs:
     # DE AHI QUE SEA UN TOKEN DE LA APP Y NO UN PAT. Lo que se guarda en el repositorio de dominio es
     # la clave privada de la App, que NO es un token: solo sirve para PEDIR uno. El que se acuna dura
     # una hora, va acotado con `repositories:` al repositorio del indice, y muere con el runner. Un
-    # PAT seria una credencial de escritura PERMANENTE sobre el catalogo, guardada en cada
+    # PAT seria una credencial de escritura PERMANENTE sobre el marketplace, guardada en cada
     # repositorio de dominio, atada a una persona y que caduca sin avisar.
     # `repositories:` quiere el NOMBRE del repositorio, no `propietario/nombre`, y las expresiones de
     # Actions no tienen `split`. Se calcula aqui en vez de pedir el nombre suelto como input: quien
@@ -107,7 +107,7 @@ runs:
         GH_TOKEN: ${{ steps.token_indice.outputs.token }}
 
     # EL AVISO OMITIDO DEJA RASTRO. Saltarse este paso es legitimo -- el aviso es un ACELERADOR, y el
-    # indice reconstruye el catalogo en su pasada programada -- pero saltarselo EN SILENCIO no: el
+    # indice reconstruye el marketplace en su pasada programada -- pero saltarselo EN SILENCIO no: el
     # artefacto no aparece en la vitrina hasta el dia siguiente y nada dice por que. MEDIDO: las dos
     # publicaciones de un repositorio de dominio se saltaron el aviso por falta de credencial, y solo
     # se descubrio leyendo el log paso por paso.
@@ -122,4 +122,4 @@ runs:
         else
           motivo="la App no pudo acunar un token para ${{ inputs.repositorio-indice }}; comprueba que este INSTALADA en ese repositorio y con permiso de contenidos"
         fi
-        echo "::notice::no se avisa al indice: ${motivo}. El catalogo se pondra al dia en la siguiente pasada programada del indice, no al instante."
+        echo "::notice::no se avisa al indice: ${motivo}. El marketplace se pondra al dia en la siguiente pasada programada del indice, no al instante."

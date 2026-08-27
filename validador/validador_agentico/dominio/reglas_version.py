@@ -102,17 +102,17 @@ def revisar_version_del_artefacto(donde: str, version_del_artefacto: str,
     EL DEFECTO, MEDIDO. `planificar-migracion` declaraba `0.1.0` mientras su plugin iba por `0.1.3`.
     Llevaban asi todo el dia y se habia publicado tres veces sin que nadie lo notara, porque nada
     comparaba los dos numeros: el del manifiesto decide la ETIQUETA y el del frontmatter viaja en la
-    FICHA del catalogo, o sea que las dos cifras se leen en sitios distintos y nunca juntas.
+    FICHA de Port, o sea que las dos cifras se leen en sitios distintos y nunca juntas.
 
     POR QUE IMPORTA, y no es pulcritud. Lo que se instala es la unidad ENTERA, en su version, y lo
-    que el catalogo muestra por artefacto es esta otra. Quien mira la ficha ve `0.1.0`, se descarga
+    que Port muestra por artefacto es esta otra. Quien mira la ficha ve `0.1.0`, se descarga
     `0.1.3` y no tiene forma de saber si le falta algo: el numero que le ensenaron no identifica nada
     instalable. En un incidente es peor, porque «que version de este skill esta desplegada» pasa a
     tener dos respuestas y ninguna se puede descartar.
 
     POR QUE NO SE DERIVA Y SE BORRA EL CAMPO. Porque un artefacto tiene que ser AUDITABLE SUELTO, que
     es el motivo entero del envelope: `gh skill install` PRESERVA su `metadata`, y ahi fuera -- sin
-    plugin y sin catalogo -- ese numero es lo unico que dice que version es. Borrarlo lo dejaria en
+    plugin y sin marketplace -- ese numero es lo unico que dice que version es. Borrarlo lo dejaria en
     blanco justo cuando es la unica fuente.
 
     QUIEN LO MANTIENE AL DIA NO ES UNA PERSONA. `generar.sh` toma la version de la unidad al crear el

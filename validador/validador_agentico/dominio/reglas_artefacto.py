@@ -31,7 +31,7 @@ def revisar_envelope(donde: str, metadata: dict[str, str]) -> list[Hallazgo]:
     """El envelope de gobierno, dentro del campo `metadata` del propio artefacto.
 
     Es lo que hace al artefacto AUTODESCRIPTIVO: con esto puesto, se puede auditar aunque viaje
-    suelto, sin plugin y sin catalogo.
+    suelto, sin plugin y sin marketplace.
     """
     hallazgos = [
         error(donde, f"`metadata.{campo}` falta: es parte del envelope de gobierno")
@@ -120,7 +120,8 @@ def revisar_prompt(donde: str, frontmatter: dict) -> list[Hallazgo]:
     if observacion(frontmatter, OBSERVACION_MODEL_ARRAY):
         hallazgos.append(error(donde, "`model` es un array de nombres fijos. Declara un modelo y "
                                       "deja la lista en el `model_allowlist` del plugin: si no, "
-                                      "cada rotacion del catalogo obliga a tocar todos los archivos"))
+                                      "cada rotacion del catalogo de modelos obliga a tocar todos "
+                                      "los archivos"))
     if observacion(frontmatter, OBSERVACION_SKILLS_REFERENCE):
         hallazgos.append(error(donde, "`skillsReference` no es un campo estandar. Usa "
                                       "`dependencies` por `id`: una ruta de sistema de archivos "

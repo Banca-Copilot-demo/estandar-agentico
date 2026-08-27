@@ -29,8 +29,8 @@ from validador_agentico.dominio.hallazgo import (
 # Que colecciones del contenido se publican como ficha, y con que `tipo` en el predicado firmado.
 TIPO_POR_COLECCION = (("skills", "skill"), ("prompts", "prompt"), ("agentes_leidos", "agent"))
 # `agentes_leidos` FALTABA, y se descubrio al construir el primer plugin con los cinco tipos: el gate
-# validaba el agente pero no llegaba al predicado, asi que no tenia ficha en el catalogo. Un artefacto
-# con envelope, id y dueno que el catalogo no conoce es indistinguible de uno que no existe.
+# validaba el agente pero no llegaba al predicado, asi que no tenia ficha en Port. Un artefacto
+# con envelope, id y dueno que Port no conoce es indistinguible de uno que no existe.
 
 # El `mcp` no esta en esa tabla porque no es una coleccion de artefactos con frontmatter: es UN
 # archivo de configuracion mas su bloque en el gobierno del plugin. Se proyecta aparte.
@@ -63,7 +63,7 @@ def construir_inventario(contenido: ContenidoRepositorio) -> Inventario:
         nombre_plugin=_nombre_del_plugin(contenido),
         # LOS IDS DEL ARBOL REAL, que es contra lo que se coteja el inventario declarado desde que
         # dejo de ser un conteo. Salen del `metadata.id` del propio artefacto -- el mismo campo que
-        # publica el catalogo -- y no de la ruta: la ruta dice donde esta el archivo, el id es la
+        # publica Port -- y no de la ruta: la ruta dice donde esta el archivo, el id es la
         # identidad que el consumidor resuelve.
         ids_skills=_ids_de(contenido.skills),
         ids_agentes=_ids_de(contenido.agentes_leidos),
@@ -166,7 +166,7 @@ def listar_artefactos(contenido: ContenidoRepositorio, raiz: Path,
     integridad por un problema de ruta.
 
     Y HABIA UN SEGUNDO SINTOMA PEOR: la `ruta` dejaba de ser UNICA. Los dos `mcp` del repositorio de
-    demo publicaban `ruta=.mcp.json` los dos, asi que dos fichas distintas del catalogo apuntaban al
+    demo publicaban `ruta=.mcp.json` los dos, asi que dos fichas distintas de Port apuntaban al
     mismo archivo y no habia forma de saber a que se referia cada una.
 
     El digesto se sigue calculando desde `raiz`, que es la raiz del PLUGIN: es donde el archivo esta
@@ -243,7 +243,7 @@ def _servidores_publicados(gobierno_del_mcp: dict, configuracion: object) -> tup
     podria apuntar la comprobacion a un servidor limpio mientras el cliente usa otro.
 
     Se publica el nombre aunque no sea un control de seguridad -- la plataforma lo dice -- porque es lo
-    que una persona reconoce en el catalogo. Lo que identifica al servidor para cualquier decision es su
+    que una persona reconoce en Port. Lo que identifica al servidor para cualquier decision es su
     endpoint.
 
     Los `stdio` se incluyen SIN endpoint: no se les puede consultar la superficie de herramientas, asi
@@ -279,7 +279,7 @@ def _hooks_publicado(contenido: ContenidoRepositorio, raiz: Path,
     """El `hooks` como artefacto del predicado, con el digesto de sus SCRIPTS.
 
     POR QUE EXISTE. `hooks` era el unico de los cinco tipos sin ficha: se declaraba en el inventario y
-    se aprobaba en el `GOVERNANCE.json`, pero no llegaba al catalogo ni llevaba digesto propio. O sea
+    se aprobaba en el `GOVERNANCE.json`, pero no llegaba a Port ni llevaba digesto propio. O sea
     que el tipo que EJECUTA CODIGO era el unico cuyo contenido no se podia verificar archivo a archivo,
     y su integridad dependia solo del digesto del paquete completo.
 

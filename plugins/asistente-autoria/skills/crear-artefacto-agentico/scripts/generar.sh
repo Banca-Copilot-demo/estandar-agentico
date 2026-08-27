@@ -13,9 +13,9 @@ readonly TIPOS_SOPORTADOS="skill agent prompt"
 # `--unidad` publica el artefacto COMO SU PROPIA UNIDAD, con manifiesto propio, en vez de dentro del
 # plugin que lo aloje.
 #
-# POR QUE HACE FALTA. Un artefacto suelto SIN manifiesto no entra al catalogo, y esta medido contra
+# POR QUE HACE FALTA. Un artefacto suelto SIN manifiesto no entra al marketplace, y esta medido contra
 # los dos clientes: con el contenido en otro repositorio -- que es la topologia real -- la
-# instalacion falla con «No plugin.json found in repository». Sin entrada de catalogo, el ESTADO no
+# instalacion falla con «No plugin.json found in repository». Sin entrada de marketplace, el ESTADO no
 # lo gobierna: se instala igual este certificado, conforme o suspendido. Con unidad propia obtiene
 # ademas version, etiqueta y digesto propios, en vez de compartirlos con todos los sueltos del
 # repositorio -- donde tocar un prompt cambiaba el digesto del skill que nadie habia tocado --.

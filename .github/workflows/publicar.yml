@@ -20,7 +20,7 @@ name: Publicar version
 on:
   # ESTE REPOSITORIO TAMBIEN PUBLICA. Ofrece este workflow a los repositorios de dominio Y lo aplica
   # a su propio plugin, que vive en `plugins/asistente-autoria/` como en cualquier otro repo. Es la
-  # unica forma de que el asistente de autoria entre al catalogo con su etiqueta, su release y su
+  # unica forma de que el asistente de autoria entre al marketplace con su etiqueta, su release y su
   # firma en vez de por una entrada escrita a mano — que es justo el atajo que el track cierra.
   #
   # Un archivo puede declarar los dos disparadores: `workflow_call` para quien lo invoca y `push`
@@ -38,7 +38,7 @@ on:
         default: ""
     secrets:
       port-client-id:
-        description: Client ID de Port. Sin el, no se publica la ficha del catalogo.
+        description: Client ID de Port. Sin el, no se publica la ficha de Port.
         required: false
       port-client-secret:
         description: Client secret de Port.
@@ -344,12 +344,12 @@ jobs:
     with:
       etiqueta: ${{ github.ref_name }}
       # EL MISMO INDICE AL QUE AVISO LA PUBLICACION. Promocionar cambia lo que el indice debe mostrar
-      # -- el artefacto pasa a distribuirse -- y sin avisar se queda fuera del catalogo hasta la
+      # -- el artefacto pasa a distribuirse -- y sin avisar se queda fuera del marketplace hasta la
       # pasada diaria: certificado y no instalable.
       repositorio-indice: ${{ inputs.repositorio-indice }}
-    # LA PROMOCION TAMBIEN ESCRIBE EN EL CATALOGO, y por eso necesita las mismas credenciales que la
+    # LA PROMOCION TAMBIEN ESCRIBE EN PORT, y por eso necesita las mismas credenciales que la
     # publicacion. Sin ellas quitaba la marca de prelanzamiento -- el artefacto YA se distribuia -- y
-    # dejaba la ficha diciendo `conformant`: el catalogo de metadata contradecia al instalable.
+    # dejaba la ficha diciendo `conformant`: Port contradecia al marketplace.
     #
     # UN WORKFLOW REUTILIZABLE NO HEREDA LOS SECRETOS DEL LLAMADOR: hay que pasarlos uno a uno o
     # declarar `secrets: inherit`. Se pasan uno a uno a proposito, para que lo que cada workflow

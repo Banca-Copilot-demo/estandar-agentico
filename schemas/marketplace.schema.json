@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/marketplace.schema.json",
   "title": "Marketplace — el indice desde el que los clientes instalan",
-  "description": "Contrato del archivo GENERADO que publica el catalogo de plugins de la organizacion. No lo escribe una persona: lo produce el workflow del indice a partir de un unico barrido, y por eso este esquema existe — para que un indice mal formado se detecte al generarlo y no cuando alguien intente instalar. DOS PROYECCIONES DEL MISMO CATALOGO, NO DOS CATALOGOS: `.claude-plugin/marketplace.json` para Claude Code y `.github/plugin/marketplace.json` para Copilot. Tienen la misma forma y la misma lista de plugins; se diferencian SOLO en como se direcciona un plugin que vive en un subdirectorio, porque los dos clientes no aceptan lo mismo. Ese es el motivo de que este archivo defina dos subesquemas en vez de uno: la validez depende de a que cliente va dirigido el archivo, y JSON Schema no puede deducirlo de la ruta. El gate elige el subesquema por la ruta del archivo que esta validando. DIVERGENCIA MEDIDA ENTRE CLIENTES — es el hallazgo que este esquema protege: Copilot RECHAZA la fuente `git-subdir`, y Claude Code acepta `github` con un campo `path` pero LO IGNORA, instalando el repositorio entero como si fuera el plugin. Lo segundo es lo peligroso: no da error, da un plugin equivocado. De ahi que cada proyeccion permita exactamente las fuentes que SU cliente entiende y prohiba la combinacion que su cliente acepta en silencio sin honrar.",
+  "description": "Contrato del archivo GENERADO que publica el marketplace de plugins de la organizacion. No lo escribe una persona: lo produce el workflow del indice a partir de un unico barrido, y por eso este esquema existe — para que un indice mal formado se detecte al generarlo y no cuando alguien intente instalar. DOS PROYECCIONES DEL MISMO MARKETPLACE, NO DOS MARKETPLACES: `.claude-plugin/marketplace.json` para Claude Code y `.github/plugin/marketplace.json` para Copilot. Tienen la misma forma y la misma lista de plugins; se diferencian SOLO en como se direcciona un plugin que vive en un subdirectorio, porque los dos clientes no aceptan lo mismo. Ese es el motivo de que este archivo defina dos subesquemas en vez de uno: la validez depende de a que cliente va dirigido el archivo, y JSON Schema no puede deducirlo de la ruta. El gate elige el subesquema por la ruta del archivo que esta validando. DIVERGENCIA MEDIDA ENTRE CLIENTES — es el hallazgo que este esquema protege: Copilot RECHAZA la fuente `git-subdir`, y Claude Code acepta `github` con un campo `path` pero LO IGNORA, instalando el repositorio entero como si fuera el plugin. Lo segundo es lo peligroso: no da error, da un plugin equivocado. De ahi que cada proyeccion permita exactamente las fuentes que SU cliente entiende y prohiba la combinacion que su cliente acepta en silencio sin honrar.",
   "$comment": "POR QUE `sha` ADEMAS DE `ref`: cuando estan los dos, el cliente usa `sha` — una referencia movil como `main` significa que dos personas que instalan el mismo dia pueden recibir codigo distinto, y entonces el digest atestado no corresponde a lo instalado. El indice publica los dos: `sha` fija lo que se instala hoy y `ref` documenta de que rama salio. NO SE VALIDA AQUI, y a proposito: que el `sha` pertenezca al repositorio, que la etiqueta exista y que el plugin siga estando en esa ruta son comprobaciones contra el mundo, no contra la forma del documento. Las hace el gate del indice. Este esquema solo garantiza que el documento sea coherente antes de publicarlo.",
   "$defs": {
     "propietario": {
       "type": "object",
       "additionalProperties": false,
       "required": ["name", "email"],
-      "description": "A quien se reclama cuando el indice publica algo que no deberia. Un catalogo sin dueno localizable no tiene a quien escalarle.",
+      "description": "A quien se reclama cuando el indice publica algo que no deberia. Un marketplace sin dueno localizable no tiene a quien escalarle.",
       "properties": {
         "name": { "type": "string", "minLength": 1 },
         "email": { "type": "string", "format": "email" }
@@ -23,7 +23,7 @@
         "version": {
           "type": "string",
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
-          "description": "Version del INDICE, no de los plugins que lista. Cambia cuando cambia la forma del catalogo."
+          "description": "Version del INDICE, no de los plugins que lista. Cambia cuando cambia la forma del marketplace."
         }
       }
     },
@@ -39,7 +39,7 @@
         "description": {
           "type": "string",
           "minLength": 1,
-          "description": "Lo que el usuario lee en la vitrina para decidir si lo instala. Es la unica prosa del catalogo: si esta vacia, el plugin es invisible en la practica aunque este publicado."
+          "description": "Lo que el usuario lee en la vitrina para decidir si lo instala. Es la unica prosa del marketplace: si esta vacia, el plugin es invisible en la practica aunque este publicado."
         },
         "version": {
           "type": "string",
@@ -113,7 +113,7 @@
         "plugins": {
           "type": "array",
           "minItems": 1,
-          "description": "MINIMO UNA ENTRADA, y es una salvaguarda medida, no una formalidad: un indice vacio es sintacticamente valido y semanticamente catastrofico — al publicarse desinstala de golpe todo lo que el catalogo ofrecia. Si el barrido no encuentra nada, lo correcto es fallar y NO sobreescribir el catalogo anterior."
+          "description": "MINIMO UNA ENTRADA, y es una salvaguarda medida, no una formalidad: un indice vacio es sintacticamente valido y semanticamente catastrofico — al publicarse desinstala de golpe todo lo que el marketplace ofrecia. Si el barrido no encuentra nada, lo correcto es fallar y NO sobreescribir el marketplace anterior."
         }
       }
     }

@@ -11,7 +11,7 @@ inputs:
     required: false
     default: ""
   port-client-id:
-    description: Client ID de Port. Vacio = no se publica la ficha en el catalogo.
+    description: Client ID de Port. Vacio = no se publica la ficha en Port.
     required: false
     default: ""
   port-client-secret:
@@ -199,13 +199,13 @@ runs:
 
     # DE QUE DEPENDE QUE EL RELEASE NAZCA COMO PRELANZAMIENTO. `prerelease` es la señal NATIVA de
     # «esto no es para consumo general», y es lo que el indice mira para dejar un artefacto fuera del
-    # catalogo. Publicar y distribuir dejan de ser el mismo acto: el paquete se sella, se atesta y
+    # marketplace. Publicar y distribuir dejan de ser el mismo acto: el paquete se sella, se atesta y
     # queda verificable igual, pero no se propaga hasta que lo decida la evaluacion.
     #
     # LA DECISION NO SE TOMA AQUI: se lee de `POLITICA.json`, que es lo que permite cambiar de
     # criterio tocando un valor en vez de tres workflows. Si no se puede leer, se cae del lado
     # restrictivo -- se marca prelanzamiento -- porque el fallo entonces es visible y reversible.
-    - name: Resolver la politica de promocion al catalogo
+    - name: Resolver la politica de promocion al marketplace
       id: politica
       shell: bash
       run: |
@@ -224,18 +224,18 @@ runs:
           al_publicar)
             marca=""
             resuelta="al_publicar"
-            echo "El release nace COMPLETO: entra al catalogo al publicar." ;;
+            echo "El release nace COMPLETO: entra al marketplace al publicar." ;;
           al_certificar)
             marca="--prerelease"
             resuelta="al_certificar"
-            echo "El release nace como PRELANZAMIENTO: entrara al catalogo al certificarse." ;;
+            echo "El release nace como PRELANZAMIENTO: entrara al marketplace al certificarse." ;;
           *)
             marca="--prerelease"
             resuelta="al_certificar"
             echo "::warning::no se pudo resolver la politica de promocion ('$politica'): se aplica la mas restrictiva" ;;
         esac
         echo "marca=$marca" >> "$GITHUB_OUTPUT"
-        # La ficha del catalogo necesita la POLITICA, no la bandera: es lo que decide si declara el
+        # La ficha de Port necesita la POLITICA, no la bandera: es lo que decide si declara el
         # artefacto como distribuido. Se emite la ya RESUELTA -- incluida la degradacion -- para que
         # el release y la ficha no puedan discrepar sobre la misma publicacion.
         echo "promocion=$resuelta" >> "$GITHUB_OUTPUT"
@@ -260,7 +260,7 @@ runs:
     #
     # VIVE EN UNA ACCION APARTE porque hacen falta DOS avisos y aqui solo estaba uno. Publicar anade
     # una version; PROMOCIONAR decide si esa version se distribuye, y sin avisar tambien desde alli
-    # un artefacto queda certificado y ausente del catalogo hasta la pasada programada -- MEDIDO con
+    # un artefacto queda certificado y ausente del marketplace hasta la pasada programada -- MEDIDO con
     # `demo.sdlc.revisar-jql--v0.1.2` --. Toda la doctrina del aviso (que dispara un evento y no
     # escribe nada, por que el token es de la App y no un PAT, y por que el aviso omitido deja
     # rastro) esta en `.github/actions/avisar-al-indice/action.yml`.
@@ -281,7 +281,7 @@ runs:
     #
     # UPSERT y no POST: la ficha se ACTUALIZA en cada publicacion en vez de duplicarse, que es lo que
     # permite que el `status` refleje siempre el ultimo veredicto.
-    - name: Ficha en el catalogo (Port)
+    - name: Ficha en Port
       if: inputs.port-client-id != '' && inputs.port-client-secret != ''
       shell: bash
       env:

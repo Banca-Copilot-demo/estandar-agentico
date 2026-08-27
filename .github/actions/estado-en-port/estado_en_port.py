@@ -1,4 +1,4 @@
-"""Fija en el catalogo el ESTADO de los artefactos de una etiqueta, y solo lo que el estado cambia.
+"""Fija en Port el ESTADO de los artefactos de una etiqueta, y solo lo que el estado cambia.
 
 POR QUE ES UNA PIEZA APARTE Y NO MAS CODIGO DENTRO DE LA PUBLICACION. Publicar y cambiar de estado
 son dos actos distintos: la publicacion escribe la ficha ENTERA -- identidad, propietario, sha,
@@ -6,10 +6,10 @@ digesto, etiqueta -- porque acaba de sellar el paquete; una transicion de estado
 nada y por tanto NO DEBE TOCAR ninguno de esos campos. Escribir la ficha entera en una promocion
 seria reescribir con datos releidos lo que ya estaba firmado.
 
-EL DEFECTO QUE CIERRA, medido en el catalogo real: promocionar quitaba la marca de prelanzamiento
-del release -- con lo que el artefacto SI entraba al catalogo instalable -- y no tocaba Port. La
+EL DEFECTO QUE CIERRA, medido en Port real: promocionar quitaba la marca de prelanzamiento
+del release -- con lo que el artefacto SI entraba al marketplace -- y no tocaba Port. La
 ficha se quedaba en `conformant` diciendo que el artefacto no se distribuye, mientras cualquiera ya
-podia instalarlo por nombre. El catalogo de metadata contradecia al catalogo instalable, y quien
+podia instalarlo por nombre. Port contradecia al marketplace, y quien
 gobierna mirando fichas veia lo contrario de lo que pasaba.
 
 QUE TOCA, EXACTAMENTE: `status` y los dos campos que SE DERIVAN de el -- `en_marketplace` y
@@ -52,7 +52,7 @@ _MAX_CUERPO_ERROR_CHARS = 200
 
 
 class FallaDePort(RuntimeError):
-    """El catalogo no respondio o respondio un error. La decide `main()`, no las funciones."""
+    """Port no respondio o respondio un error. La decide `main()`, no las funciones."""
 
 
 def _peticion(ruta: str, token: str, cuerpo: dict | None = None) -> dict:
@@ -89,7 +89,7 @@ def cambio_de_estado(entidad: dict, estado: str, promocion: Promocion, repositor
 
     `nombre_plugin` puede venir vacio -- una etiqueta corta `vX.Y.Z` no lo lleva dentro --. En ese
     caso el artefacto no puede pertenecer a ningun plugin resoluble desde aqui, y la pista cae en la
-    rama sin catalogo, que es la conservadora: manda a verificar el paquete en vez de prometer un
+    rama sin marketplace, que es la conservadora: manda a verificar el paquete en vez de prometer un
     `plugin install` que quiza no resuelva.
     """
     propiedades = entidad.get("properties") or {}
@@ -109,7 +109,7 @@ def cambio_de_estado(entidad: dict, estado: str, promocion: Promocion, repositor
 
 def _parsear_argumentos() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Fija el estado en el catalogo de los artefactos de una etiqueta.")
+        description="Fija en Port el estado de los artefactos de una etiqueta.")
     parser.add_argument("--etiqueta", required=True,
                         help="la etiqueta cuyas fichas cambian de estado")
     parser.add_argument("--estado", required=True,
@@ -118,7 +118,7 @@ def _parsear_argumentos() -> argparse.Namespace:
     parser.add_argument("--nombre-plugin", default="",
                         help="el plugin al que pertenecen; vacio si la etiqueta no lo nombra")
     parser.add_argument("--promocion", required=True,
-                        help="politica de promocion al catalogo")
+                        help="politica de promocion al marketplace")
     parser.add_argument("--token", required=True)
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Activa logging DEBUG (detalles internos de ejecucion).")
@@ -128,17 +128,17 @@ def _parsear_argumentos() -> argparse.Namespace:
 def main() -> int:
     argumentos = _parsear_argumentos()
     registro.configurar(verboso=argumentos.verbose)
-    promocion = promocion_declarada({"promocion_al_catalogo": argumentos.promocion})
+    promocion = promocion_declarada({"promocion_al_marketplace": argumentos.promocion})
 
     try:
         respuesta = _peticion(_RUTA_LECTURA, argumentos.token)
     except FallaDePort as fallo:
-        log.error("no se pudieron leer las fichas del catalogo: %s", fallo)
+        log.error("no se pudieron leer las fichas de Port: %s", fallo)
         return 1
 
     objetivo = fichas_de_la_etiqueta(respuesta.get("entities") or [], argumentos.etiqueta)
     if not objetivo:
-        log.warning("ninguna ficha del catalogo apunta a %s: no hay estado que fijar",
+        log.warning("ninguna ficha de Port apunta a %s: no hay estado que fijar",
                     argumentos.etiqueta)
         return 0
 

@@ -11,7 +11,7 @@ prompt no coincide con lo firmado»: una alarma de INTEGRIDAD por un problema de
 de mensaje, porque manda a investigar la cadena de firma cuando lo que falla es una concatenacion.
 
 Y UN SEGUNDO SINTOMA, PEOR QUE EL PRIMERO: la `ruta` dejaba de ser UNICA. Los dos `mcp` del
-repositorio de demo publicaban `.mcp.json` los dos, asi que dos fichas del catalogo con ids distintos
+repositorio de demo publicaban `.mcp.json` los dos, asi que dos fichas de Port con ids distintos
 apuntaban al mismo archivo y no habia forma de saber a que se referia cada una.
 
 POR QUE NO LO VIO NINGUNA PRUEBA: no habia ni una que ejercitara `listar_artefactos`, y ninguna montaba

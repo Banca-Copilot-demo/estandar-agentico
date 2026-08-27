@@ -14,8 +14,8 @@ name: Pruebas del estandar
 # este filtro CI no lo diria.
 #
 # `port/**` ESTABA IGUAL DE AUSENTE, y por la misma razon exacta que `schemas/**`: la prueba del
-# contrato del catalogo lee `port/blueprint-artefacto-agentico.json` del repositorio, o sea que el
-# blueprint es tambien una ENTRADA de la suite. Editar el contrato del catalogo no disparaba la prueba
+# contrato de Port lee `port/blueprint-artefacto-agentico.json` del repositorio, o sea que el
+# blueprint es tambien una ENTRADA de la suite. Editar el contrato de Port no disparaba la prueba
 # que existe para vigilar precisamente su deriva. Es el mismo defecto que el parrafo de abajo dice
 # haber corregido, reintroducido en el archivo de al lado -- que es lo que pasa cuando la correccion se
 # escribe como comentario y no como regla comprobable --.

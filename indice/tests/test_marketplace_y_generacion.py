@@ -1,4 +1,4 @@
-"""Pruebas del catalogo generado y del caso de uso.
+"""Pruebas del marketplace generado y del caso de uso.
 
 El caso de uso se prueba con DOBLES INYECTADOS, no parcheando `subprocess` (T4): los adaptadores son
 argumentos con valor por defecto, asi que la prueba pasa los suyos y no toca red, ni `gh`, ni disco.
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from indice_agentico.adaptadores import catalogo, github
+from indice_agentico.adaptadores import github, marketplace
 from indice_agentico.adaptadores.paquete import LecturaManifiesto
 from indice_agentico.aplicacion.generar import generar
 from indice_agentico.dominio.candidato import Descarte, Entrada, Indice, Motivo
@@ -20,7 +20,7 @@ PROPIETARIO = {"name": "Plataforma Agentica (demo)", "email": "plataforma-agenti
 # Ruta explicita y no la de por defecto: una prueba que dependa del directorio de trabajo pasa o
 # falla segun desde donde se invoque a pytest.
 ESQUEMAS = Path(__file__).resolve().parents[2] / "schemas"
-CLAUDE = catalogo.Proyeccion.CLAUDE_CODE
+CLAUDE = marketplace.Proyeccion.CLAUDE_CODE
 
 
 def _entrada(name: str, version: str = "0.2.0", subruta: str | None = None) -> Entrada:
@@ -30,12 +30,12 @@ def _entrada(name: str, version: str = "0.2.0", subruta: str | None = None) -> E
                    sha="c" * 40, **extra)
 
 
-# ── catalogo ───────────────────────────────────────────────────────────────────────────────
-def test_toda_entrada_del_catalogo_lleva_sha():
+# ── marketplace ────────────────────────────────────────────────────────────────────────────
+def test_toda_entrada_del_marketplace_lleva_sha():
     """Sin `sha` el puntero es movil: la etiqueta se puede reescribir si el repositorio no tiene
     releases inmutables, y entonces `ref` no fija nada."""
-    generado = json.loads(catalogo.render(Indice((_entrada("a"), _entrada("b")), ()),
-                                          "agentico", PROPIETARIO, "0.1.0", CLAUDE))
+    generado = json.loads(marketplace.render(Indice((_entrada("a"), _entrada("b")), ()),
+                                             "agentico", PROPIETARIO, "0.1.0", CLAUDE))
     assert generado["plugins"]
     for plugin in generado["plugins"]:
         assert len(plugin["source"]["sha"]) == 40, plugin["name"]
@@ -43,32 +43,34 @@ def test_toda_entrada_del_catalogo_lleva_sha():
 
 def test_source_se_emite_como_objeto_y_no_como_cadena():
     # La forma abreviada de `source` es una cadena y NO admite `sha`.
-    generado = json.loads(catalogo.render(Indice((_entrada("a"),), ()), "agentico", PROPIETARIO, "0.1", CLAUDE))
+    generado = json.loads(marketplace.render(Indice((_entrada("a"),), ()), "agentico", PROPIETARIO,
+                                             "0.1", CLAUDE))
     assert isinstance(generado["plugins"][0]["source"], dict)
 
 
 def test_los_plugins_salen_ordenados_por_nombre():
     # Sin orden fijo, cada regeneracion produce un diff distinto sin que nada haya cambiado.
-    generado = json.loads(catalogo.render(Indice((_entrada("z"), _entrada("a")), ()),
-                                          "agentico", PROPIETARIO, "0.1", CLAUDE))
+    generado = json.loads(marketplace.render(Indice((_entrada("z"), _entrada("a")), ()),
+                                             "agentico", PROPIETARIO, "0.1", CLAUDE))
     assert [p["name"] for p in generado["plugins"]] == ["a", "z"]
 
 
-def test_el_catalogo_avisa_de_que_esta_generado():
-    generado = json.loads(catalogo.render(Indice((), ()), "agentico", PROPIETARIO, "0.1", CLAUDE))
+def test_el_marketplace_avisa_de_que_esta_generado():
+    generado = json.loads(marketplace.render(Indice((), ()), "agentico", PROPIETARIO, "0.1",
+                                             CLAUDE))
     assert "no editar a mano" in generado["metadata"]["description"]
 
 
-# ── borradores y prelanzamientos NO entran al catalogo ──────────────────────────────────────
-def test_un_prelanzamiento_no_entra_al_catalogo(monkeypatch):
-    """Es el mecanismo para RETIRAR del catalogo un release cuyo plugin ya no se mantiene: un
+# ── borradores y prelanzamientos NO entran al marketplace ───────────────────────────────────
+def test_un_prelanzamiento_no_entra_al_marketplace(monkeypatch):
+    """Es el mecanismo para RETIRAR del marketplace un release cuyo plugin ya no se mantiene: un
     release publicado no se puede borrar sin romper las atestaciones que cuelgan de el, y
     `prerelease` es la senal nativa de GitHub para «esto no es para consumo general».
 
-    Defecto MEDIDO contra la organizacion real: el catalogo listaba `demo.sdlc.migracion-cnf 0.3.0`,
-    de cuando el repositorio era un plugin unico. Ese plugin ya no existe en el arbol -- hoy hay dos
-    bajo `plugins/` -- pero su release seguia siendo el mas nuevo de su grupo, asi que la vitrina
-    anunciaba algo que nadie mantiene.
+    Defecto MEDIDO contra la organizacion real: el marketplace listaba `demo.sdlc.migracion-cnf
+    0.3.0`, de cuando el repositorio era un plugin unico. Ese plugin ya no existe en el arbol -- hoy
+    hay dos bajo `plugins/` -- pero su release seguia siendo el mas nuevo de su grupo, asi que la
+    vitrina anunciaba algo que nadie mantiene.
 
     Se parchea `_gh` y no el adaptador porque lo que se prueba ES el filtrado del adaptador (T4 pide
     inyectar dobles para probar OTRA cosa a traves de un adaptador; aqui el adaptador es el sujeto).
@@ -214,10 +216,10 @@ def test_sin_repositorios_el_indice_sale_vacio_y_no_falla():
 
 
 # ── el guardarail de escritura ─────────────────────────────────────────────────────────────
-def test_un_indice_vacio_no_sobreescribe_el_catalogo_existente(tmp_path):
+def test_un_indice_vacio_no_sobreescribe_el_marketplace_existente(tmp_path):
     """Defecto que cubre: sobreescribir con `plugins: []` desinstalaria todo de golpe. Toca disco
     porque lo que se prueba ES el efecto en disco -- no es una regla de dominio (T1)."""
-    previo = tmp_path / catalogo.Proyeccion.CLAUDE_CODE.ruta
+    previo = tmp_path / marketplace.Proyeccion.CLAUDE_CODE.ruta
     previo.parent.mkdir(parents=True)
     previo.write_text('{"plugins": ["algo"]}', encoding="utf-8")
 
@@ -229,20 +231,21 @@ def test_un_indice_vacio_no_sobreescribe_el_catalogo_existente(tmp_path):
 
 def test_un_indice_con_entradas_si_se_escribe(tmp_path):
     indice = Indice((_entrada("a"),), ())
-    contenido = catalogo.render(indice, "agentico", PROPIETARIO, "0.1.0", CLAUDE)
+    contenido = marketplace.render(indice, "agentico", PROPIETARIO, "0.1.0", CLAUDE)
 
     codigo = cli.escribir(indice, tmp_path, {CLAUDE: contenido}, ESQUEMAS)
 
     assert codigo == cli.SALIDA_OK
-    escrito = tmp_path / catalogo.Proyeccion.CLAUDE_CODE.ruta
+    escrito = tmp_path / marketplace.Proyeccion.CLAUDE_CODE.ruta
     assert escrito.read_text(encoding="utf-8") == contenido
 
 
 def test_se_escriben_LAS_DOS_proyecciones_en_la_misma_llamada():
     """Defecto que cubre: la proyeccion de Copilot no se generaba -- se escribio a mano durante una
     prueba de instalacion -- asi que se habria quedado rancia sin que nada lo indicara. Si una se
-    puede actualizar sin la otra, los usuarios de un cliente ven un catalogo mas viejo en silencio."""
-    assert {p.ruta for p in catalogo.Proyeccion} == {
+    puede actualizar sin la otra, los usuarios de un cliente ven un marketplace mas viejo en
+    silencio."""
+    assert {p.ruta for p in marketplace.Proyeccion} == {
         ".claude-plugin/marketplace.json",
         ".github/plugin/marketplace.json",
     }
@@ -250,12 +253,12 @@ def test_se_escriben_LAS_DOS_proyecciones_en_la_misma_llamada():
 
 def test_las_dos_proyecciones_se_escriben_en_una_sola_llamada(tmp_path):
     indice = Indice((_entrada("a"),), ())
-    contenidos = {p: catalogo.render(indice, "agentico", PROPIETARIO, "0.1.0", p)
-                  for p in catalogo.Proyeccion}
+    contenidos = {p: marketplace.render(indice, "agentico", PROPIETARIO, "0.1.0", p)
+                  for p in marketplace.Proyeccion}
 
     cli.escribir(indice, tmp_path, contenidos, ESQUEMAS)
 
-    for proyeccion in catalogo.Proyeccion:
+    for proyeccion in marketplace.Proyeccion:
         assert (tmp_path / proyeccion.ruta).exists(), proyeccion.ruta
 
 
@@ -269,8 +272,8 @@ def _anidado(subruta: str = "plugins/contratos") -> Entrada:
 def test_un_plugin_anidado_usa_git_subdir_en_claude_code():
     """Claude Code acepta `github` con `path` y despues IGNORA el `path`: instalaria el repositorio
     entero sin dar error. `git-subdir` es su unica fuente que honra un subdirectorio."""
-    generado = json.loads(catalogo.render(Indice((_anidado(),), ()), "agentico", PROPIETARIO,
-                                          "0.1.0", catalogo.Proyeccion.CLAUDE_CODE))
+    generado = json.loads(marketplace.render(Indice((_anidado(),), ()), "agentico", PROPIETARIO,
+                                             "0.1.0", marketplace.Proyeccion.CLAUDE_CODE))
     fuente = generado["plugins"][0]["source"]
     assert fuente["source"] == "git-subdir"
     assert fuente["path"] == "plugins/contratos"
@@ -278,17 +281,17 @@ def test_un_plugin_anidado_usa_git_subdir_en_claude_code():
 
 def test_un_plugin_anidado_usa_github_mas_path_en_copilot():
     # Copilot RECHAZA `git-subdir`, y una entrada asi rompe el indice entero para ese cliente.
-    generado = json.loads(catalogo.render(Indice((_anidado(),), ()), "agentico", PROPIETARIO,
-                                          "0.1.0", catalogo.Proyeccion.COPILOT))
+    generado = json.loads(marketplace.render(Indice((_anidado(),), ()), "agentico", PROPIETARIO,
+                                             "0.1.0", marketplace.Proyeccion.COPILOT))
     fuente = generado["plugins"][0]["source"]
     assert fuente["source"] == "github"
     assert fuente["path"] == "plugins/contratos"
 
 
 def test_un_plugin_que_ocupa_su_repositorio_se_direcciona_IGUAL_en_los_dos():
-    fuentes = [json.loads(catalogo.render(Indice((_entrada("a"),), ()), "agentico", PROPIETARIO,
-                                          "0.1.0", p))["plugins"][0]["source"]
-               for p in catalogo.Proyeccion]
+    fuentes = [json.loads(marketplace.render(Indice((_entrada("a"),), ()), "agentico", PROPIETARIO,
+                                             "0.1.0", p))["plugins"][0]["source"]
+               for p in marketplace.Proyeccion]
     assert fuentes[0] == fuentes[1]
     assert "path" not in fuentes[0]
 
@@ -297,15 +300,15 @@ def test_las_dos_proyecciones_de_un_anidado_CUMPLEN_cada_una_su_esquema(tmp_path
     """Es la prueba que cierra el circulo: cada cliente recibe una fuente que el OTRO rechazaria,
     y las dos pasan su propia validacion."""
     indice = Indice((_anidado(),), ())
-    contenidos = {p: catalogo.render(indice, "agentico", PROPIETARIO, "0.1.0", p)
-                  for p in catalogo.Proyeccion}
+    contenidos = {p: marketplace.render(indice, "agentico", PROPIETARIO, "0.1.0", p)
+                  for p in marketplace.Proyeccion}
 
     assert cli.escribir(indice, tmp_path, contenidos, ESQUEMAS) == cli.SALIDA_OK
 
 
-# ── el catalogo se valida ANTES de escribirse ───────────────────────────────────────────────
-def test_un_catalogo_que_no_cumple_el_esquema_no_se_escribe(tmp_path):
-    """Defecto que cubre: el indice emitia el catalogo sin comprobarlo contra el esquema, asi que
+# ── el marketplace se valida ANTES de escribirse ────────────────────────────────────────────
+def test_un_marketplace_que_no_cumple_el_esquema_no_se_escribe(tmp_path):
+    """Defecto que cubre: el indice emitia el marketplace sin comprobarlo contra el esquema, asi que
     una fuente que un cliente no sabe instalar se publicaba y solo se notaba al instalar."""
     indice = Indice((_entrada("a"),), ())
     invalido = json.dumps({"name": "agentico", "owner": PROPIETARIO,
@@ -333,21 +336,22 @@ def test_la_combinacion_QUE_FALLA_EN_SILENCIO_se_rechaza(tmp_path):
 # ── el artefacto suelto publicado como su propia unidad ─────────────────────────────────────
 @pytest.mark.parametrize("subruta", ["skills/revisar-jql", "commands/resumir", "agents/auditor"],
                          ids=["skill", "prompt", "agente"])
-@pytest.mark.parametrize("proyeccion", list(catalogo.Proyeccion),
-                         ids=[p.name.lower() for p in catalogo.Proyeccion])
+@pytest.mark.parametrize("proyeccion", list(marketplace.Proyeccion),
+                         ids=[p.name.lower() for p in marketplace.Proyeccion])
 def test_un_suelto_apunta_a_SU_subruta_en_las_dos_proyecciones(subruta, proyeccion):
     """LAS DOS PROYECCIONES O NINGUNA. Esta medido que los clientes no aceptan lo mismo: Copilot
     rechaza la fuente `git-subdir`, y Claude Code acepta `github` con `path` pero IGNORA el path e
     instala el repositorio ENTERO sin dar error. Una proyeccion correcta y la otra no no seria medio
     arreglo: seria una instalacion silenciosamente equivocada en uno de los dos clientes.
 
-    Y el `sha` importa tanto como el `path`: es lo que ata lo que el catalogo instala con lo que la
-    atestacion firmo. Comprobado que los dos clientes lo honran -- se fijo el catalogo a un commit,
-    se movio la rama a otro posterior con un marcador y el marcador NO aparecio en lo instalado --.
+    Y el `sha` importa tanto como el `path`: es lo que ata lo que el marketplace instala con lo que
+    la atestacion firmo. Comprobado que los dos clientes lo honran -- se fijo el marketplace a un
+    commit, se movio la rama a otro posterior con un marcador y el marcador NO aparecio en lo
+    instalado --.
     """
     entrada = _entrada("revisar-jql", version="0.1.0", subruta=subruta)
-    generado = json.loads(catalogo.render(Indice((entrada,), ()), "agentico", PROPIETARIO,
-                                          "0.1.0", proyeccion))
+    generado = json.loads(marketplace.render(Indice((entrada,), ()), "agentico", PROPIETARIO,
+                                             "0.1.0", proyeccion))
 
     fuente = generado["plugins"][0]["source"]
 

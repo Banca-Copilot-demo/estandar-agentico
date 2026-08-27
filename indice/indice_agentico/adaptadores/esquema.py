@@ -1,9 +1,9 @@
 """Adaptador de entrada: valida una proyeccion del indice contra `marketplace.schema.json`.
 
-POR QUE ANTES DE ESCRIBIR Y NO DESPUES. El catalogo que se escribe es el que los clientes instalan;
-validarlo despues solo documentaria que se publico algo malo. Si una proyeccion no cumple, no se
-escribe NINGUNA -- las dos avanzan juntas o ninguna, o los usuarios de un cliente veran un catalogo
-mas viejo sin que nada lo indique.
+POR QUE ANTES DE ESCRIBIR Y NO DESPUES. El marketplace que se escribe es el que los clientes
+instalan; validarlo despues solo documentaria que se publico algo malo. Si una proyeccion no cumple,
+no se escribe NINGUNA -- las dos avanzan juntas o ninguna, o los usuarios de un cliente veran un
+marketplace mas viejo sin que nada lo indique.
 
 POR QUE UN SUBESQUEMA POR PROYECCION. La validez depende de a que cliente va dirigido el archivo:
 Copilot rechaza la fuente `git-subdir`, y Claude Code acepta `github` con `path` pero IGNORA el

@@ -1,7 +1,7 @@
 """El resolutor que traduce la politica a la bandera de `gh release create`.
 
 ES EL PUNTO EXACTO DONDE PUBLICAR Y DISTRIBUIR SE SEPARAN: si devuelve `--prerelease`, el release nace
-fuera del catalogo y el artefacto queda publicado pero no distribuido. Equivocarse aqui no rompe la
+fuera del marketplace y el artefacto queda publicado pero no distribuido. Equivocarse aqui no rompe la
 publicacion -- por eso hace falta probarlo: fallaria en verde.
 """
 from __future__ import annotations
@@ -29,7 +29,7 @@ def _cargar():
 resolver = _cargar()
 
 
-def test_al_certificar_hace_que_el_release_nazca_FUERA_del_catalogo():
+def test_al_certificar_hace_que_el_release_nazca_FUERA_del_marketplace():
     assert resolver.bandera_de(Promocion.AL_CERTIFICAR) == "--prerelease"
 
 
@@ -55,13 +55,13 @@ def test_lo_que_se_IMPRIME_nunca_es_vacio(promocion):
 @pytest.mark.parametrize("contenido, motivo", [
     (None, "no existe"),
     ("{no es json", "JSON roto"),
-    ('{"promocion_al_catalogo": "inventado"}', "valor que no existe"),
+    ('{"promocion_al_marketplace": "inventado"}', "valor que no existe"),
 ], ids=["ausente", "json-roto", "valor-invalido"])
 def test_una_politica_ilegible_NO_distribuye_de_mas(contenido, motivo, tmp_path):
     """EL DEFECTO QUE EVITA, y es el que este proyecto ha encontrado una y otra vez: que un error de
     configuracion se lea como «todo en orden».
 
-    Aqui el fail-open seria publicar al catalogo por no haber podido leer la politica: un artefacto
+    Aqui el fail-open seria publicar al marketplace por no haber podido leer la politica: un artefacto
     sin certificar llegaria a toda la organizacion y nadie lo notaria, porque nada falla. Al reves se
     nota en un minuto -- algo no se distribuyo -- y se arregla promocionandolo.
     """
@@ -101,6 +101,6 @@ def test_la_politica_del_repositorio_es_legible_y_declarada():
     valor inventado, la publicacion seguiria funcionando -- degradando -- y nadie se enteraria."""
     ruta = Path(__file__).resolve().parents[2] / "POLITICA.json"
 
-    declarado = json.loads(ruta.read_text(encoding="utf-8"))["promocion_al_catalogo"]
+    declarado = json.loads(ruta.read_text(encoding="utf-8"))["promocion_al_marketplace"]
 
     assert declarado in {p.value for p in Promocion}, declarado

@@ -1,7 +1,7 @@
-"""Lee una ficha del catalogo y la emite como variables de entorno.
+"""Lee una ficha de Port y la emite como variables de entorno.
 
 Es el paso 1 del camino de instalacion hecho por un programa: NO inventa ningun dato ni relee el
-repositorio, lee exactamente lo que el catalogo publica -- que es lo que vera el desarrollador.
+repositorio, lee exactamente lo que Port publica -- que es lo que vera el desarrollador.
 
 Las credenciales llegan por entorno, no por argumento: un `clientSecret` en la linea de comandos
 queda en el historial del shell y en la tabla de procesos.

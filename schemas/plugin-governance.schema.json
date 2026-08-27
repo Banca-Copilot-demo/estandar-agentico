@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/plugin-governance.schema.json",
   "title": "Manifiesto de gobierno del plugin agentico — Track Agentico",
-  "description": "Contrato de `GOVERNANCE.json`, en la raiz DEL PLUGIN — que no siempre es la raiz del repositorio: un repositorio de dominio puede alojar varios plugins bajo `plugins/<nombre>/`, y entonces cada uno lleva el suyo junto a su propio `plugin.json`. IMPORTANTE — LO QUE ESTE ARCHIVO NO ES: no es el manifiesto del plugin. El manifiesto es `plugin.json` conforme a Agent Plugins 1.0 (https://agent-plugins.org/schemas/1.0.0/plugin.schema.json), especificacion abierta y neutral de proveedor que define empaquetado, layout, instalacion y marketplaces; ese archivo admite SOLO diez campos de primer nivel ($schema, name, version, description, author, homepage, repository, license, keywords, extensions), asi que el gobierno de la organizacion NO cabe ahi. Este archivo lo complementa y se referencia desde `plugin.json` en `extensions['com.ejemplo.gobierno'].governance`, usando el mecanismo de namespace DNS-inverso que la propia especificacion define para datos especificos de un cliente. DIVISION DE RESPONSABILIDADES: la industria define el formato y la distribucion (Agent Plugins 1.0 + Agent Skills); la organizacion define aprobacion, trazabilidad, ciclo de vida y catalogo — que es lo que ninguna de las dos especificaciones cubre (no tienen modelo de confianza, ni verificacion de firma, ni atestacion). Alineado a: SemVer 2.0.0 (version), SPDX (license en plugin.json), SLSA/in-toto (attestation), NIST AI RMF (ciclo de vida y decommissioning).",
+  "description": "Contrato de `GOVERNANCE.json`, en la raiz DEL PLUGIN — que no siempre es la raiz del repositorio: un repositorio de dominio puede alojar varios plugins bajo `plugins/<nombre>/`, y entonces cada uno lleva el suyo junto a su propio `plugin.json`. IMPORTANTE — LO QUE ESTE ARCHIVO NO ES: no es el manifiesto del plugin. El manifiesto es `plugin.json` conforme a Agent Plugins 1.0 (https://agent-plugins.org/schemas/1.0.0/plugin.schema.json), especificacion abierta y neutral de proveedor que define empaquetado, layout, instalacion y marketplaces; ese archivo admite SOLO diez campos de primer nivel ($schema, name, version, description, author, homepage, repository, license, keywords, extensions), asi que el gobierno de la organizacion NO cabe ahi. Este archivo lo complementa y se referencia desde `plugin.json` en `extensions['com.ejemplo.gobierno'].governance`, usando el mecanismo de namespace DNS-inverso que la propia especificacion define para datos especificos de un cliente. DIVISION DE RESPONSABILIDADES: la industria define el formato y la distribucion (Agent Plugins 1.0 + Agent Skills); la organizacion define aprobacion, trazabilidad, ciclo de vida, la ficha de Port y el marketplace — que es lo que ninguna de las dos especificaciones cubre (no tienen modelo de confianza, ni verificacion de firma, ni atestacion). Alineado a: SemVer 2.0.0 (version), SPDX (license en plugin.json), SLSA/in-toto (attestation), NIST AI RMF (ciclo de vida y decommissioning).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,12 +17,12 @@
     "id": {
       "type": "string",
       "pattern": "^[a-z0-9]+(\\.[a-z0-9][a-z0-9-]*)+$",
-      "description": "Identificador canonico del plugin: <org>.<dominio>.<nombre>, p. ej. acme.sdlc.migracion-cnf. DEBE coincidir con el campo `name` de plugin.json (la especificacion admite puntos en modo Open Plugin Spec). Es lo unico estable entre organizaciones: una dependencia se declara por id, nunca por ruta ni por URL, y el catalogo de Port resuelve id -> repositorio + etiqueta. El namespace DNS-inverso con verificacion de propiedad del dominio es el mecanismo del registro oficial de MCP; sin esa verificacion, el prefijo es una convencion de nombres y no una garantia de origen."
+      "description": "Identificador canonico del plugin: <org>.<dominio>.<nombre>, p. ej. acme.sdlc.migracion-cnf. DEBE coincidir con el campo `name` de plugin.json (la especificacion admite puntos en modo Open Plugin Spec). Es lo unico estable entre organizaciones: una dependencia se declara por id, nunca por ruta ni por URL, y Port resuelve id -> repositorio + etiqueta. El namespace DNS-inverso con verificacion de propiedad del dominio es el mecanismo del registro oficial de MCP; sin esa verificacion, el prefijo es una convencion de nombres y no una garantia de origen."
     },
     "domain": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]*$",
-      "description": "Dominio al que pertenece el plugin. DEBE coincidir con la custom property `domain` del repositorio en GitHub: es lo que hace que el ruleset de la organizacion alcance el repo automaticamente. Un repositorio de dominio sin esa propiedad nace sin gate y en silencio. CONSECUENCIA — UN REPOSITORIO ALOJA PLUGINS DE UN SOLO DOMINIO: la custom property es UNA por repositorio, asi que si dos plugins del mismo repo declararan dominios distintos, uno de los dos quedaria etiquetado con el dominio del otro en el catalogo y alcanzado por el ruleset equivocado. Varios plugins por repositorio: si. Varios dominios por repositorio: no. Es la razon de ser de un repositorio DE DOMINIO."
+      "description": "Dominio al que pertenece el plugin. DEBE coincidir con la custom property `domain` del repositorio en GitHub: es lo que hace que el ruleset de la organizacion alcance el repo automaticamente. Un repositorio de dominio sin esa propiedad nace sin gate y en silencio. CONSECUENCIA — UN REPOSITORIO ALOJA PLUGINS DE UN SOLO DOMINIO: la custom property es UNA por repositorio, asi que si dos plugins del mismo repo declararan dominios distintos, uno de los dos quedaria etiquetado con el dominio del otro en Port y alcanzado por el ruleset equivocado. Varios plugins por repositorio: si. Varios dominios por repositorio: no. Es la razon de ser de un repositorio DE DOMINIO."
     },
     "owner": {
       "type": "object",
@@ -31,7 +31,7 @@
         "team",
         "contact"
       ],
-      "description": "Dueno del plugin. El gate G4 exige que sea declarado Y RESOLUBLE contra la organizacion de GitHub: un equipo que no resuelve es texto libre, y un plugin sin dueno real no se puede deprecar, corregir ni retirar — queda en el catalogo para siempre.",
+      "description": "Dueno del plugin. El gate G4 exige que sea declarado Y RESOLUBLE contra la organizacion de GitHub: un equipo que no resuelve es texto libre, y un plugin sin dueno real no se puede deprecar, corregir ni retirar — queda en Port para siempre.",
       "properties": {
         "team": {
           "type": "string",
@@ -49,7 +49,7 @@
     },
     "status": {
       "deprecated": true,
-      "description": "RETIRADO DEL ESTANDAR — no lo declares. Se conserva en el esquema SOLO para que los `GOVERNANCE.json` que todavia lo llevan no se rompan; se acepta y se DESCARTA, y el gate emite un aviso que no bloquea. POR QUE SE RETIRO: el estado del ciclo de vida se DERIVA de hechos —gates superados, etiqueta publicada, atestacion valida— y vive en la ficha del catalogo de Port, que es quien lo calcula. Este campo era EDITABLE, asi que decia `draft` mientras el catalogo decia `certified` para el mismo artefacto. No se contradecian —significaban cosas distintas— pero compartian nombre, y quien lo leyera podia creer que editandolo cambiaba el estado real. No cambiaba nada: un campo que parece una palanca y no lo es es peor que no tenerlo. NO CONFUNDIR con `metadata.status` del frontmatter de un artefacto (`SKILL.md`, `*.agent.md`), que es otro campo, esta en otro esquema —`envelope.schema.json`— y SIGUE VIGENTE. QUE MIRAR EN SU LUGAR: `certification.verdict` para el veredicto de la ultima corrida de gates, y la ficha del catalogo para el estado publicado. Se eliminara del esquema cuando ningun repositorio de dominio lo declare."
+      "description": "RETIRADO DEL ESTANDAR — no lo declares. Se conserva en el esquema SOLO para que los `GOVERNANCE.json` que todavia lo llevan no se rompan; se acepta y se DESCARTA, y el gate emite un aviso que no bloquea. POR QUE SE RETIRO: el estado del ciclo de vida se DERIVA de hechos —gates superados, etiqueta publicada, atestacion valida— y vive en la ficha de Port, que es quien lo calcula. Este campo era EDITABLE, asi que decia `draft` mientras Port decia `certified` para el mismo artefacto. No se contradecian —significaban cosas distintas— pero compartian nombre, y quien lo leyera podia creer que editandolo cambiaba el estado real. No cambiaba nada: un campo que parece una palanca y no lo es es peor que no tenerlo. NO CONFUNDIR con `metadata.status` del frontmatter de un artefacto (`SKILL.md`, `*.agent.md`), que es otro campo, esta en otro esquema —`envelope.schema.json`— y SIGUE VIGENTE. QUE MIRAR EN SU LUGAR: `certification.verdict` para el veredicto de la ultima corrida de gates, y la ficha de Port para el estado publicado. Se eliminara del esquema cuando ningun repositorio de dominio lo declare."
     },
     "data_classification": {
       "type": "string",
@@ -64,7 +64,7 @@
     "version": {
       "type": "string",
       "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
-      "description": "Version del PAQUETE que este gobierno describe, en SemVer y como cadena. SOLO para un repositorio de artefactos SUELTOS, y es lo que le permite tener cadena de publicacion: sin ella no hay de donde derivar la etiqueta, asi que no hay release, ni atestacion, ni ficha en el catalogo -- y el consumidor no puede verificar nada antes de instalar. CUANDO HAY PLUGIN NO SE DECLARA: la version del paquete es la del `plugin.json`, que es lo que el marketplace resuelve, y declararla en dos sitios seria pedir que divergieran. El gate lo comprueba: sobra si hay manifiesto, y falta si no lo hay. NO CONFUNDIR con `standard_version`, que es la version del ESTANDAR contra la que se aprobo -- dos cosas distintas que la primera version de este esquema no distinguia, y por eso el camino del artefacto suelto quedo sin implementar."
+      "description": "Version del PAQUETE que este gobierno describe, en SemVer y como cadena. SOLO para un repositorio de artefactos SUELTOS, y es lo que le permite tener cadena de publicacion: sin ella no hay de donde derivar la etiqueta, asi que no hay release, ni atestacion, ni ficha en Port -- y el consumidor no puede verificar nada antes de instalar. CUANDO HAY PLUGIN NO SE DECLARA: la version del paquete es la del `plugin.json`, que es lo que el marketplace resuelve, y declararla en dos sitios seria pedir que divergieran. El gate lo comprueba: sobra si hay manifiesto, y falta si no lo hay. NO CONFUNDIR con `standard_version`, que es la version del ESTANDAR contra la que se aprobo -- dos cosas distintas que la primera version de este esquema no distinguia, y por eso el camino del artefacto suelto quedo sin implementar."
     },
     "standard_version": {
       "type": "string",
@@ -74,7 +74,7 @@
     "artifacts": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Inventario declarado por tipo, POR LISTA DE IDS. El gate G1 lo compara contra el arbol real DEL PLUGIN al que pertenece este archivo — no del repositorio: cuando un repositorio aloja varios plugins, recorrer el arbol completo haria que cada plugin fallara por los artefactos de sus VECINOS. Si lo declarado y lo real no coinciden, el PR se bloquea. Es lo que evita que el catalogo publique un inventario que no existe.\n\nPOR QUE IDS Y NO CONTEOS, medido: un conteo tiene un FALSO NEGATIVO. Borrar un artefacto y anadir otro en el mismo pull request deja el numero EXACTAMENTE igual, asi que el cotejo no encuentra nada que decir mientras el catalogo publica una lista que ya no corresponde. Con nombres, lo que se compara son identidades y ese cambio si se ve. Es la clase de hueco por el que un campo inventado sobrevive meses sin que ninguna comprobacion lo toque.\n\nSOLO TRES TIPOS, y los tres son los que tienen IDENTIDAD PROPIA -- cada uno lleva su `metadata.id` en su frontmatter --. `mcps` y `hooks` SALIERON: el servidor MCP ya se enumera en `.mcp.json`, que es el archivo que el cliente ejecuta y contra el que el gate coteja el gobierno; y los hooks NO TIENEN IDENTIDAD INDIVIDUAL -- se distinguen por evento y `matcher`, no llevan `id` en ninguna parte --, asi que no son enumerables. `instructions` tampoco se cuenta: dejo de ser un tipo gobernado, y contar algo que no se gobierna daria a entender que el catalogo lo conoce.\n\nTRANSICION: el conteo se sigue aceptando con AVISO, y el aviso trae la lista ya escrita. Ver `$defs.inventarioPorTipo`.",
+      "description": "Inventario declarado por tipo, POR LISTA DE IDS. El gate G1 lo compara contra el arbol real DEL PLUGIN al que pertenece este archivo — no del repositorio: cuando un repositorio aloja varios plugins, recorrer el arbol completo haria que cada plugin fallara por los artefactos de sus VECINOS. Si lo declarado y lo real no coinciden, el PR se bloquea. Es lo que evita que Port publique un inventario que no existe.\n\nPOR QUE IDS Y NO CONTEOS, medido: un conteo tiene un FALSO NEGATIVO. Borrar un artefacto y anadir otro en el mismo pull request deja el numero EXACTAMENTE igual, asi que el cotejo no encuentra nada que decir mientras Port publica una lista que ya no corresponde. Con nombres, lo que se compara son identidades y ese cambio si se ve. Es la clase de hueco por el que un campo inventado sobrevive meses sin que ninguna comprobacion lo toque.\n\nSOLO TRES TIPOS, y los tres son los que tienen IDENTIDAD PROPIA -- cada uno lleva su `metadata.id` en su frontmatter --. `mcps` y `hooks` SALIERON: el servidor MCP ya se enumera en `.mcp.json`, que es el archivo que el cliente ejecuta y contra el que el gate coteja el gobierno; y los hooks NO TIENEN IDENTIDAD INDIVIDUAL -- se distinguen por evento y `matcher`, no llevan `id` en ninguna parte --, asi que no son enumerables. `instructions` tampoco se cuenta: dejo de ser un tipo gobernado, y contar algo que no se gobierna daria a entender que Port lo conoce.\n\nTRANSICION: el conteo se sigue aceptando con AVISO, y el aviso trae la lista ya escrita. Ver `$defs.inventarioPorTipo`.",
       "properties": {
         "skills": {
           "$ref": "#/$defs/inventarioPorTipo",
@@ -113,7 +113,7 @@
       "items": {
         "type": "string"
       },
-      "description": "Modelos permitidos para los artefactos de este plugin. Cada valor del campo `model` de un artefacto debe pertenecer a esta lista (el gate G1 lo comprueba). POR QUE AQUI Y NO EN CADA ARTEFACTO: en el activo real la misma lista de 4 modelos estaba repetida en 13 archivos, asi que cada rotacion del catalogo obligaba a tocar 13 sitios."
+      "description": "Modelos permitidos para los artefactos de este plugin. Cada valor del campo `model` de un artefacto debe pertenecer a esta lista (el gate G1 lo comprueba). POR QUE AQUI Y NO EN CADA ARTEFACTO: en el activo real la misma lista de 4 modelos estaba repetida en 13 archivos, asi que cada rotacion del catalogo de modelos obligaba a tocar 13 sitios."
     },
     "certification": {
       "type": "object",
@@ -185,7 +185,7 @@
         "sunset_date",
         "decided_by"
       ],
-      "description": "Bloque de RETIRO ANUNCIADO. Es la DECISION HUMANA de dejar de recomendar el plugin, y por eso se declara: nada la deriva de un hecho, a diferencia del estado del ciclo de vida —que sale de los gates y lo publica el catalogo— y que por eso ya no se declara aqui. Declararlo es lo que hace que el catalogo derive `deprecated`, no al reves. El retiro es en DOS TIEMPOS por especificacion (RFC 9745 §4 + RFC 8594): entre marcar algo obsoleto y que deje de funcionar hace falta un plazo anunciado, o el retiro es una sorpresa. El ejemplo de la propia RFC separa ambas fechas por un ano.",
+      "description": "Bloque de RETIRO ANUNCIADO. Es la DECISION HUMANA de dejar de recomendar el plugin, y por eso se declara: nada la deriva de un hecho, a diferencia del estado del ciclo de vida —que sale de los gates y lo publica Port— y que por eso ya no se declara aqui. Declararlo es lo que hace que Port derive `deprecated`, no al reves. El retiro es en DOS TIEMPOS por especificacion (RFC 9745 §4 + RFC 8594): entre marcar algo obsoleto y que deje de funcionar hace falta un plazo anunciado, o el retiro es una sorpresa. El ejemplo de la propia RFC separa ambas fechas por un ano.",
       "properties": {
         "superseded_by": {
           "type": "string",
@@ -251,11 +251,11 @@
     "registry": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Como se proyecta en el catalogo de Port. PRINCIPIO: el catalogo guarda la FICHA y un PUNTERO; el artefacto vive y se versiona en GitHub. Nunca se copia el contenido al portal, porque dos copias son dos verdades.",
+      "description": "Como se proyecta en Port. PRINCIPIO: Port guarda la FICHA y un PUNTERO; el artefacto vive y se versiona en GitHub. Nunca se copia el contenido al portal, porque dos copias son dos verdades.",
       "properties": {
         "entity": {
           "type": "string",
-          "description": "Entidad del catalogo a la que se publica."
+          "description": "Entidad de Port a la que se publica."
         },
         "pointer": {
           "type": "object",
@@ -275,7 +275,7 @@
         },
         "publish_inventory": {
           "type": "boolean",
-          "description": "Si la ficha del catalogo publica el inventario por tipo (12 skills, 3 agentes, ...). POR QUE EL INVENTARIO Y NO UN NUMERO DE TOKENS: el coste de contexto real depende del tokenizador del modelo, asi que cualquier cifra que publicaramos seria una ESTIMACION — y el cliente ya muestra un 'Context cost' propio al instalar. Publicar los dos daria dos verdades. El inventario es EXACTO, el gate G1 ya lo compara contra el arbol real, y transmite la misma senal de tamano sin inventar una cifra que va a discrepar con la del cliente. El coste de contexto sigue siendo el CRITERIO para dimensionar la granularidad del plugin; no es un campo publicado."
+          "description": "Si la ficha de Port publica el inventario por tipo (12 skills, 3 agentes, ...). POR QUE EL INVENTARIO Y NO UN NUMERO DE TOKENS: el coste de contexto real depende del tokenizador del modelo, asi que cualquier cifra que publicaramos seria una ESTIMACION — y el cliente ya muestra un 'Context cost' propio al instalar. Publicar los dos daria dos verdades. El inventario es EXACTO, el gate G1 ya lo compara contra el arbol real, y transmite la misma senal de tamano sin inventar una cifra que va a discrepar con la del cliente. El coste de contexto sigue siendo el CRITERIO para dimensionar la granularidad del plugin; no es un campo publicado."
         }
       }
     },

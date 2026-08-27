@@ -113,8 +113,8 @@ def test_quien_llama_a_un_workflow_del_repo_nombra_todos_sus_secretos(ruta):
     MEDIDO en una publicacion real. `publicar.yml` invocaba a `promocionar.yml` pasando solo la
     etiqueta, asi que la promocion se quedaba sin credenciales de Port. Resultado:
     `demo.sdlc.revisar-jql--v0.1.2` quedo promocionado y distribuido mientras su ficha seguia
-    diciendo `conformant` y `en_marketplace: false` -- los dos catalogos contando cosas distintas del
-    mismo artefacto --.
+    diciendo `conformant` y `en_marketplace: false` -- Port y el marketplace contando cosas distintas
+    del mismo artefacto --.
 
     NO FALLA RUIDOSAMENTE, que es lo que lo hace caro: los secretos son opcionales, asi que la
     publicacion termina en VERDE y lo unico que queda es un aviso dentro del log de un job.

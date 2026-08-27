@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/skill.schema.json",
   "title": "Skill — capacidad reutilizable que el modelo ELIGE y aplica",
-  "description": "El unico tipo que porta en los seis clientes, y por eso la regla de diseno es expresar como skill todo lo que se pueda. Un `prompt` es un skill con `user-invocable` que ademas pierde portabilidad. NINGUN campo propio es obligatorio: `when_to_use` dejo de serlo porque es un campo de Claude Code que Copilot no lee, y la senal de activacion real es `description`, que si es normativa y la cargan los seis. El tipo mas numeroso del catalogo se gobierna con el envelope, que es lo que de verdad se comprueba.",
+  "description": "El unico tipo que porta en los seis clientes, y por eso la regla de diseno es expresar como skill todo lo que se pueda. Un `prompt` es un skill con `user-invocable` que ademas pierde portabilidad. NINGUN campo propio es obligatorio: `when_to_use` dejo de serlo porque es un campo de Claude Code que Copilot no lee, y la senal de activacion real es `description`, que si es normativa y la cargan los seis. El tipo mas numeroso de Port se gobierna con el envelope, que es lo que de verdad se comprueba.",
   "allOf": [
     {
       "$ref": "envelope.schema.json"
@@ -27,7 +27,7 @@
     "argument-hint": {
       "type": "string",
       "x-read-from": "frontmatter",
-      "description": "Pista de argumentos que el cliente muestra al invocar. Es clave real y compartida por los dos clientes. Coexiste con `arguments[]`, que es la forma estructurada para el gobierno y el catalogo: el hint es lo que ve la persona."
+      "description": "Pista de argumentos que el cliente muestra al invocar. Es clave real y compartida por los dos clientes. Coexiste con `arguments[]`, que es la forma estructurada para el gobierno y para la ficha de Port: el hint es lo que ve la persona."
     },
     "allowed-tools": {
       "type": "string",

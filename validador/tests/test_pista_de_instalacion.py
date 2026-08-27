@@ -1,6 +1,6 @@
 """La pista de instalacion apunta AL PLUGIN QUE CONTIENE cada artefacto.
 
-QUE DEFECTO CUBRE, y se vio mirando el catalogo REAL publicado, no el codigo. El `install_hint` se
+QUE DEFECTO CUBRE, y se vio mirando Port REAL publicado, no el codigo. El `install_hint` se
 construia con `inventario.nombre_plugin`, que es UN nombre a nivel de REPOSITORIO. En un repositorio con
 cinco plugins ese unico nombre se aplicaba a los cinco, asi que cuatro de cada cinco fichas mandaban a
 instalar el plugin equivocado:
@@ -94,10 +94,10 @@ _SUELTOS = [
     ("prompt", "commands/resumir/commands/demo.sdlc.resumir.prompt.md", "demo.sdlc.resumir"),
     ("agent", "agents/auditor/agents/demo.sdlc.auditor.agent.md", "demo.sdlc.auditor"),
 ])
-def test_un_suelto_con_unidad_propia_se_instala_DESDE_EL_CATALOGO(tipo, ruta, esperado):
+def test_un_suelto_con_unidad_propia_se_instala_DESDE_EL_MARKETPLACE(tipo, ruta, esperado):
     """El `install_hint` es lo unico que el consumidor EJECUTA, asi que es donde se decide si pasa
-    por el catalogo o se lo salta. Un suelto que se instalara por su canal propio -- `gh skill
-    install` o `curl` -- resolveria contra el repositorio y la etiqueta, sin tocar el catalogo: y
+    por el marketplace o se lo salta. Un suelto que se instalara por su canal propio -- `gh skill
+    install` o `curl` -- resolveria contra el repositorio y la etiqueta, sin tocar el marketplace: y
     entonces el ESTADO no lo gobierna, que es justo lo que la publicacion por unidad evita.
 
     EL PROMPT ES EL CASO QUE FALTABA: se excluia por un comentario que decia que no era componente de
@@ -109,10 +109,10 @@ def test_un_suelto_con_unidad_propia_se_instala_DESDE_EL_CATALOGO(tipo, ruta, es
     assert plugin == esperado
     pista = ficha.pista_de_instalacion(
         tipo, ruta, True, "org/repo", "0" * 40, "x--v0.1.0", plugin)
-    assert pista == f"copilot plugin install {esperado}@{ficha.CATALOGO}", pista
+    assert pista == f"copilot plugin install {esperado}@{ficha.MARKETPLACE}", pista
 
 
-def test_un_suelto_SIN_plugin_no_manda_a_instalar_del_catalogo():
+def test_un_suelto_SIN_plugin_no_manda_a_instalar_del_marketplace():
     """REGRESION de un defecto latente: `en_marketplace` miraba si el REPOSITORIO tenia algun plugin,
     no si ESTE artefacto pertenecia a uno. Un suelto sin manifiesto en un repositorio con plugins
     daba `plugin install @agentico` -- con el nombre vacio, un comando que no resuelve --.

@@ -82,15 +82,15 @@ def render(indice: Indice, nombre: str, propietario: dict[str, str], version: st
     """El contenido del indice para UN cliente.
 
     La proyeccion es obligatoria y no tiene valor por defecto a proposito: un default elegiria un
-    cliente en silencio, y quien olvidara pasarla generaria el catalogo del otro sin enterarse.
+    cliente en silencio, y quien olvidara pasarla generaria el marketplace del otro sin enterarse.
 
     Ordenado por `name` para que el diff del commit muestre solo lo que cambio de verdad.
     """
-    catalogo = {
+    marketplace = {
         "name": nombre,
         "owner": propietario,
         "metadata": {"description": _AVISO, "version": version},
         "plugins": [_como_plugin(e, proyeccion)
                     for e in sorted(indice.entradas, key=lambda e: e.name)],
     }
-    return json.dumps(catalogo, indent=_SANGRIA, ensure_ascii=False) + "\n"
+    return json.dumps(marketplace, indent=_SANGRIA, ensure_ascii=False) + "\n"

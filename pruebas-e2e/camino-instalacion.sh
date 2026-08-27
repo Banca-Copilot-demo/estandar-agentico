@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Recorre el camino de INSTALACION completo contra lo que esta publicado de verdad.
 #
-# QUE LO HACE UTIL: no mockea nada. Lee la ficha del catalogo real, descarga el release real y
+# QUE LO HACE UTIL: no mockea nada. Lee la ficha de Port real, descarga el release real y
 # verifica su atestacion real. Y comprueba los casos NEGATIVOS, que son los que de verdad importan:
 # un paquete manipulado no debe verificar, un sha256 que no coincide no debe aceptarse, y sin
 # comprobante de verificacion no debe instalarse nada.
@@ -56,7 +56,7 @@ comprobar() {  # comprobar <descripcion> <0 si paso>
   fi
 }
 
-fase "1 · la ficha, del catalogo real"
+fase "1 · la ficha, de Port real"
 python3 "$AQUI/leer_ficha.py" "$ID_SKILL" > "$trabajo/skill.env"
 comprobar "se lee la ficha del skill" $?
 # shellcheck disable=SC1090

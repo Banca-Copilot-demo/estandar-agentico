@@ -4,14 +4,14 @@
   "title": "Politica del estandar agentico",
   "description": "Las decisiones de la ORGANIZACION que la cadena de publicacion honra. Son datos y no codigo repartido: cambiar de politica es cambiar un valor, no reescribir el flujo.",
   "type": "object",
-  "required": ["promocion_al_catalogo"],
+  "required": ["promocion_al_marketplace"],
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
-    "promocion_al_catalogo": {
+    "promocion_al_marketplace": {
       "type": "string",
-      "title": "Cuando un artefacto entra al catalogo instalable",
-      "description": "`al_certificar` distribuye solo lo Certificado; lo Conforme queda publicado y verificable pero fuera del catalogo. `al_publicar` distribuye todo lo Conforme.",
+      "title": "Cuando un artefacto entra al marketplace",
+      "description": "`al_certificar` distribuye solo lo Certificado; lo Conforme queda publicado y verificable pero fuera del marketplace. `al_publicar` distribuye todo lo Conforme.",
       "enum": ["al_certificar", "al_publicar"]
     },
     "x_notas": {

@@ -8,10 +8,10 @@ name: Promocionar a Certificado
 #
 # PROMOCIONAR ES QUITAR LA MARCA DE PRELANZAMIENTO, no republicar. El paquete, su digesto y su
 # atestacion son los MISMOS: lo unico que cambia es que el indice deja de excluirlo, asi que el
-# artefacto entra al catalogo y pasa a instalarse por nombre. Por eso corregir una suite defectuosa
+# artefacto entra al marketplace y pasa a instalarse por nombre. Por eso corregir una suite defectuosa
 # NO obliga a sacar una version nueva del artefacto.
 #
-# Y ES REVERSIBLE: volver a marcar prelanzamiento lo saca del catalogo de inmediato sin borrar el
+# Y ES REVERSIBLE: volver a marcar prelanzamiento lo saca del marketplace de inmediato sin borrar el
 # release ni romper las atestaciones que cuelgan de el. Es el mismo mecanismo que usa la suspension.
 on:
   workflow_call:
@@ -22,8 +22,8 @@ on:
         type: string
       repositorio-indice:
         description: >
-          Repositorio del indice al que avisar de que el artefacto entra al catalogo. Vacio = no se
-          avisa, y el catalogo se pone al dia en su pasada programada -- diaria --.
+          Repositorio del indice al que avisar de que el artefacto entra al marketplace. Vacio = no se
+          avisa, y el marketplace se pone al dia en su pasada programada -- diaria --.
         required: false
         type: string
         default: ""
@@ -31,7 +31,7 @@ on:
     # workflow reutilizable lo apunta a el, que es justo donde vive el release.
     secrets:
       port-client-id:
-        description: Client ID de Port. Vacio = no se actualiza la ficha del catalogo.
+        description: Client ID de Port. Vacio = no se actualiza la ficha de Port.
         required: false
       port-client-secret:
         description: Client secret de Port.
@@ -39,7 +39,7 @@ on:
       app-id:
         description: >
           App ID de la App del ciclo de vida, con la que se acuna el token efimero que despierta al
-          indice. Sin ella la promocion se completa igual y el catalogo espera a la pasada programada.
+          indice. Sin ella la promocion se completa igual y el marketplace espera a la pasada programada.
         required: false
       app-key:
         description: Clave privada de esa App. Solo sirve para pedir tokens, nunca es un token.
@@ -110,11 +110,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release edit "${{ inputs.etiqueta }}" --repo "$GITHUB_REPOSITORY" --prerelease=false
-          echo "Promocionado: ${{ inputs.etiqueta }} entra al catalogo en la proxima regeneracion del indice."
+          echo "Promocionado: ${{ inputs.etiqueta }} entra al marketplace en la proxima regeneracion del indice."
 
       # EL RELEASE PRIMERO Y LA FICHA DESPUES, y el orden es la decision. El release es el HECHO --
       # es lo que el indice mira y lo que decide si el artefacto se instala --; la ficha es la
-      # vitrina que lo cuenta. Si la ficha se escribiera antes y el release fallara, el catalogo
+      # vitrina que lo cuenta. Si la ficha se escribiera antes y el release fallara, Port
       # anunciaria como distribuido algo que no lo esta: prometer de mas es peor que ir un paso por
       # detras, que es lo que pasa en el orden contrario y se corrige repitiendo la promocion.
       # SIN CONDICION, y antes la tenia. Estaba atado a que hubiera credenciales de Port porque su
@@ -145,10 +145,10 @@ jobs:
 
       # SE EJECUTA AUNQUE EL RELEASE YA ESTUVIERA PROMOCIONADO, y no es un descuido. El caso en que
       # la ficha esta desalineada es exactamente ese: alguien quito la marca de prelanzamiento por su
-      # cuenta -- a mano, o en una promocion que fallo al llegar a Port -- y el catalogo de metadata
+      # cuenta -- a mano, o en una promocion que fallo al llegar a Port -- y la ficha de Port
       # se quedo diciendo `conformant`. Condicionarlo a que hubiera cambio dejaria esa deriva sin
       # forma de repararse.
-      - name: Fijar el estado Certificado en el catalogo
+      - name: Fijar el estado Certificado en Port
         if: env.PORT_CLIENT_ID != ''
         uses: ./.estandar/.github/actions/estado-en-port
         with:
@@ -163,14 +163,14 @@ jobs:
       # entera cuando alguien le avisa o en su pasada programada, que es diaria.
       #
       # MEDIDO con `demo.sdlc.revisar-jql--v0.1.2`: la cadena entera funciono -- sello, 3 de 3 sobre
-      # el paquete y promocion --, el release quedo distribuible, y el catalogo siguio ofreciendo la
+      # el paquete y promocion --, el release quedo distribuible, y el marketplace siguio ofreciendo la
       # version ANTERIOR. El artefacto estaba CERTIFICADO Y NO SE PODIA INSTALAR, y solo entro tras
       # regenerar el indice a mano. Nada fallo: todo termino en verde.
       #
       # VA DESPUES DE QUITAR LA MARCA, y el orden es el mismo criterio que el de la ficha: primero el
-      # hecho, luego contarlo. Avisar antes despertaria al indice para que reconstruyera el catalogo
+      # hecho, luego contarlo. Avisar antes despertaria al indice para que reconstruyera el marketplace
       # con el artefacto todavia excluido, o sea para nada.
-      - name: Avisar al indice de que el artefacto entra al catalogo
+      - name: Avisar al indice de que el artefacto entra al marketplace
         uses: ./.estandar/.github/actions/avisar-al-indice
         with:
           repositorio-indice: ${{ inputs.repositorio-indice }}
@@ -178,7 +178,7 @@ jobs:
           app-key: ${{ secrets.app-key }}
           motivo: version-promocionada
 
-      - name: Avisar de que la ficha del catalogo no se actualizo
+      - name: Avisar de que la ficha de Port no se actualizo
         if: env.PORT_CLIENT_ID == ''
         shell: bash
         run: |
@@ -194,8 +194,8 @@ jobs:
             echo "|---|---|"
             echo "| Etiqueta | \`${{ inputs.etiqueta }}\` |"
             echo "| Estaba sin promocionar | ${{ steps.estado.outputs.era_prelanzamiento }} |"
-            echo "| Ficha del catalogo | ${{ env.PORT_CLIENT_ID != '' && 'fijada en `certified`' || 'sin actualizar (sin credenciales)' }} |"
+            echo "| Ficha de Port | ${{ env.PORT_CLIENT_ID != '' && 'fijada en `certified`' || 'sin actualizar (sin credenciales)' }} |"
             echo
             echo "El paquete, su digesto y su atestacion NO cambian: promocionar solo decide si el"
-            echo "artefacto entra al catalogo instalable."
+            echo "artefacto entra al marketplace."
           } >> "$GITHUB_STEP_SUMMARY"

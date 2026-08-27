@@ -1,7 +1,7 @@
-"""La pieza que fija el estado en el catalogo toca el estado y NADA MAS.
+"""La pieza que fija el estado en Port toca el estado y NADA MAS.
 
-QUE DEFECTO CUBRE, medido en el catalogo real: promocionar quitaba la marca de prelanzamiento del
-release -- con lo que el artefacto YA entraba al catalogo instalable -- y no tocaba Port. La ficha se
+QUE DEFECTO CUBRE, medido en Port real: promocionar quitaba la marca de prelanzamiento del
+release -- con lo que el artefacto YA entraba al marketplace -- y no tocaba Port. La ficha se
 quedaba en `conformant`, diciendo que el artefacto no se distribuye, mientras cualquiera podia
 instalarlo por nombre. Quien gobierna mirando fichas veia lo contrario de lo que pasaba.
 
@@ -65,14 +65,14 @@ def test_certificar_pone_la_ficha_EN_EL_MARKETPLACE():
 def test_la_pista_se_RECONSTRUYE_y_no_se_arrastra_la_del_estado_anterior():
     """Una ficha que cambie de estado y conserve la pista del estado anterior vuelve a mentir: es el
     mismo defecto al reves. Conforme mandaba a descargar el paquete; Certificado tiene que mandar al
-    catalogo."""
+    marketplace."""
     cambio = estado_en_port.cambio_de_estado(
         _FICHA_CONFORME, ESTADO_CERTIFICADO, Promocion.AL_CERTIFICAR, "org/repo", "demo.sdlc.x")
 
     assert cambio["properties"]["install_hint"].startswith("copilot plugin install demo.sdlc.x@")
 
 
-def test_un_estado_que_saca_del_catalogo_deja_de_mandar_a_instalar_por_nombre():
+def test_un_estado_que_saca_del_marketplace_deja_de_mandar_a_instalar_por_nombre():
     """La misma pieza sirve a la suspension y a la retirada, y ahi la direccion es la contraria: si
     la pista siguiera diciendo `plugin install`, suspender no cambiaria nada de lo que el consumidor
     ve."""

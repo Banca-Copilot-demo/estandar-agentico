@@ -131,7 +131,7 @@ def test_inventario_por_ids_alineado_no_produce_hallazgos():
 def test_intercambiar_un_artefacto_por_otro_no_pasa_desapercibido():
     # EL FALSO NEGATIVO DEL CONTEO, que es el motivo entero de este cambio. Medido: se borra un skill
     # y se anade otro en el mismo pull request; el numero sigue siendo 1, asi que el cotejo por conteo
-    # no encuentra NADA que decir y el catalogo publica un id que ya no existe.
+    # no encuentra NADA que decir y Port publica un id que ya no existe.
     inventario = Inventario(skills=1, ids_skills=("demo.x.nuevo",))
     errores = _errores(revisar_inventario({"skills": ["demo.x.viejo"]}, inventario))
     assert "demo.x.viejo" in _mensajes(errores)

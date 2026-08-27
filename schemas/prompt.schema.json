@@ -35,7 +35,7 @@
     "arguments": {
       "type": "array",
       "x-read-from": "METADATA.json",
-      "description": "Los argumentos, estructurados. COEXISTE con `argument-hint` en vez de sustituirlo: esto es para el gobierno y el catalogo, el hint es lo que ve la persona. Y el hint SE GENERA de aqui, para que no puedan divergir.",
+      "description": "Los argumentos, estructurados. COEXISTE con `argument-hint` en vez de sustituirlo: esto es para el gobierno y para la ficha de Port, el hint es lo que ve la persona. Y el hint SE GENERA de aqui, para que no puedan divergir.",
       "items": {
         "type": "object",
         "additionalProperties": false,
