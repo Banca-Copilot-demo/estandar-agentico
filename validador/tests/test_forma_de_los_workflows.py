@@ -296,6 +296,28 @@ def test_el_guardian_no_confunde_un_fallo_de_la_consulta_con_una_comprobacion_au
         "el commit no tiene comprobacion")
 
 
+_EXPRESION = re.compile(r"\$\{\{.*?\}\}")
+
+
+def _plantilla_del_nombre(texto: str) -> str:
+    """El texto fijo del nombre de la comprobacion, con la parte variable sustituida por un hueco.
+
+    Las dos mitades se escriben en archivos distintos y una lleva `matrix.unidad` mientras la otra
+    lleva la subruta que se publica: comparar los textos literales seria comparar dos expresiones que
+    NUNCA pueden ser iguales. Lo que tiene que coincidir es el molde.
+    """
+    return _EXPRESION.sub("<unidad>", texto).strip()
+
+
+def _nombres_buscados_por_el_guardian() -> list[str]:
+    return [
+        valor
+        for _, paso in _pasos_de(yaml.safe_load(_PUBLICAR.read_text(encoding="utf-8")))
+        for clave, valor in (paso.get("env") or {}).items()
+        if "NOMBRE_DE_LA_COMPROBACION" in clave
+    ]
+
+
 def test_el_guardian_busca_la_comprobacion_por_el_nombre_que_le_da_quien_la_emite():
     """El guardian localiza el check-run del commit por su NOMBRE, y ese nombre lo declara el job de
     `evaluar.yml`. Son dos archivos distintos, asi que el texto puede divergir -- y su divergencia NO
@@ -307,14 +329,8 @@ def test_el_guardian_busca_la_comprobacion_por_el_nombre_que_le_da_quien_la_emit
     `<job del llamador> / <nombre del job llamado>`, y el prefijo lo elige cada repositorio de
     dominio. Lo unico que el estandar controla es la segunda mitad.
     """
-    emitido = _jobs_de(_EVALUAR)["evaluar"]["name"]
-
-    buscados = [
-        valor
-        for _, paso in _pasos_de(yaml.safe_load(_PUBLICAR.read_text(encoding="utf-8")))
-        for clave, valor in (paso.get("env") or {}).items()
-        if "NOMBRE_DE_LA_COMPROBACION" in clave
-    ]
+    emitido = _plantilla_del_nombre(_jobs_de(_EVALUAR)["evaluar"]["name"])
+    buscados = [_plantilla_del_nombre(b) for b in _nombres_buscados_por_el_guardian()]
 
     assert buscados, ("publicar.yml no declara el nombre de la comprobacion que busca en un `env` "
                       "nombrado, asi que esta prueba no puede vigilar que coincida")
@@ -322,6 +338,194 @@ def test_el_guardian_busca_la_comprobacion_por_el_nombre_que_le_da_quien_la_emit
         f"publicar.yml busca {buscados} y `evaluar.yml` emite {emitido!r}. Si no coinciden, la "
         "busqueda no encuentra la comprobacion, se lee como «no existe» y ningun artefacto se "
         "certifica jamas -- sin un solo error en rojo")
+
+
+# --- Un trabajo de evaluacion POR UNIDAD, y un guardian que pregunta por la suya ----------------
+#
+# EL DEFECTO QUE FIJA ESTE BLOQUE, medido en el run 33040368778 de `agentes-sdlc`: mientras hubo UN
+# trabajo de evaluacion para todo el repositorio, su unica conclusion se contagiaba. `revisar-jql`
+# con 3 de 3 y `referencia` con 3 de 3 se quedaron en Conforme porque la suite de `migracion` estaba
+# en 2 de 3 -- dos artefactos que cumplian, sin certificar por una unidad que sus equipos no habian
+# tocado --. El arreglo tiene dos mitades que solo sirven juntas: que cada unidad EMITA su propia
+# comprobacion, y que el guardian PREGUNTE por la de su unidad. Con una sola, el defecto sigue vivo.
+
+def test_la_evaluacion_abre_un_trabajo_por_unidad_y_no_uno_para_todo_el_repositorio():
+    """La mitad que EMITE. Sin matriz solo hay una conclusion, y una conclusion compartida no puede
+    decir nada de una unidad concreta por mucho que el guardian afine la pregunta."""
+    evaluar = _jobs_de(_EVALUAR)["evaluar"]
+    matriz = (evaluar.get("strategy") or {}).get("matrix")
+
+    assert matriz, ("el job `evaluar` no declara `strategy.matrix`: vuelve a haber una sola "
+                    "conclusion para todo el repositorio, y una suite roja se contagia a las demas")
+    assert any("fromJSON" in str(v) for v in matriz.values()), (
+        f"la matriz de `evaluar` no sale de un `fromJSON` de la deteccion: {matriz!r}. Una lista "
+        "escrita a mano es una segunda definicion de «que unidades hay» y divergiria de la que "
+        "decide que suites corren")
+
+
+def test_el_nombre_del_trabajo_de_evaluacion_lleva_la_unidad():
+    """Es lo que hace la comprobacion LOCALIZABLE por unidad -- GitHub nombra el check-run
+    `<job del llamador> / <nombre del job llamado>` -- y, de paso, lo que el portal muestra para
+    saber que artefacto corre y cual fallo sin abrir un log. Con un nombre fijo, las N celdas
+    emitirian N comprobaciones indistinguibles y el guardian no podria elegir la suya."""
+    nombre = _jobs_de(_EVALUAR)["evaluar"]["name"]
+    variable = (_jobs_de(_EVALUAR)["evaluar"].get("strategy") or {}).get("matrix") or {}
+
+    assert _EXPRESION.search(nombre), (
+        f"el `name:` del job de evaluacion es fijo ({nombre!r}): todas las celdas emitirian la misma "
+        "comprobacion y el guardian no podria distinguir la de su unidad")
+    assert any(f"matrix.{clave}" in nombre for clave in variable), (
+        f"el `name:` {nombre!r} no interpola ninguna clave de la matriz {sorted(variable)}: el "
+        "nombre varia por algo que no es la unidad que se evalua")
+
+
+def test_el_guardian_pregunta_por_la_comprobacion_de_SU_unidad():
+    """La mitad que PREGUNTA, y la que faltaba cuando se midio el defecto. El acotado por `subruta`
+    ya se aplicaba a «¿esta unidad trae suites?», pero «¿su suite paso?» seguia leyendo una senal de
+    repositorio. La mitad acotada no sirve de nada si la otra no lo esta."""
+    buscados = _nombres_buscados_por_el_guardian()
+
+    assert buscados, "publicar.yml no declara el nombre de la comprobacion que busca"
+    culpables = [b for b in buscados if "outputs.subruta" not in b]
+    assert not culpables, (
+        f"el guardian busca {culpables}, que no lleva la subruta de la unidad publicada: esta "
+        "preguntando por una comprobacion de REPOSITORIO, asi que la suite roja de un vecino vuelve "
+        "a impedir que se promocione un artefacto que cumple")
+
+
+def test_la_matriz_esta_guardada_contra_el_caso_vacio():
+    """`fromJSON('[]')` NO produce una matriz que se salte: tumba la corrida al arrancar. Y si se
+    dejara correr, el `result` de una matriz que no se abre es `skipped`, que leido a la ligera pasa
+    por verde -- el mismo modo de fallo del trabajo saltado que reporta «Success», ya medido aqui --.
+
+    Por eso la guarda es un `if:` sobre el booleano de la deteccion, y no una comparacion contra el
+    texto del array: cualquier diferencia de serializacion la romperia en silencio.
+    """
+    condicion = str(_jobs_de(_EVALUAR)["evaluar"].get("if", ""))
+
+    assert "hay-suites" in condicion, (
+        f"el job de matriz no esta guardado por `hay-suites` (if={condicion!r}): con cero unidades, "
+        "`fromJSON('[]')` tumba la corrida entera al arrancar y no se reporta ninguna comprobacion")
+
+
+def _agregador_de(jobs: dict) -> tuple[str, dict]:
+    salida = str((yaml.safe_load(_EVALUAR.read_text(encoding="utf-8")).get("on")
+                  or yaml.safe_load(_EVALUAR.read_text(encoding="utf-8")).get(True))
+                 ["workflow_call"]["outputs"]["resultado"]["value"])
+    nombre = salida.split("jobs.", 1)[1].split(".", 1)[0]
+    return nombre, jobs[nombre]
+
+
+def test_el_veredicto_que_consume_el_llamador_lo_emite_un_agregador_que_corre_siempre():
+    """Con matriz hay N conclusiones y el llamador consume UNA, asi que hace falta un job que las
+    combine. Y ese job necesita `if: always()`: sin el, una celda roja lo deja en `skipped`, un job
+    saltado reporta «Success» y el gate del pull request se pondria VERDE justo cuando una suite
+    acaba de fallar -- ademas de emitir el `resultado` vacio --."""
+    jobs = _jobs_de(_EVALUAR)
+    nombre, agregador = _agregador_de(jobs)
+
+    assert "always()" in str(agregador.get("if", "")), (
+        f"el job `{nombre}` emite el veredicto del workflow sin `if: always()`: una celda roja lo "
+        "deja saltado, y un job saltado reporta «Success»")
+    depende = agregador.get("needs") or []
+    assert "evaluar" in depende, (
+        f"el job `{nombre}` no depende de `evaluar` (needs={depende!r}): estaria emitiendo un "
+        "veredicto sin mirar el resultado de ninguna unidad")
+
+
+def test_el_agregador_distingue_el_caso_vacio_de_que_pasaran_todas():
+    """UNO CERTIFICA Y EL OTRO NO, asi que colapsarlos es el defecto. Una matriz que no se abre deja
+    `needs.evaluar.result` en `skipped`; leerlo como verde certificaria artefactos que nadie evaluo,
+    y leerlo como rojo dejaria sin publicar a los repositorios que legitimamente no traen suites. La
+    distincion tiene que venir de la senal EXPLICITA de la deteccion, no del `result`."""
+    nombre, agregador = _agregador_de(_jobs_de(_EVALUAR))
+    guion = "\n".join(str(paso.get("run", "")) for paso in (agregador.get("steps") or []))
+    entorno = {c: str(v) for paso in (agregador.get("steps") or [])
+               for c, v in (paso.get("env") or {}).items()}
+
+    assert "sin_suites" in guion and "superada" in guion and "fallida" in guion, (
+        f"el job `{nombre}` no emite los tres veredictos distintos: colapsarlos hace que «no habia "
+        "nada que medir» y «paso todo» se lean igual")
+    assert any("hay-suites" in v for v in entorno.values()), (
+        f"el job `{nombre}` no recibe `hay-suites` de la deteccion ({sorted(entorno)}): solo le "
+        "queda el `result` de la matriz para decidir, y ahi el caso vacio es `skipped`, "
+        "indistinguible de un trabajo que se salto por cualquier otro motivo")
+
+
+def test_el_agregador_detiene_el_cambio_cuando_una_unidad_esta_en_rojo():
+    """EL GATE DEL PULL REQUEST TIENE QUE SEGUIR BLOQUEANDO. Con la matriz, la celda roja es un job
+    HERMANO del que emite el veredicto, no un antecesor del llamador: sin un `exit 1` explicito en el
+    agregador, el workflow reutilizable terminaria en VERDE con una suite en rojo dentro."""
+    nombre, agregador = _agregador_de(_jobs_de(_EVALUAR))
+
+    detiene = [paso for paso in (agregador.get("steps") or [])
+               if "exit 1" in str(paso.get("run", ""))]
+
+    assert detiene, (
+        f"ningun paso de `{nombre}` sale con error: la evaluacion terminaria en verde aunque una "
+        "unidad tenga su suite en rojo, y el pull request se podria mergear")
+    assert any("fallida" in str(paso.get("if", "")) for paso in detiene), (
+        f"el paso que detiene el cambio en `{nombre}` no esta condicionado al veredicto `fallida`: "
+        "o detiene siempre, o detiene por algo que no es el veredicto")
+
+
+# --- La suite se ejecuta UNA sola vez, y la publicacion recupera aquella medicion ---------------
+
+def test_la_evaluacion_no_corre_fuera_de_una_solicitud_de_cambio():
+    """LA SEGUNDA PASADA QUE SOBREVIVIO SIN QUE NADIE LA MIRARA. Los repositorios de dominio disparan
+    su validacion con `pull_request` Y `push: branches: [main]`, asi que todo cambio se evaluaba DOS
+    veces: duplicaba el gasto del unico token de inferencia de la organizacion y multiplicaba las
+    ocasiones de que el veredicto se contradijera a si mismo -- MEDIDO sobre el MISMO contenido: 3 de
+    3, luego 2 de 3, luego verde --.
+
+    LA GUARDA VA EN EL PRIMER JOB, no en el de la matriz: puesta abajo, la deteccion se pagaria igual
+    en cada push a main.
+    """
+    jobs = _jobs_de(_EVALUAR)
+    primero = next(iter(jobs.values()))
+
+    assert "pull_request" in str(primero.get("if", "")), (
+        f"el primer job de `evaluar.yml` corre fuera de una solicitud de cambio (if="
+        f"{primero.get('if')!r}): el push a main volveria a evaluar lo mismo con otro sha, gastando "
+        "una segunda vez el token de inferencia sobre contenido ya medido")
+
+
+def test_el_guardian_resuelve_de_que_commit_colgaba_la_medicion():
+    """EL NUDO QUE ESTO CIERRA. La suite corre en la rama; el merge con squash crea un commit NUEVO
+    en `main` -- otro sha -- y es ese el que se etiqueta. Preguntar por las comprobaciones del commit
+    etiquetado es preguntar por un commit que nadie evaluo, y solo funcionaba porque el push a main
+    lo reevaluaba todo: la respuesta llegaba de la pasada que sobraba.
+
+    No se transporta el veredicto -- un check-run no caduca --: se pregunta de que pull request nacio
+    el commit, que es una sola llamada y ningun permiso de escritura.
+    """
+    guardian = _guardian_de_la_promocion(_jobs_de(_PUBLICAR))
+    consultas = "\n".join(str(paso.get("run", ""))
+                          for paso in (_jobs_de(_PUBLICAR)[guardian].get("steps") or []))
+
+    assert "/pulls" in consultas, (
+        f"el guardian `{guardian}` no resuelve de que pull request nacio el commit etiquetado: "
+        "busca la comprobacion en un sha que, tras un merge con squash, nadie evaluo. O eso, o se "
+        "esta apoyando otra vez en una segunda evaluacion en el push a main")
+
+
+def test_el_guardian_no_lee_una_medicion_irrecuperable_como_verde():
+    """EL FALLO QUE RECORRE TODA ESTA CADENA: leer «no se sabe» como «paso». Un commit que no llego
+    por un pull request no tiene medicion recuperable, y eso no certifica -- pero se dice con su
+    motivo, para que el artefacto no se quede en Conforme sin que nadie sepa por que --."""
+    guardian = _guardian_de_la_promocion(_jobs_de(_PUBLICAR))
+    pasos = _jobs_de(_PUBLICAR)[guardian].get("steps") or []
+    decisor = [p for p in pasos if "promociona=" in str(p.get("run", ""))]
+
+    assert decisor, f"el guardian `{guardian}` ya no escribe `promociona`: la prueba quedo obsoleta"
+    guion = str(decisor[-1]["run"])
+
+    assert re.search(r'promociona=false', guion), (
+        "el guardian no arranca desde `promociona=false`: cualquier camino que no llegue a decidir "
+        "dejaria el output vacio, y un output vacio no puede distinguirse de una decision tomada")
+    assert guion.index("promociona=false") < guion.index('promociona=true'), (
+        "el guardian escribe `promociona=true` antes que el `false` por defecto: si la consulta "
+        "muriera entre las dos escrituras, la ausencia de medicion se leeria como verde")
 
 
 # --- D2: el veredicto del juez se conserva, y sobre todo cuando la suite falla ------------------

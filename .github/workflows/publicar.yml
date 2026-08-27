@@ -129,6 +129,12 @@ jobs:
     #
     # Sin pedirlo, un llamador que aun no lo conceda recibe un 403 EN EJECUCION, no promociona y se
     # entera de por que. Anadir `checks: read` a su bloque de permisos es entonces una linea.
+    #
+    # LO MISMO VALE PARA `pull-requests: read`, que ahora tambien hace falta: la medicion cuelga del
+    # commit de la RAMA -- la suite se ejecuta una sola vez, en la solicitud de cambio -- y para saber
+    # cual era hay que preguntar de que pull request nacio el commit etiquetado. Sin ese permiso, la
+    # consulta responde 403, se avisa, se mira solo el commit etiquetado y el artefacto se queda en
+    # Conforme con la razon escrita. Degradar, nunca dar por verde lo que no se pudo comprobar.
     outputs:
       promociona: ${{ steps.decidir.outputs.promociona }}
     steps:
@@ -146,7 +152,51 @@ jobs:
           # la suite de un agente de OTRO plugin estaba en rojo. Cada unidad responde solo de lo suyo.
           subruta: ${{ needs.publicar.outputs.subruta }}
 
-      - name: ¿Esta en verde la comprobacion de comportamiento del commit etiquetado?
+      # DE QUE COMMIT COLGO LA MEDICION. No es el que se etiqueta, y esa diferencia es la que dejaba
+      # al guardian apoyandose sin querer en una segunda evaluacion que no debia existir.
+      #
+      # La suite se ejecuta UNA sola vez, en la solicitud de cambio, o sea sobre el sha de la RAMA. El
+      # merge con squash crea un commit NUEVO en `main` -- otro sha -- y es ese el que se etiqueta, asi
+      # que preguntar por las comprobaciones del commit etiquetado es preguntar por un commit que
+      # nadie evaluo. Funcionaba solo porque el push a `main` volvia a evaluarlo todo: la respuesta
+      # llegaba de la pasada que sobraba, la que duplicaba el gasto del unico token de inferencia.
+      #
+      # NO SE TRANSPORTA NADA, SE PREGUNTA DE DONDE VENIA. Un check-run no caduca, asi que la medicion
+      # del pull request sigue existiendo sobre el sha de la rama; lo unico que faltaba era el puente
+      # entre los dos commits, y la propia API lo da: `/commits/{sha}/pulls` devuelve la solicitud de
+      # cambio que INTRODUJO ese commit. Las alternativas se descartaron por coste, no por gusto: un
+      # artefacto de corrida caduca a los 30 dias y habria exigido `actions: read` en cada dominio, y
+      # re-publicar las comprobaciones sobre `main` habria exigido `checks: write` y una segunda copia
+      # de la misma verdad, que puede divergir.
+      #
+      # SI NO SE PUEDE RESOLVER, NO SE INVENTA. Un commit que no llego por un pull request -- un push
+      # directo a main -- no tiene medicion recuperable, y eso NO es «paso»: es «no se sabe». Se sigue
+      # mirando tambien el propio commit etiquetado, por si alguien evaluo ahi a mano.
+      - name: ¿Que commit se evaluo, si el etiquetado nacio de un squash?
+        id: origen
+        if: steps.suites.outputs.hay-suites == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # `pipefail` por el mismo motivo que abajo: la consulta es una tuberia y sin el, un 403 se
+          # leeria como «este commit no vino de ningun pull request».
+          set -o pipefail
+          sha="$(git rev-parse HEAD)"
+          echo "etiquetado=$sha" >> "$GITHUB_OUTPUT"
+          if ! rama="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/pulls" \
+                         --jq '.[0].head.sha // ""' | tail -1)"; then
+            echo "::warning::no se pudo preguntar de que pull request nacio $sha (¿falta \`pull-requests: read\`?): solo se mirara el commit etiquetado"
+            rama=""
+          fi
+          echo "rama=$rama" >> "$GITHUB_OUTPUT"
+          if [ -n "$rama" ]; then
+            echo "el commit etiquetado $sha nacio del pull request cuya rama estaba en $rama: ahi vive la medicion"
+          else
+            echo "::warning::$sha no se puede asociar a ningun pull request: si nadie evaluo ese commit directamente, no habra medicion que recuperar y el artefacto se quedara en Conforme"
+          fi
+
+      - name: ¿Esta en verde la comprobacion de comportamiento de ESTA unidad?
         id: decidir
         if: steps.suites.outputs.hay-suites == 'true'
         shell: bash
@@ -158,23 +208,35 @@ jobs:
           # dominio. Lo unico que el estandar controla -- y por tanto lo unico contra lo que se puede
           # comparar sin acertar de casualidad -- es la segunda mitad. Hay una prueba de forma que
           # falla si este texto y el `name:` de `evaluar.yml` dejan de coincidir.
-          NOMBRE_DE_LA_COMPROBACION: Evaluacion de comportamiento
-          # CUANTO SE ESPERA A QUE TERMINE, Y POR QUE SE ESPERA EN VEZ DE AVISAR Y SEGUIR.
           #
-          # La carrera no es un caso raro: es el caso NORMAL. `Validar` corre en el push a main y el
-          # `Etiquetar` del mismo push tarda segundos en empujar la etiqueta, asi que la publicacion
-          # arranca casi a la vez que la comprobacion -- que tarda MEDIDOS ~2,5-3,5 minutos por suite,
-          # y ademas encola detras del gate de conformidad y de su propio grupo de concurrencia --. No
-          # esperar significaria leer «en curso» practicamente siempre, o sea que NADA se certificaria
-          # nunca y el estado volveria a ser inalcanzable, que es el defecto que la promocion existe
-          # para cerrar.
+          # Y AHORA LLEVA LA SUBRUTA DE LA UNIDAD, que es el arreglo entero. Mientras hubo un solo
+          # trabajo para todo el repositorio, esta pregunta era «¿esta verde el repositorio?», y su
+          # respuesta la decidia la peor suite de cualquier vecino: MEDIDO en el run 33040368778 de
+          # `agentes-sdlc`, `revisar-jql` con 3 de 3 y `referencia` con 3 de 3 se quedaron en Conforme
+          # porque `migracion` estaba en 2 de 3. La evaluacion abre un trabajo por unidad y nombra
+          # cada uno con su subruta, asi que ahora existe una senal POR UNIDAD que preguntar -- y esa
+          # es la que se pregunta --.
           #
-          # SE ESPERA POCO Y SE AVISA SI SE AGOTA. El tope acota el coste de un runner parado y, sobre
-          # todo, evita el otro modo de fallo: quedarse colgado si la comprobacion nunca arranca. Al
-          # agotarse NO se promociona y se dice que fue por eso -- «en curso» jamas se registra como
-          # «en rojo» --, asi que el artefacto se queda en Conforme con la razon escrita y se puede
-          # promocionar a mano con `promocionar.yml`, que acepta `workflow_dispatch`.
-          ESPERA_MAXIMA_SEGUNDOS: "1500"
+          # EL SUFIJO SIGUE SIENDO SEGURO CON LA UNIDAD DENTRO: el separador « — » ancla el principio
+          # del nombre de la unidad, asi que `plugins/mig` no puede coincidir con `plugins/migracion`.
+          NOMBRE_DE_LA_COMPROBACION: Evaluacion de comportamiento — ${{ needs.publicar.outputs.subruta }}
+          ETIQUETADO: ${{ steps.origen.outputs.etiquetado }}
+          RAMA: ${{ steps.origen.outputs.rama }}
+          # CUANTO SE ESPERA, Y POR QUE AHORA SE ESPERA MUCHO MENOS QUE ANTES.
+          #
+          # El tope viejo eran 25 minutos y estaban justificados: se corria contra el commit etiquetado
+          # mientras el push a `main` lo estaba evaluando, asi que la publicacion adelantaba a la
+          # medicion y no esperar significaba leer «en curso» casi siempre. Esa carrera ya no existe:
+          # la medicion que se busca es la del pull request, y un pull request no se puede mergear
+          # antes de que su comprobacion termine. Cuando la publicacion pregunta, la respuesta lleva
+          # rato escrita.
+          #
+          # SE ESPERA UN POCO IGUAL, y no cero, por la consistencia eventual de la API y por el caso
+          # en que alguien reejecute la comprobacion a mano. Al agotarse NO se promociona y se dice que
+          # fue por eso -- «en curso» jamas se registra como «en rojo» --, asi que el artefacto se
+          # queda en Conforme con la razon escrita y se puede promocionar a mano con `promocionar.yml`,
+          # que acepta `workflow_dispatch`.
+          ESPERA_MAXIMA_SEGUNDOS: "180"
           INTERVALO_DE_SONDEO_SEGUNDOS: "20"
         run: |
           # `pipefail` NO ES HIGIENE, ES LA CONDICION DE QUE EL 403 SE DETECTE. La consulta es una
@@ -184,31 +246,59 @@ jobs:
           # el mismo modo de fallo que ya costo una medicion en este repositorio, donde
           # `comprobar-estado.sh | head` devolvia el codigo de `head`.
           set -o pipefail
-          sha="$(git rev-parse HEAD)"
           echo "promociona=false" >> "$GITHUB_OUTPUT"
+
+          # DOS COMMITS DONDE MIRAR, Y EN ESTE ORDEN. El etiquetado primero porque si alguien evaluo
+          # ahi a mano esa es la medicion mas reciente del contenido; la rama del pull request
+          # despues, que es donde vive la medicion en el camino normal. Se salta el segundo si no se
+          # pudo resolver o si coincide con el primero -- preguntar dos veces por el mismo sha solo
+          # duplicaria la espera --.
+          candidatos=("$ETIQUETADO")
+          if [ -n "$RAMA" ] && [ "$RAMA" != "$ETIQUETADO" ]; then
+            candidatos+=("$RAMA")
+          fi
+          echo "se buscara «...${NOMBRE_DE_LA_COMPROBACION}» en: ${candidatos[*]}"
+
           limite=$(( SECONDS + ESPERA_MAXIMA_SEGUNDOS ))
           conclusion=""
           estado="ausente"
+          evaluado=""
           while :; do
-            # `--jq` filtra en el servidor de `gh`, no en un `grep` sobre JSON: el nombre lleva
-            # espacios y barras y un filtro de texto acertaria por accidente.
-            if ! linea="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/check-runs" \
-                            --paginate --jq \
-                            ".check_runs[] | select(.name | endswith(\"${NOMBRE_DE_LA_COMPROBACION}\")) \
-                             | \"\(.status) \(.conclusion // \"\")\"" | tail -1)"; then
-              # SE DISTINGUE «NO PUEDO PREGUNTAR» DE «NO ESTA EN VERDE». Confundirlos dejaria a un
-              # repositorio sin promocionar nada para siempre por un permiso que falta, con el mismo
-              # aviso que un artefacto que de verdad fallo su suite.
+            estado="ausente"
+            conclusion=""
+            fallo_la_consulta=""
+            for sha in "${candidatos[@]}"; do
+              # `--jq` filtra en el servidor de `gh`, no en un `grep` sobre JSON: el nombre lleva
+              # espacios, barras y un guion largo, y un filtro de texto acertaria por accidente.
+              if ! linea="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/check-runs" \
+                              --paginate --jq \
+                              ".check_runs[] | select(.name | endswith(\"${NOMBRE_DE_LA_COMPROBACION}\")) \
+                               | \"\(.status) \(.conclusion // \"\")\"" | tail -1)"; then
+                # SE DISTINGUE «NO PUEDO PREGUNTAR» DE «NO ESTA EN VERDE». Confundirlos dejaria a un
+                # repositorio sin promocionar nada para siempre por un permiso que falta, con el mismo
+                # aviso que un artefacto que de verdad fallo su suite. Se anota y se sigue con el
+                # otro candidato: que un sha no se pueda consultar no dice nada del otro.
+                fallo_la_consulta=1
+                continue
+              fi
+              if [ -n "$linea" ]; then
+                estado="${linea%% *}"
+                conclusion="${linea##* }"
+                evaluado="$sha"
+                break
+              fi
+            done
+
+            # SOLO ES «SIN PERMISO» SI ADEMAS NO SE ENCONTRO NADA. Con la comprobacion localizada en
+            # un candidato, que el otro diera 403 es irrelevante y decirlo confundiria el diagnostico.
+            if [ "$estado" = ausente ] && [ -n "$fallo_la_consulta" ]; then
               estado="sin_permiso"
               break
             fi
-            estado="ausente"
-            [ -n "$linea" ] && estado="${linea%% *}" && conclusion="${linea##* }"
-            # `ausente` TAMBIEN ES ESPERAR, y no darse por vencido. Cuando la publicacion pregunta, la
-            # comprobacion puede no haberse CREADO todavia: el gate de conformidad va primero y el
-            # check-run del trabajo de comportamiento no existe hasta que ese trabajo arranca. Salir
-            # aqui leeria «aun no ha nacido» como «no existe», que es el mismo error que leer «en
-            # curso» como «en rojo», y con el mismo efecto: nada se certificaria nunca.
+            # `ausente` TAMBIEN ES ESPERAR, y no darse por vencido: la API tiene consistencia
+            # eventual y alguien puede haber relanzado la comprobacion. Salir aqui leeria «aun no la
+            # veo» como «no existe», que es el mismo error que leer «en curso» como «en rojo», y con
+            # el mismo efecto: nada se certificaria nunca.
             case "$estado" in
               queued|in_progress|ausente) ;;
               *) break ;;
@@ -221,18 +311,20 @@ jobs:
           # `skipped` NO CUENTA COMO VERDE, y es la razon de ser de este job: solo `success` certifica.
           if [ "$conclusion" = "success" ]; then
             echo "promociona=true" >> "$GITHUB_OUTPUT"
-            echo "la comprobacion de comportamiento de $sha esta en verde: se promociona"
+            echo "la comprobacion de comportamiento de esta unidad esta en verde sobre $evaluado: se promociona"
             exit 0
           fi
-          # SE DICE CUAL DE LAS DOS CONDICIONES FALLO. Sin esto, un artefacto que merece certificarse
-          # se queda en Conforme y nadie sabe si fue por no tener suites, por estar en rojo o por
-          # haber preguntado demasiado pronto.
+          # SE DICE POR QUE NO. Sin esto, un artefacto que merece certificarse se queda en Conforme y
+          # nadie sabe si fue por no tener suites, por estar en rojo, por no poder preguntar o por no
+          # haber sabido de que commit colgaba su medicion.
           case "$estado" in
-            ausente)      razon="tras ${ESPERA_MAXIMA_SEGUNDOS}s no aparecio ninguna comprobacion llamada «...$NOMBRE_DE_LA_COMPROBACION» sobre $sha" ;;
+            ausente)      razon="no aparecio ninguna comprobacion llamada «...$NOMBRE_DE_LA_COMPROBACION» sobre ${candidatos[*]}" ;;
             sin_permiso)  razon="no se pudo consultar la comprobacion: el llamador no concede \`checks: read\` a este workflow" ;;
             sin_terminar) razon="seguia en curso tras ${ESPERA_MAXIMA_SEGUNDOS}s de espera" ;;
-            *)            razon="termino en «${conclusion:-sin conclusion}», que no es verde" ;;
+            *)            razon="termino en «${conclusion:-sin conclusion}» sobre ${evaluado}, que no es verde" ;;
           esac
+          # LA AUSENCIA NUNCA ES VERDE, Y SU MOTIVO SE ESCRIBE. Es la unica salvaguarda contra el
+          # fallo que recorre toda esta cadena: leer «no se sabe» como «paso».
           echo "::warning::el artefacto trae suites pero no se promociona: $razon. Se queda en Conforme; se puede promocionar a mano cuando la comprobacion este en verde."
 
       - name: Avisar de que no hay comportamiento medido
