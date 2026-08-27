@@ -91,6 +91,16 @@ env:
   # rojo. Acotarlo aqui protege tambien entre repositorios distintos, donde el grupo de concurrencia
   # -- que es por repositorio -- no alcanza.
   LLAMADAS_EN_VUELO: "2"
+  # DONDE ATERRIZA EL INFORME DEL JUEZ, en ABSOLUTO y declarado en un solo sitio (Y2/Y5).
+  #
+  # ABSOLUTO Y NO RELATIVO porque lo usan DOS pasos -- el que corre las suites y el que los sube -- y el
+  # segundo es una accion, que no hereda el directorio de trabajo del primero. Es el bug silencioso que
+  # Y5 describe: el directorio existe, esta vacio, y el artefacto se sube sin nada dentro.
+  #
+  # FUERA DE `~/.promptfoo`, que es donde el motor los deja cuando nadie le pasa `-o`: ese directorio es
+  # del RUNNER y muere con el. Ahi vivia el defecto -- el veredicto de la rubrica se escribia y se tiraba
+  # a la basura --.
+  DIRECTORIO_DE_INFORMES: ${{ github.workspace }}/informes-de-evaluacion
 
 jobs:
   evaluar:
@@ -257,9 +267,15 @@ jobs:
         run: |
           set -o pipefail
           cable="${GITHUB_WORKSPACE}/${DIRECTORIO_DEL_ESTANDAR}/evals/puente_copilot.py"
+          mkdir -p "$DIRECTORIO_DE_INFORMES"
           fallidas=0
           while IFS= read -r suite; do
             echo "::group::$suite"
+            # UN INFORME POR SUITE, Y EL NOMBRE SALE DE LA RUTA DE LA SUITE. Todas las suites se llaman
+            # igual -- `evals/suite.yaml` dentro de cada artefacto --, asi que usar el nombre del archivo
+            # haria que la segunda pisara a la primera EN SILENCIO y el informe conservado seria el de
+            # otro artefacto. La ruta completa aplanada es lo unico unico que hay aqui.
+            informe="${DIRECTORIO_DE_INFORMES}/$(echo "${suite%.*}" | sed 's#^\./##; s#[^A-Za-z0-9._-]#-#g').json"
             # UNA SUITE DE AGENTE SE EJECUTA COMO AGENTE, y una de skill no. No es un matiz:
             #   - de un SKILL se mide si el cliente lo ACTIVA solo, asi que se invoca SIN `--agent`;
             #   - un AGENTE se INVOCA, y sin `--agent` la suite ejecuta al asistente por defecto,
@@ -270,8 +286,22 @@ jobs:
             export EVALS_AGENTE
             [ -n "$EVALS_AGENTE" ] && echo "se invoca al agente $EVALS_AGENTE"
             # `--no-cache` porque una suite que pasa por cache no ha probado nada.
+            #
+            # `-o` NO ES UN LUJO DE OBSERVABILIDAD: es lo unico que conserva EL MOTIVO QUE DIO LA
+            # RUBRICA. Sin el, el motor escribe en el `~/.promptfoo` del runner -- que muere con el -- y
+            # del log solo queda la tabla, con las respuestas truncadas a ~5 lineas y un `[PASS]`/`[FAIL]`
+            # pelado. MEDIDO lo que costo: una suite dio 3/3, luego 2/3 y luego verde SOBRE EL MISMO
+            # CONTENIDO, y se lleva toda la sesion llamando a eso «azar del modelo» sin poder mirar por
+            # que. Esta medido tambien que el caso que falla CUMPLE su ancla determinista
+            # (`icontains: bloqueante`), o sea que lo que falla es la rubrica -- y su motivo no estaba en
+            # ninguna parte. Hay una decision de politica pendiente del cliente -- repetir N veces y votar
+            # por mayoria, con coste x3 o x5 de inferencia -- que no se puede tomar a ciegas.
+            #
+            # JSON y no HTML: es el formato que trae `gradingResult.reason` de cada asercion, que es
+            # exactamente el dato que faltaba. Y CERO INFERENCIA ADICIONAL: se escribe lo ya calculado.
             if npx --yes "promptfoo@${VERSION_PROMPTFOO}" eval \
                  -c "$suite" -r "file://$cable" --grader "file://$cable" \
+                 -o "$informe" \
                  -j "$LLAMADAS_EN_VUELO" --no-cache; then
               echo "superada: $suite"
             else
@@ -287,6 +317,33 @@ jobs:
             exit 1
           fi
           echo "resultado=superada" >> "$GITHUB_OUTPUT"
+
+      # `if: always()` NO ES DEFENSIVO: ES EL PUNTO ENTERO DEL PASO.
+      #
+      # El paso de arriba sale con 1 cuando alguna suite no pasa, asi que sin `always()` el informe se
+      # subiria SOLO en las corridas verdes -- justo aquellas en las que a nadie le hace falta -- y se
+      # perderia en la unica que interesa. Subirlo solo cuando pasa es no subirlo.
+      #
+      # UN SOLO ARTEFACTO CON UN INFORME POR SUITE DENTRO, y no uno por suite: `upload-artifact@v4`
+      # RECHAZA dos artefactos con el mismo nombre en la misma corrida, y como todas las suites se llaman
+      # igual, un nombre derivado del archivo colisionaria. La unicidad se resuelve una sola vez, en el
+      # nombre de cada informe (arriba). `run_attempt` distingue los reintentos, que SI son la misma
+      # corrida a efectos de nombre.
+      #
+      # LA RUTA ES LA MISMA EXPRESION QUE ESCRIBE EL PASO ANTERIOR (Y5): esta accion no comparte el
+      # directorio de trabajo del `run`, y un relativo aqui subiria un artefacto vacio sin decirlo.
+      - name: Conservar el informe del juez — se sube tambien (y sobre todo) si las suites fallan
+        if: always() && steps.detectar.outputs.hay-suites == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: informes-de-evaluacion-intento-${{ github.run_attempt }}
+          path: ${{ env.DIRECTORIO_DE_INFORMES }}
+          # SI NO HAY NADA, SE DICE. El caso en que el motor muere antes de escribir el informe es
+          # posible -- y es informacion: significa que no llego a evaluar --. El silencio por defecto de
+          # la accion lo haria indistinguible de una corrida sin hallazgos.
+          if-no-files-found: warn
+          # No hace falta guardarlos noventa dias: sirven para diagnosticar la corrida que los produjo.
+          retention-days: 30
 
       # EL VEREDICTO SE RESUELVE UNA SOLA VEZ, en un paso, y no en dos expresiones gemelas repartidas
       # entre el output del job y el resumen (Y3). Cuando divergen, el job dice una cosa y el resumen
