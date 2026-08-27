@@ -5,7 +5,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_comun.sh"
 
 if raiz="$(raiz_del_plugin)"; then
-  echo "plugin: $(campo_del_manifiesto "$raiz/$RUTA_MANIFIESTO" name)"
+  echo "plugin: $(campo_json "$raiz/$RUTA_MANIFIESTO" name)"
   echo "raiz:   $raiz"
   exit 0
 fi

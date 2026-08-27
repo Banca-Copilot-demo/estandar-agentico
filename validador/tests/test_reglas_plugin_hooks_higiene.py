@@ -19,6 +19,7 @@ from validador_agentico.dominio.reglas_hooks import revisar_hooks
 from validador_agentico.dominio.reglas_plugin import (
     revisar_ausencia_de_plugin,
     revisar_gobierno,
+    revisar_gobierno_ausente,
     revisar_inventario,
     revisar_manifiesto,
 )
@@ -68,28 +69,38 @@ def test_id_del_gobierno_debe_coincidir_con_el_name_del_plugin():
     assert "no coincide" in _mensajes(errores)
 
 
-def test_un_gobierno_HEREDADO_no_se_compara_con_el_manifiesto_de_la_unidad():
-    """REGRESION medida ejecutando el gate sobre un artefacto suelto publicado por separado.
+def test_el_gobierno_de_OTRA_unidad_no_pasa_por_el_de_esta():
+    """REGRESION de la herencia retirada, medida sobre `agentes-sdlc`.
 
-    Ese artefacto no declara gobierno propio -- exigirselo obligaria a un archivo por cada skill del
-    inventario para repetir los mismos tres campos -- y hereda el del repositorio. Pero ese gobierno
-    describe el REPOSITORIO, asi que compararlo daba DOS errores garantizados y ninguno accionable:
-    «`id` (demo.sdlc.sueltos) no coincide con `name` (demo.sdlc.revisar-jql)» y «declara `version` y
-    ademas hay un `plugin.json`». Los dos son ciertos por construccion y no hay forma de corregirlos.
+    Hubo un modo `heredado` que omitia `id` y `version` cuando el gobierno era el de la raiz del
+    repositorio y no el de la unidad. Servia para que el suelto no fallara con dos errores por
+    construccion -- «`id` (demo.sdlc.sueltos) no coincide con `name` (demo.sdlc.revisar-jql)» --,
+    pero el precio era que la unidad se quedaba con el `owner.team` de la raiz EN SILENCIO. Retirada
+    la herencia, un gobierno que describe otra cosa tiene que delatarse en vez de aceptarse: si
+    alguien reintroduce el atajo, estos dos errores desaparecen y la prueba falla.
     """
-    del_repositorio = {"id": "demo.sdlc.sueltos", "version": "1.0.2", "owner": {"team": "t"}}
+    de_la_raiz = {"id": "demo.sdlc.sueltos", "version": "1.0.2", "owner": {"team": "t"}}
 
-    assert _errores(revisar_gobierno(del_repositorio, MANIFIESTO_CONFORME, heredado=True)) == []
+    mensajes = _mensajes(_errores(revisar_gobierno(de_la_raiz, MANIFIESTO_CONFORME)))
+
+    assert "no coincide" in mensajes
+    assert "version" in mensajes
 
 
-def test_un_gobierno_heredado_SIGUE_exigiendo_dueno():
-    """Lo que se hereda es el dueno, y es justo lo que no puede faltar: un artefacto sin dueno real
-    no se puede deprecar, corregir ni retirar. Si la herencia relajara tambien esto, publicar suelto
-    seria la via para saltarse el unico control que no admite excepcion."""
-    sin_dueno = {"id": "demo.sdlc.sueltos", "owner": {}}
+def test_una_unidad_que_publica_y_no_declara_gobierno_es_ERROR_que_la_nombra():
+    """EL DEFECTO ERA UN SILENCIO. Un artefacto suelto con manifiesto propio -- unidad publicable con
+    etiqueta, paquete y ficha propios -- no traia `GOVERNANCE.json` y el gate se lo suplia con el de
+    la raiz del repositorio, con su `owner.team` incluido. Asi, todos los sueltos de un repositorio
+    acababan con el mismo dueno por vecindad, sin un solo hallazgo que lo dijera.
 
-    assert "owner.team" in _mensajes(_errores(revisar_gobierno(sin_dueno, MANIFIESTO_CONFORME,
-                                                                heredado=True)))
+    El mensaje nombra la unidad y lo que publica porque el repositorio medido tiene SEIS: «falta el
+    gobierno» a secas obligaria a ir a buscar cual.
+    """
+    hallazgos = revisar_gobierno_ausente("skills/revisar-jql", "plugin `demo.sdlc.revisar-jql`")
+
+    assert all(h.severidad is Severidad.ERROR for h in hallazgos)
+    assert "skills/revisar-jql" in _mensajes(hallazgos)
+    assert "demo.sdlc.revisar-jql" in _mensajes(hallazgos)
 
 
 def test_dueno_sin_equipo_es_error():

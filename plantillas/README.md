@@ -59,6 +59,25 @@ La decisión no es estética — determina si se puede **revocar de forma centra
 
 Un repositorio puede tener las dos cosas a la vez: plugins en `plugins/` y artefactos sueltos en la raíz.
 
+### Un suelto que se publica **solo** usa el envoltorio de plugin
+
+Cuando un artefacto suelto lleva su propio `.claude-plugin/plugin.json` deja de formar parte del
+conjunto suelto: **es una unidad publicable por sí misma**, con etiqueta, paquete y ficha propios. Su
+envoltorio es entonces el de `unidad-plugin/` — manifiesto **y gobierno**, y sin `version` en el
+gobierno — aunque viva en `skills/<nombre>/` y no en `plugins/`. No hay una tercera plantilla porque
+no hay una tercera forma: un plugin de un solo artefacto es un plugin.
+
+**Cada unidad publicable declara su propio `GOVERNANCE.json`, y el gate lo exige.** No se hereda el de
+la raíz del repositorio: si se heredara, todos los sueltos de un repositorio acabarían con el mismo
+`owner.team` por el mero hecho de vivir ahí, y **en silencio**. El dueño es a quien se le pide la
+aprobación y a quien se le abre el issue — atribuirlo por vecindad es justo lo que este marco existe
+para impedir. El asistente de autoría lo genera junto al manifiesto, así que declararlo no cuesta nada.
+
+**Dónde va:** en la raíz de la unidad, **hermano de `.claude-plugin/` y nunca dentro**. Ese directorio
+lo lee el cliente y su contenido lo fija una especificación que no controlamos; además todo lo que
+cuelga de la unidad viaja en el paquete sellado hasta la máquina de quien instala, y el gobierno lleva
+equipo dueño, contacto y clasificación del dato.
+
 ## Lo que ninguna plantilla puede rellenar por ti
 
 Tres cosas, y son las que deciden si el artefacto sirve:

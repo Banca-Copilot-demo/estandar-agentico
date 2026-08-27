@@ -24,9 +24,9 @@ raiz_skill="$(raiz_del_skill)"
 manifiesto="$raiz_skill/../../$RUTA_MANIFIESTO"
 [ -f "$manifiesto" ] || abortar "no encuentro el manifiesto del plugin en $manifiesto"
 
-version="$(campo_del_manifiesto "$manifiesto" version)"
-repositorio="$(campo_del_manifiesto "$manifiesto" repository)"
-nombre="$(campo_del_manifiesto "$manifiesto" name)"
+version="$(campo_json "$manifiesto" version)"
+repositorio="$(campo_json "$manifiesto" repository)"
+nombre="$(campo_json "$manifiesto" name)"
 [ -n "$version" ] || abortar 'el manifiesto no declara el campo version'
 [ -n "$nombre" ] || abortar 'el manifiesto no declara el campo name'
 if [ -z "$repositorio" ]; then

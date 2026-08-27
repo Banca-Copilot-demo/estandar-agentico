@@ -105,20 +105,14 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
     artefactos: list = []
     plugins: list = []
     custodia: dict = {}
-    # SOLO los artefactos sueltos publicados por separado heredan el gobierno de la raiz. Un plugin
-    # declara el suyo: agrupa varios artefactos y puede tener dueno distinto del repositorio.
-    individuales = frozenset(reglas_layout.raices_de_artefacto_individual(
-        raiz, RUTAS_MANIFIESTO, _DIRECTORIOS_DE_ARTEFACTOS))
     for raiz_plugin in raices:
-        contenido = repositorio.leer(
-            raiz_plugin, lector,
-            gobierno_de_respaldo=raiz / RUTA_GOBIERNO if raiz_plugin in individuales else None)
+        contenido = repositorio.leer(raiz_plugin, lector)
         prefijo = _prefijo_de(raiz_plugin, raiz, varios)
         parcial = proyeccion.construir_inventario(contenido)
         inventario = proyeccion.sumar_inventarios(inventario, parcial)
         hallazgos += _prefijar(prefijo, [
             *_revisar_plugin(contenido),
-            *_revisar_gobierno(contenido, parcial),
+            *_revisar_gobierno(contenido, parcial, _nombre_de_unidad(raiz_plugin, raiz)),
             *_revisar_skills(contenido),
             *_revisar_prompts(contenido),
             *_revisar_agentes(contenido),
@@ -194,25 +188,41 @@ def _revisar_plugin(contenido: ContenidoRepositorio) -> list[Hallazgo]:
                                             contenido.manifiesto.contenido)
 
 
-def _revisar_gobierno(contenido: ContenidoRepositorio, inventario: Inventario) -> list[Hallazgo]:
+def _nombre_de_unidad(unidad: Path, raiz: Path) -> str:
+    """Como se nombra la unidad en un mensaje. `.` cuando la unidad ES el repositorio, que es el
+    mismo nombre con el que `listar_plugins` la emite."""
+    if unidad == raiz:
+        return reglas_layout.RAIZ_DEL_REPOSITORIO
+    return unidad.relative_to(raiz).as_posix()
+
+
+def _lo_que_publica(inventario: Inventario) -> str:
+    """Que hay dentro de la unidad, para que el mensaje de gobierno ausente diga POR QUE le toca
+    declararlo. Sin esto el hallazgo obliga a ir a mirar el arbol para entender de que unidad habla.
+    """
+    if inventario.tiene_plugin:
+        return f"plugin `{inventario.nombre_plugin}`"
+    piezas = [f"{cuenta} {tipo}" for tipo, cuenta in inventario.como_declarado().items() if cuenta]
+    return ", ".join(piezas)
+
+
+def _revisar_gobierno(contenido: ContenidoRepositorio, inventario: Inventario,
+                      unidad: str) -> list[Hallazgo]:
     if contenido.gobierno is None:
-        return reglas_plugin.revisar_gobierno_ausente() if inventario.tiene_plugin else []
+        # SOLO SE RECLAMA A QUIEN PUBLICA ALGO. `unidades_publicables` devuelve `(raiz,)` tambien
+        # para un repositorio vacio o de puros documentos -- es lo que lo mantiene revisable -- y
+        # exigirle gobierno a un repositorio que no publica ningun artefacto seria pedir un dueno
+        # para nada. En cuanto aparece un plugin o un artefacto, la unidad publica y declara.
+        que_publica = _lo_que_publica(inventario)
+        if not que_publica:
+            return []
+        return reglas_plugin.revisar_gobierno_ausente(unidad, que_publica)
     if not contenido.gobierno.es_legible:
         return _hallazgo_de_formato(contenido.gobierno)
     manifiesto = contenido.manifiesto.contenido if inventario.tiene_plugin else None
-    hallazgos = list(reglas_plugin.revisar_gobierno(contenido.gobierno.contenido, manifiesto,
-                                                    heredado=contenido.gobierno_heredado))
-    if contenido.gobierno_heredado:
-        # EL INVENTARIO DEL GOBIERNO HEREDADO CUENTA LOS ARTEFACTOS DEL REPOSITORIO, no los de esta
-        # unidad, asi que cotejarlo contra el arbol de la unidad da errores garantizados: un agente
-        # suelto individual produce «declara 1 skills y el arbol real tiene 0».
-        #
-        # SE MIDIO QUE EL SKILL PASABA POR CASUALIDAD: la raiz declaraba 1 skill y esa unidad tenia
-        # exactamente 1, asi que el cotejo cuadraba por coincidencia. Con dos sueltos habria fallado
-        # igual. Que un control pase por azar es peor que si fallara: parece que cubre algo.
-        return hallazgos
-    return [*hallazgos, *reglas_plugin.revisar_inventario(
-        (contenido.gobierno.contenido.get("artifacts") or {}), inventario)]
+    return [*reglas_plugin.revisar_gobierno(contenido.gobierno.contenido, manifiesto),
+            *reglas_plugin.revisar_inventario(
+                (contenido.gobierno.contenido.get("artifacts") or {}), inventario)]
 
 
 def _revisar_skills(contenido: ContenidoRepositorio) -> list[Hallazgo]:

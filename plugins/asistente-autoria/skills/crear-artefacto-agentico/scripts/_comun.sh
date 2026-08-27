@@ -7,6 +7,10 @@
 set -euo pipefail
 
 RUTA_MANIFIESTO=".claude-plugin/plugin.json"
+# El gobierno va en la RAIZ de la unidad y NO dentro de `.claude-plugin/`: ese directorio es el que
+# lee el cliente, lo define una especificacion ajena, y su contenido viaja en el paquete hasta la
+# maquina de quien instala -- el gobierno lleva dueno, contacto y clasificacion del dato --.
+RUTA_GOBIERNO="GOVERNANCE.json"
 
 # Sube desde el directorio actual buscando el manifiesto. Se sube en vez de asumir la raiz porque el
 # desarrollador puede estar en cualquier subdirectorio del repositorio cuando invoca al asistente.
@@ -28,7 +32,9 @@ raiz_del_skill() {
   cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
 }
 
-campo_del_manifiesto() {  # campo_del_manifiesto <ruta al manifiesto> <campo>
+# Un campo de primer nivel de cualquier JSON del repositorio. Sirve para el manifiesto y para el
+# `GOVERNANCE.json`: tener una funcion por archivo seria la misma lectura escrita dos veces.
+campo_json() {  # campo_json <ruta al json> <campo>
   python -c "import json,sys
 d = json.load(open(sys.argv[1], encoding='utf-8'))
 print(d.get(sys.argv[2], ''))" "$1" "$2"
@@ -80,6 +86,54 @@ if sys.argv[4] == 'prompt':
     manifiesto['commands'] = './commands'
 open(sys.argv[1], 'w', encoding='utf-8').write(json.dumps(manifiesto, indent=2) + '\n')
 " "$destino" "$nombre" "$descripcion" "$tipo"
+}
+
+# Los tipos de artefacto, con la clave con la que cada uno se cuenta en el inventario del gobierno.
+# El plural del gate no es el nombre del tipo -- `agent` cuenta en `agents` -- y escribirlo en el
+# sitio de uso lo convertiria en un literal disperso.
+CLAVE_DE_INVENTARIO_skill="skills"
+CLAVE_DE_INVENTARIO_agent="agents"
+CLAVE_DE_INVENTARIO_prompt="prompts"
+
+# Escribe el `GOVERNANCE.json` de una unidad de UN SOLO artefacto, con la forma de
+# `plantillas/unidad-plugin/GOVERNANCE.json` -- que es la que le toca: la unidad TIENE manifiesto --.
+#
+# VA EN LA RAIZ DE LA UNIDAD, HERMANO DE `.claude-plugin/` Y NO DENTRO. Ese directorio es lo que lee
+# el CLIENTE y su contenido lo fija una especificacion que no controlamos, asi que meterle un archivo
+# nuestro es apostar contra la proxima version de la spec. Y hay un motivo mas fuerte: todo lo que
+# vive en la unidad viaja en el paquete sellado hasta la maquina de quien instala, y el gobierno
+# lleva equipo dueno, correo de contacto y clasificacion del dato -- informacion interna que un
+# consumidor no necesita para usar el artefacto --.
+#
+# SIN `version`: la unidad trae `plugin.json` y la version del paquete es la del manifiesto.
+# Declararla en los dos sitios es un error del gate, y con razon: dos declaraciones de lo mismo
+# divergen y la etiqueta saldria de una de las dos sin saber cual.
+#
+# EL DUENO SE ARRASTRA DEL GOBIERNO DE LA RAIZ y queda ESCRITO en el archivo de la unidad, que es la
+# diferencia que importa: antes se heredaba en tiempo de validacion, sin dejar rastro, y todos los
+# sueltos de un repositorio acababan con el mismo dueno sin que nadie lo hubiera decidido. Escrito,
+# es un valor que se ve en la revision y se corrige de una linea.
+escribir_gobierno_de_unidad() {  # ... <destino> <id> <tipo> <gobierno de la raiz>
+  local destino="$1" identificador="$2" tipo="$3" de_la_raiz="$4"
+  local clave="CLAVE_DE_INVENTARIO_$tipo"
+  mkdir -p "$(dirname "$destino")"
+  python -c "import json,sys
+raiz = json.load(open(sys.argv[4], encoding='utf-8'))
+gobierno = {
+    'id': sys.argv[2],
+    'domain': raiz.get('domain', 'PENDIENTE'),
+    'owner': {
+        'team': (raiz.get('owner') or {}).get('team', 'PENDIENTE'),
+        'contact': (raiz.get('owner') or {}).get('contact', 'PENDIENTE'),
+    },
+    'status': 'draft',
+    'data_classification': raiz.get('data_classification', 'internal'),
+    'standard_version': raiz.get('standard_version', ''),
+    'artifacts': {'skills': 0, 'agents': 0, 'prompts': 0},
+}
+gobierno['artifacts'][sys.argv[3]] = 1
+open(sys.argv[1], 'w', encoding='utf-8').write(json.dumps(gobierno, indent=2) + '\n')
+" "$destino" "$identificador" "${!clave}" "$de_la_raiz"
 }
 
 # DOS FORMAS DE ETIQUETA, y desde aqui no se puede deducir cual usa un repositorio. Un repositorio

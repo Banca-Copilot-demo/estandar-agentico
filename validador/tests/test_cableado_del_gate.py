@@ -199,7 +199,7 @@ _CABLES = (
     ("_revisar_plugin", _sin_plugin,
      "sin plugin: los artefactos se gobiernan por su propia metadata"),
     ("_revisar_gobierno", _con_plugin_sin_gobierno,
-     "declara un plugin pero no su gobierno"),
+     "no declara su GOVERNANCE.json"),
     ("_revisar_skills", _skill_sin_frontmatter,
      "sin frontmatter: el artefacto es indescubrible"),
     ("_revisar_prompts", _prompt_con_skills_reference,
