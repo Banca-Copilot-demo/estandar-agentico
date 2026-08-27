@@ -17,7 +17,12 @@ from pathlib import Path
 
 import pytest
 
-from suites_a_evaluar import es_plantilla, sin_plantillas, suites_a_evaluar
+from suites_a_evaluar import (
+    es_plantilla,
+    sin_plantillas,
+    suites_a_evaluar,
+    unidades_a_evaluar,
+)
 
 # La plantilla REAL del repositorio del estandar, la que puso en rojo el run 33016050350. Se lee del
 # arbol y no se copia aqui: una copia se queda atras el dia que alguien edite el esqueleto, que es
@@ -159,3 +164,62 @@ def test_una_suite_de_verdad_sobrevive_al_descarte_de_plantillas():
     ruta = "skills/revisar-jql/evals/promptfooconfig.yaml"
 
     assert sin_plantillas([ruta], lambda _: _SUITE_REAL) == [ruta]
+
+
+# --- La proyeccion a UNIDAD, que es la que alimenta la matriz -----------------------------------
+#
+# EL DEFECTO QUE CUBRE ESTE BLOQUE, medido en el run 33040368778 de `agentes-sdlc`: con UN solo
+# trabajo de evaluacion para todo el repositorio, su unica conclusion se contagiaba. `revisar-jql` con
+# 3 de 3 y `referencia` con 3 de 3 no se promocionaron porque la suite de `migracion` estaba en 2 de
+# 3. La matriz abre un trabajo por unidad para que cada una emita SU comprobacion, y de esta funcion
+# sale la lista de unidades. Si divergiera de la seleccion de suites, se abriria un trabajo para una
+# unidad sin suites -- o se dejaria una suite sin trabajo que la corriera --, y ninguna de las dos
+# cosas se pondria roja: nadie lo notaria.
+
+def test_cada_unidad_con_suite_aparece_una_sola_vez_en_la_matriz():
+    """Una unidad con VARIAS suites es un trabajo, no varios: la matriz se indexa por unidad, y
+    repetirla abriria dos celdas con el MISMO nombre -- dos check-runs indistinguibles, que es
+    exactamente lo que impediria al guardian elegir el suyo --."""
+    dos_suites_de_la_misma_unidad = [
+        "plugins/referencia/agents/evals/promptfooconfig.yaml",
+        "plugins/referencia/skills/otro/evals/promptfooconfig.yaml",
+    ]
+
+    assert unidades_a_evaluar(dos_suites_de_la_misma_unidad, _UNIDADES, []) == ["plugins/referencia"]
+
+
+def test_una_unidad_sin_suites_no_abre_ningun_trabajo():
+    """Abrir una celda para una unidad sin nada que medir la dejaria en verde sin haber evaluado, y
+    esa es justo la senal que el guardian confundiria con «certificable»."""
+    assert "plugins/contratos" not in unidades_a_evaluar(_SUITES, _UNIDADES, [])
+
+
+def test_la_matriz_solo_trae_las_unidades_que_el_cambio_toca():
+    """El acotado del pull request tiene que llegar tambien a la matriz. Sin esto se abriria un
+    trabajo por cada unidad del repositorio en cada solicitud de cambio, y volveria el acoplamiento
+    por otra puerta: gasto de inferencia por artefactos que nadie toco."""
+    assert unidades_a_evaluar(_SUITES, _UNIDADES, ["skills/revisar-jql/SKILL.md"]) == \
+        ["skills/revisar-jql"]
+
+
+def test_sin_ninguna_suite_la_matriz_queda_vacia():
+    """EL CASO VACIO, que es el que hay que distinguir de «pasaron todas». Aqui solo se exige que la
+    lista salga vacia; que eso NO se lea como verde lo fija la prueba de forma del workflow."""
+    assert unidades_a_evaluar([], _UNIDADES, []) == []
+
+
+def test_las_unidades_de_la_matriz_son_exactamente_las_de_las_suites_seleccionadas():
+    """LAS DOS PROYECCIONES NO PUEDEN DIVERGIR, y es lo unico que garantiza que cada suite tenga un
+    trabajo que la corra y cada trabajo tenga una suite que medir. Se comprueba contra la MISMA
+    entrada en varios escenarios, porque la divergencia aparecia justo en los bordes -- lo prestado,
+    lo acotado por cambios --."""
+    escenarios = {
+        "todo": ([*_SUITES, _SUITE_PRESTADA], []),
+        "acotado por cambios": (_SUITES, ["skills/revisar-jql/SKILL.md"]),
+        "nada tocado": (_SUITES, ["README.md"]),
+    }
+    for nombre, (suites, cambiados) in escenarios.items():
+        elegidas = suites_a_evaluar(suites, _UNIDADES, cambiados)
+        esperadas = sorted({u for u in _UNIDADES
+                            for s in elegidas if s.startswith(f"{u}/")})
+        assert unidades_a_evaluar(suites, _UNIDADES, cambiados) == esperadas, nombre

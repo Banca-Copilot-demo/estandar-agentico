@@ -44,6 +44,7 @@ SALIDA A STDOUT PORQUE LA CONSUME OTRO PROCESO; el logging va a stderr (L8).
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import re
 import sys
@@ -134,6 +135,27 @@ def suites_a_evaluar(suites: list[str], unidades: list[str],
     return elegidas
 
 
+def unidades_a_evaluar(suites: list[str], unidades: list[str],
+                       cambiados: list[str]) -> list[str]:
+    """Las unidades que tienen al menos una suite que ejecutar, ordenadas.
+
+    ES LA MISMA PREGUNTA QUE `suites_a_evaluar`, PROYECTADA A LA UNIDAD, y por eso se apoya en ella
+    en vez de repetir los filtros: si divergieran, se evaluaria una unidad cuya suite el otro filtro
+    ya habia descartado -- o peor, se dejaria de evaluar una que si corre --.
+
+    QUIEN LA CONSUME Y PARA QUE: la evaluacion abre UN TRABAJO POR UNIDAD, de modo que cada una emita
+    SU PROPIA comprobacion. Con un solo trabajo para todo el repositorio, su unica conclusion se
+    contagiaba: MEDIDO en el run 33040368778 de `agentes-sdlc`, `revisar-jql` con 3 de 3 y
+    `referencia` con 3 de 3 no se promocionaron porque la suite de `migracion` estaba en 2 de 3. Dos
+    artefactos que cumplian se quedaron sin certificar por una unidad que sus equipos no habian
+    tocado.
+    """
+    elegidas = suites_a_evaluar(suites, unidades, cambiados)
+    con_suites = sorted({u for u in (_unidad_de(s, unidades) for s in elegidas) if u})
+    log.info("unidades con suites que evaluar: %s", ", ".join(con_suites) or "ninguna")
+    return con_suites
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -143,6 +165,10 @@ def main() -> int:
                         help="archivo con una subruta de unidad por linea, de `listar_plugins`")
     parser.add_argument("--cambiados", type=argparse.FileType(encoding="utf-8"),
                         help="archivo con los archivos cambiados. Sin el, se evaluan todas")
+    parser.add_argument("--agrupado-por-unidad", action="store_true",
+                        help="Imprime un ARRAY JSON con las unidades que tienen alguna suite que "
+                             "ejecutar, en vez de una ruta de suite por linea. Es lo que alimenta "
+                             "la matriz de la evaluacion, que abre un trabajo por unidad.")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Activa logging DEBUG (detalles internos de ejecucion).")
     argumentos = parser.parse_args()
@@ -160,8 +186,17 @@ def main() -> int:
         return Path(ruta).read_text(encoding="utf-8", errors="replace")
 
     ejecutables = sin_plantillas(_lineas(argumentos.suites), _texto)
-    for suite in suites_a_evaluar(ejecutables, _lineas(argumentos.unidades),
-                                  _lineas(argumentos.cambiados)):
+    unidades = _lineas(argumentos.unidades)
+    cambiados = _lineas(argumentos.cambiados)
+
+    # UN ARRAY JSON Y NO UNA LISTA DE LINEAS cuando se agrupa: lo consume `fromJSON` de Actions para
+    # construir la matriz, y ese es el unico formato que entiende. `json.dumps` ademas escapa lo que
+    # haga falta, que es lo que una concatenacion a mano se dejaria.
+    if argumentos.agrupado_por_unidad:
+        print(json.dumps(unidades_a_evaluar(ejecutables, unidades, cambiados)))
+        return 0
+
+    for suite in suites_a_evaluar(ejecutables, unidades, cambiados):
         print(suite)
     return 0
 

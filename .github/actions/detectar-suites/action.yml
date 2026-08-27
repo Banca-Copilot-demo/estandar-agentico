@@ -38,6 +38,15 @@ outputs:
   archivo-suites:
     description: Archivo con una ruta de suite por linea. Vacio si no hay ninguna.
     value: ${{ steps.detectar.outputs.archivo-suites }}
+  unidades-con-suites:
+    description: >
+      ARRAY JSON con las subrutas de las unidades que tienen alguna suite que ejecutar -- `[]` si
+      ninguna --. Lo consume `fromJSON` para abrir UN TRABAJO DE EVALUACION POR UNIDAD, de modo que
+      cada una emita su propia comprobacion en vez de compartir una sola conclusion de repositorio.
+      Sale de la MISMA deteccion que `archivo-suites`, proyectada a la unidad: una segunda respuesta
+      a «¿que unidades hay que evaluar?» divergiria de la primera y se abriria un trabajo para una
+      unidad cuyas suites el otro filtro descarto -- o se dejaria fuera una que si corre --.
+    value: ${{ steps.detectar.outputs.unidades-con-suites }}
 
 runs:
   using: composite
@@ -77,6 +86,10 @@ runs:
         # publica por separado, con su version y su digesto, y responde solo de lo suyo.
         donde="${SUBRUTA:-.}"
         echo "buscando suites en: $donde"
+        # SIN NINGUNA SUITE NO HAY NINGUNA UNIDAD, y se dice como array vacio desde el principio: un
+        # valor sin inicializar viajaria como cadena vacia hasta `fromJSON`, que no falla devolviendo
+        # nada sino tumbando la corrida al arrancar.
+        unidades_json="[]"
         # SE PODA EL DIRECTORIO INYECTADO, no solo `.git`. Quien clona el estandar dentro del
         # workspace mete ahi archivos que no son del repositorio evaluado. MEDIDO en el push a main
         # de `agentes-sdlc` (run 33016050350): el trabajo quedo rojo por
@@ -113,14 +126,28 @@ runs:
             git diff --name-only "origin/${RAMA_BASE}...HEAD" > "$RUNNER_TEMP/cambiados.txt"
             acotado+=(--cambiados "$RUNNER_TEMP/cambiados.txt")
           fi
+          # LA MISMA SELECCION, EN SUS DOS PROYECCIONES, y las dos salen del MISMO modulo con los
+          # MISMOS argumentos. Quien ejecuta necesita las rutas; quien abre un trabajo por unidad
+          # necesita las unidades. Derivar las segundas de las primeras con un `dirname` aqui seria
+          # una tercera definicion de «a que unidad pertenece una suite» -- la que ya vive en
+          # `unidad_de` y que usan tambien el gate y el empaquetado --, y su divergencia no haria
+          # ruido: se abriria un trabajo para una unidad sin suites, o se dejaria una suite sin
+          # trabajo que la corriera y nadie lo notaria porque nada se pondria rojo.
+          unidades_json="$(python "${RUTA_DEL_ESTANDAR}/evals/suites_a_evaluar.py" \
+                             "${acotado[@]}" --agrupado-por-unidad)"
           suites="$(python "${RUTA_DEL_ESTANDAR}/evals/suites_a_evaluar.py" "${acotado[@]}")"
         fi
 
         if [ -z "$suites" ]; then
           echo "hay-suites=false" >> "$GITHUB_OUTPUT"
           echo "archivo-suites=" >> "$GITHUB_OUTPUT"
+          # `[]` Y NO VACIO. El consumidor se lo pasa a `fromJSON`, y `fromJSON('')` revienta la
+          # corrida entera al arrancar en vez de producir una matriz sin elementos.
+          echo "unidades-con-suites=[]" >> "$GITHUB_OUTPUT"
         else
           echo "hay-suites=true" >> "$GITHUB_OUTPUT"
+          printf 'unidades con suites: %s\n' "$unidades_json"
+          echo "unidades-con-suites=$unidades_json" >> "$GITHUB_OUTPUT"
           printf 'suites encontradas:\n%s\n' "$suites"
           # Se guardan en un archivo y no en un output: una lista multilinea en `$GITHUB_OUTPUT`
           # exige delimitador y se rompe en silencio si alguna ruta lleva un caracter raro.

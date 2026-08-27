@@ -2,29 +2,70 @@ name: Evaluar el comportamiento
 
 # EJECUTA LAS SUITES DE EVALUACION del repositorio que llama, y dice si pasan.
 #
+# UN TRABAJO POR UNIDAD, Y NO UNO POR REPOSITORIO. Es el cambio que estructura este archivo, y viene
+# de un defecto MEDIDO: mientras hubo un solo trabajo para todo, su unica conclusion se contagiaba.
+# En el run 33040368778 de `agentes-sdlc`, `revisar-jql` con 3 de 3 y `referencia` con 3 de 3 NO se
+# promocionaron porque la suite de `migracion` estaba en 2 de 3 -- dos artefactos que cumplian se
+# quedaron en Conforme por una unidad que sus equipos no habian tocado --. Acotar la deteccion no
+# bastaba: el guardian de la promocion preguntaba por una senal de REPOSITORIO, y no existia ninguna
+# senal por unidad que pudiera preguntar. Con la matriz existe: cada unidad emite SU comprobacion,
+# con su nombre, y el guardian busca la suya. De paso el portal de Actions muestra que artefacto
+# corre y cual fallo sin abrir un log.
+#
 # CUANDO BLOQUEA Y CUANDO NO. Evaluar es opcional; tener evaluaciones ROTAS, no. Un repositorio sin
-# suites salta este trabajo -- y un trabajo saltado reporta «Success», asi que no impide mergear
-# aunque la comprobacion sea requerida (MEDIDO: el pull request queda CLEAN) --. Uno que si las trae
-# esta declarando que quiere certificar, y entonces una suite en rojo detiene el cambio (MEDIDO:
-# queda BLOCKED). Es como funcionan las pruebas en cualquier repositorio: lo opcional es tenerlas.
+# suites no abre ningun trabajo de matriz -- y el veredicto lo dice como `sin_suites`, no como
+# «pasaron todas» --. Uno que si las trae esta declarando que quiere certificar, y entonces una suite
+# en rojo detiene el cambio. Es como funcionan las pruebas en cualquier repositorio: lo opcional es
+# tenerlas.
 #
-# SE EJECUTA UNA SOLA VEZ POR ARTEFACTO, EN LA SOLICITUD DE CAMBIO, y ya no al publicar. La
-# publicacion tenia su propia corrida sobre el commit etiquetado, y esa segunda pasada hacia dano en
-# vez de dar garantia: el veredicto NO es reproducible -- MEDIDO sobre el MISMO contenido: 3 de 3 en
-# el pull request, 2 de 3 al certificar y verde al reejecutar --, asi que evaluar dos veces solo
-# multiplica las ocasiones de que el azar diga cosas distintas del mismo artefacto, y duplica el
-# consumo del unico token de inferencia de la organizacion. El etiquetado es automatico justo tras el
-# merge, asi que la etiqueta apunta al commit del merge y el contenido evaluado es EL MISMO.
+# QUIEN BLOQUEA ES EL AGREGADOR, NO LAS CELDAS. Con matriz hay N conclusiones y el llamador consume
+# UNA. El job `veredicto` las combina y conserva las respuestas distintas -- `superada`, `sin_suites`,
+# `fallida` y `no_procede` --, que es lo que no se puede colapsar: certificar exige `superada`, y
+# ninguna de las otras tres es verde aunque dos de ellas dejen mergear.
 #
-# EL INPUT `subruta` SE RETIRO CON ELLA. Existia solo para acotar la certificacion a la unidad que se
-# publicaba; sin esa corrida no le quedaba ningun consumidor -- comprobado en los repositorios de
-# dominio --, y un input documentado y sin usar es una invitacion a volver a cablear la segunda
-# pasada. La capacidad de acotar no se perdio: vive en la accion `detectar-suites`, que es quien la
-# usa hoy desde la publicacion para preguntar si la unidad TRAE suites.
+# EL CASO VACIO SE DECIDE ANTES DE LA MATRIZ, con `if:` sobre un booleano, y no se descubre dentro.
+# Una matriz sin elementos NO se salta: tumba la corrida al arrancar («does not contain any values»),
+# y un `startup_failure` no reporta comprobacion ninguna. Ademas, si se dejara correr, el `result` de
+# una matriz saltada es `skipped`, que leido a la ligera pasa por verde -- el mismo modo de fallo del
+# trabajo saltado que reporta «Success», ya medido en este proyecto --. Por eso el veredicto mira
+# `hay-suites` y no el `result` para distinguir «no habia nada» de «paso todo».
+#
+# SE EJECUTA UNA SOLA VEZ POR ARTEFACTO, EN LA SOLICITUD DE CAMBIO, Y ESTE ARCHIVO LO HACE CUMPLIR.
+#
+# La regla ya estaba decidida y ya habia costado una medicion: el veredicto NO es reproducible --
+# MEDIDO sobre el MISMO contenido: 3 de 3 en el pull request, 2 de 3 al certificar y verde al
+# reejecutar --, asi que evaluar dos veces no confirma nada; solo duplica el gasto del UNICO token de
+# inferencia de la organizacion y multiplica las ocasiones de que el azar diga cosas distintas del
+# mismo artefacto. Por eso se retiro la corrida de la publicacion.
+#
+# LO QUE NO SE RETIRO ENTONCES, Y ES LO QUE ESTE ARCHIVO CIERRA AHORA: la del `push` a `main`. Los
+# repositorios de dominio disparan su validacion con `pull_request` Y `push: branches: [main]`, y el
+# trabajo de comportamiento no distinguia, asi que TODO cambio se evaluaba DOS VECES -- una en la
+# rama y otra en el merge --. Sobrevivio sin que nadie la mirara porque nadie la nombraba: la
+# publicacion se apoyaba en ella sin decirlo.
+#
+# NO SE PIDE, SE IMPIDE. Un aviso no gasta menos cuota, y un lineamiento que cada repositorio de
+# dominio puede olvidar no es un lineamiento -- la razon por la que estos workflows viven aqui y no
+# en cada dominio --. Fuera de una solicitud de cambio, la deteccion no arranca y el veredicto sale
+# `no_procede`: sin runner, sin modelo y sin poner nada en rojo. Los llamadores llevan ademas su
+# propio `if:` para no encender ni el trabajo.
+#
+# Y ENTONCES, ¿DE DONDE SACA LA PUBLICACION SU VEREDICTO? De la MISMA corrida del pull request, sin
+# volver a evaluar. El nudo es que el merge con squash crea un commit NUEVO en `main` -- otro sha --,
+# asi que las comprobaciones cuelgan del commit de la RAMA y no del que se etiqueta. NO se transporta
+# nada: un check-run no caduca, asi que sigue ahi; lo que hace el guardian es preguntar primero QUE
+# COMMIT SE EVALUO -- `GET /commits/{sha}/pulls` devuelve la solicitud de cambio que introdujo un
+# commit -- y mirar las comprobaciones de aquel. Un artefacto de corrida habria caducado a los 30
+# dias y habria exigido `actions: read` en cada dominio; re-publicar las comprobaciones sobre `main`
+# habria exigido `checks: write` y una segunda copia de la misma verdad.
+#
+# EL INPUT `subruta` NO EXISTE, y su ausencia es deliberada: acotar a una unidad ya no es cosa del
+# llamador, es la estructura misma del workflow -- una celda por unidad --. Un input asi seria hoy la
+# forma de volver a colapsar N comprobaciones en una.
 #
 # EL FILTRO DE RUTAS NO SIRVE PARA ESTO y es el error clasico: con `on: pull_request: paths:` la
 # comprobacion NO SE REPORTA cuando no hay coincidencia, y una requerida que nunca reporta deja el
-# pull request bloqueado para siempre. Por eso la condicion vive en el JOB, no en el disparador.
+# pull request bloqueado para siempre. Por eso la condicion vive en los JOBS, no en el disparador.
 #
 # SE EJECUTA DESPUES DE LOS CONTROLES DETERMINISTAS, nunca en paralelo. Los controles no consumen
 # modelo y tardan segundos; una suite tarda MEDIDOS ~2,5-3,5 minutos y gasta cuota de inferencia.
@@ -40,8 +81,12 @@ on:
         default: ""
     outputs:
       resultado:
-        description: "`superada`, `sin_suites` o `fallida`. Es el veredicto que decide si el cambio avanza."
-        value: ${{ jobs.evaluar.outputs.resultado }}
+        description: >
+          `superada`, `sin_suites`, `fallida` o `no_procede`. Es el veredicto que decide si el cambio
+          avanza. `no_procede` significa que no se invoco desde una solicitud de cambio y por tanto
+          no se evaluo nada: NO es verde, pero tampoco detiene nada -- lo que se evalua es la rama,
+          una sola vez --.
+        value: ${{ jobs.veredicto.outputs.resultado }}
     secrets:
       copilot-token:
         description: >
@@ -52,6 +97,30 @@ on:
 
 permissions:
   contents: read
+
+# EL RECURSO QUE COMPITE NO ES EL RUNNER: ES EL TOKEN DE INFERENCIA, uno solo para todo.
+#
+# Y lo peligroso es COMO se manifiesta su agotamiento: no llega como un error de cuota, llega como
+# casos que fallan. Se mide rojo y se cree que el artefacto empeoro. Es el mismo daño que ya aparecio
+# dos veces en esta cadena -- acusar al ARTEFACTO de un fallo de la INFRAESTRUCTURA --, y este es el
+# mas dificil de reconocer porque el resultado parece legitimo.
+#
+# EL GRUPO ESTA AQUI ARRIBA Y NO EN EL JOB, y con la matriz esa diferencia dejo de ser cosmetica: un
+# grupo de concurrencia declarado en un job de matriz lo comparten TODAS sus celdas, y GitHub solo
+# guarda UNA en espera por grupo -- las demas se cancelan entre si --. Es decir, poner el grupo abajo
+# convertiria la matriz en «se evalua una unidad y las otras se cancelan solas», que es peor que el
+# defecto que este archivo arregla. A nivel de workflow el grupo serializa CORRIDAS enteras, que es
+# lo que siempre se quiso decir, y dentro de cada una el paralelismo lo acota `max-parallel`.
+#
+# `cancel-in-progress: false` a proposito -- una corrida a medias deja el cambio sin veredicto, y un
+# veredicto ausente es peor que uno lento --.
+#
+# LIMITE CONOCIDO: los grupos de concurrencia son POR REPOSITORIO. Esto serializa las evaluaciones de
+# un repositorio de dominio entre si, pero NO entre dominios distintos, que siguen compartiendo el
+# mismo token. Por eso ademas se acotan las llamadas en vuelo de cada corrida, abajo.
+concurrency:
+  group: evaluacion-de-comportamiento
+  cancel-in-progress: false
 
 # NO SE PIDE `copilot-requests: write`, y la razon importa mas que la linea.
 #
@@ -91,6 +160,14 @@ env:
   # rojo. Acotarlo aqui protege tambien entre repositorios distintos, donde el grupo de concurrencia
   # -- que es por repositorio -- no alcanza.
   LLAMADAS_EN_VUELO: "2"
+  # UNIDADES QUE SE EVALUAN A LA VEZ, el otro factor de ese mismo producto. Con la matriz, el numero
+  # de trabajos simultaneos dejo de ser 1 y pasa a ser el de unidades del repositorio, que crece con
+  # el inventario y sin tope se multiplicaria por las llamadas en vuelo de cada uno hasta agotar el
+  # token -- y su agotamiento, otra vez, no se lee como cuota sino como casos en rojo: la matriz
+  # acusaria a los artefactos de un fallo de la infraestructura, y con N nombres en el portal para
+  # hacerlo creible --. Dos por dos son cuatro llamadas en vuelo, el mismo techo que habia antes de
+  # la matriz: se gana el aislamiento entre unidades sin subir la presion sobre el token.
+  UNIDADES_EN_PARALELO: "2"
   # DONDE ATERRIZA EL INFORME DEL JUEZ, en ABSOLUTO y declarado en un solo sitio (Y2/Y5).
   #
   # ABSOLUTO Y NO RELATIVO porque lo usan DOS pasos -- el que corre las suites y el que los sube -- y el
@@ -103,31 +180,26 @@ env:
   DIRECTORIO_DE_INFORMES: ${{ github.workspace }}/informes-de-evaluacion
 
 jobs:
-  evaluar:
-    name: Evaluacion de comportamiento
+  # QUE UNIDADES HAY QUE EVALUAR. Es barato -- no habla con ningun modelo -- y por eso puede correr
+  # siempre que proceda evaluar: lo que decide es si se abre matriz y con cuantos elementos.
+  unidades:
+    name: Unidades con suites
     runs-on: ubuntu-latest
-
-    # EL RECURSO QUE COMPITE NO ES EL RUNNER: ES EL TOKEN DE INFERENCIA, uno solo para todo.
-    #
-    # Y lo peligroso es COMO se manifiesta su agotamiento: no llega como un error de cuota, llega
-    # como casos que fallan. Se mide rojo y se cree que el artefacto empeoro. Es el mismo daño que ya
-    # aparecio dos veces en esta cadena -- acusar al ARTEFACTO de un fallo de la INFRAESTRUCTURA --,
-    # y este es el mas dificil de reconocer porque el resultado parece legitimo.
-    #
-    # Con el grupo, una segunda evaluacion no arranca: queda pendiente y entra cuando la primera
-    # termina. `cancel-in-progress: false` a proposito -- una corrida a medias deja el cambio sin
-    # veredicto, y un veredicto ausente es peor que uno lento --.
-    #
-    # LIMITE CONOCIDO: los grupos de concurrencia son POR REPOSITORIO. Esto serializa las
-    # evaluaciones de un repositorio de dominio entre si, pero NO entre dominios distintos, que
-    # siguen compartiendo el mismo token. Por eso ademas se acotan las llamadas en vuelo de cada
-    # corrida, abajo.
-    concurrency:
-      group: evaluacion-de-comportamiento
-      cancel-in-progress: false
-
+    # AQUI SE CIERRA LA SEGUNDA PASADA, y se cierra en el primer job para que fuera de un pull
+    # request no se encienda NI UN RUNNER: si esta condicion viviera en el job de la matriz, la
+    # deteccion se pagaria igual en cada push a main. La suite se ejecuta UNA vez, sobre la rama; el
+    # commit de `main` que nace del squash tiene otro sha pero el MISMO contenido, y quien publica
+    # resuelve de que commit colgaba la medicion en vez de repetirla.
+    if: github.event_name == 'pull_request'
     outputs:
-      resultado: ${{ steps.veredicto.outputs.resultado }}
+      lista: ${{ steps.detectar.outputs.unidades-con-suites }}
+      hay-suites: ${{ steps.detectar.outputs.hay-suites }}
+      # EL TOPE DE PARALELISMO VIAJA POR AQUI, y la vuelta tiene una razon concreta: `strategy` NO
+      # expande el contexto `env`, asi que `max-parallel: ${{ env.UNIDADES_EN_PARALELO }}` no se
+      # resuelve -- pero `needs` SI se expande ahi --. La alternativa era teclear el numero como
+      # literal en la matriz, y entonces habria dos sitios donde vive el mismo umbral y solo uno
+      # documentado (P11). Aqui sigue habiendo una sola constante nombrada.
+      en-paralelo: ${{ steps.tope.outputs.unidades }}
     steps:
       - name: Descargar el repositorio que se evalua
         uses: actions/checkout@v4
@@ -147,24 +219,26 @@ jobs:
           repository: ${{ env.REPO_DEL_ESTANDAR }}
           path: ${{ env.DIRECTORIO_DEL_ESTANDAR }}
 
-      # QUE ES UNA SUITE Y CUALES CUENTAN LO DECIDE UNA SOLA DEFINICION, la de la accion, y no este
-      # archivo. La misma pregunta se la hace la PUBLICACION -- «¿la unidad que se publica trae
-      # suites?» -- para decidir si promociona, y dos busquedas escritas a mano divergirian en el
-      # primer arreglo (G2/Y1): una unidad podria tener suites para una y no para la otra, y entonces
-      # se certificaria por lo que la otra no midio.
-      #
-      # LA ACCION TAMBIEN DEJA PUESTO EL PYTHON DEL ESTANDAR y el validador instalado, que es lo que
-      # necesitan los pasos de mas abajo -- `agente_de_la_suite.py` y el puente --.
+      # QUE ES UNA SUITE, QUE ES UNA UNIDAD Y CUALES CUENTAN LO DECIDE UNA SOLA DEFINICION, la de la
+      # accion, y no este archivo. La misma pregunta se la hace la PUBLICACION -- «¿la unidad que se
+      # publica trae suites?» -- para decidir si promociona, y dos busquedas escritas a mano
+      # divergirian en el primer arreglo (G2/Y1): una unidad podria tener suites para una y no para
+      # la otra, y entonces se certificaria por lo que la otra no midio.
       - name: Buscar las suites de evaluacion
         id: detectar
         uses: Banca-Copilot-demo/estandar-agentico/.github/actions/detectar-suites@main
         with:
-          # SOLO EN UNA SOLICITUD DE CAMBIO se acota a lo que el cambio toca. En un push a main no hay
-          # «lo que cambia», hay un estado que evaluar entero.
-          rama-base: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
+          # SE ACOTA A LO QUE EL CAMBIO TOCA, que es lo unico que este workflow evalua ya. La rama
+          # base existe siempre aqui: fuera de una solicitud de cambio este job no arranca.
+          rama-base: ${{ github.base_ref }}
           # El clon del estandar lo mete ESTE workflow en el workspace y no es del repositorio
           # evaluado: la accion tiene que saltarselo o volveria a evaluar sus plantillas.
           directorio-a-podar: ${{ env.DIRECTORIO_DEL_ESTANDAR }}
+
+      - name: Publicar el tope de unidades en paralelo
+        id: tope
+        shell: bash
+        run: echo "unidades=${UNIDADES_EN_PARALELO}" >> "$GITHUB_OUTPUT"
 
       - name: Avisar de que no hay nada que evaluar
         if: steps.detectar.outputs.hay-suites != 'true'
@@ -172,14 +246,80 @@ jobs:
         run: |
           echo "::notice::sin suites de evaluacion: se publicara como Conforme, sin certificar."
 
+  # UNA CELDA POR UNIDAD, Y SU NOMBRE ES EL DE LA UNIDAD.
+  #
+  # EL NOMBRE NO ES DECORACION: es la senal que consume el guardian de la promocion. GitHub nombra el
+  # check-run de un workflow reutilizable `<job del llamador> / <nombre del job llamado>`, asi que con
+  # la unidad dentro del `name:` cada artefacto obtiene una comprobacion propia y localizable por su
+  # subruta. Antes solo existia una comprobacion agregada, y preguntar por ella era preguntar por el
+  # estado del vecino. Que ademas se lea en el portal -- que unidad corre y cual fallo, sin abrir un
+  # log -- es la consecuencia util del mismo cambio.
+  evaluar:
+    name: Evaluacion de comportamiento — ${{ matrix.unidad }}
+    needs: unidades
+    # LA GUARDA DEL CASO VACIO, y es obligatoria: `fromJSON('[]')` no produce una matriz que se salte,
+    # tumba la corrida al arrancar. Se mira el booleano y no el texto del array porque cualquier
+    # diferencia de serializacion -- un espacio, `[ ]` -- romperia la comparacion en silencio.
+    if: needs.unidades.outputs.hay-suites == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      # UNA UNIDAD EN ROJO NO CANCELA A LAS DEMAS. Es literalmente el defecto que este archivo
+      # arregla: con `fail-fast` por defecto, la primera suite que fallara dejaria a las otras en
+      # `cancelled` y volveriamos a no tener veredicto propio de cada artefacto -- por otra puerta --.
+      fail-fast: false
+      max-parallel: ${{ needs.unidades.outputs.en-paralelo }}
+      matrix:
+        unidad: ${{ fromJSON(needs.unidades.outputs.lista) }}
+    steps:
+      - name: Descargar el repositorio que se evalua
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Descargar el puente y las reglas del estandar
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.REPO_DEL_ESTANDAR }}
+          path: ${{ env.DIRECTORIO_DEL_ESTANDAR }}
+
+      # LA MISMA ACCION, ACOTADA A ESTA UNIDAD. No hay una segunda busqueda escrita para la matriz:
+      # es el input `subruta` que la accion ya tenia, el mismo que usa la publicacion para preguntar
+      # si la unidad que publica trae suites. La celda corre TODAS las suites de su unidad y ninguna
+      # de las ajenas, que es lo que hace que su conclusion signifique algo sobre ella sola.
+      - name: Buscar las suites de esta unidad
+        id: detectar
+        uses: Banca-Copilot-demo/estandar-agentico/.github/actions/detectar-suites@main
+        with:
+          subruta: ${{ matrix.unidad }}
+          directorio-a-podar: ${{ env.DIRECTORIO_DEL_ESTANDAR }}
+
+      # LA SUBRUTA NO SIRVE COMO NOMBRE DE ARTEFACTO: lleva barras, y `upload-artifact` las rechaza.
+      # Se traduce una sola vez, aqui, en vez de repetir la sustitucion en cada sitio que la nombre.
+      - name: Nombrar el artefacto de esta unidad
+        id: nombre
+        shell: bash
+        env:
+          UNIDAD: ${{ matrix.unidad }}
+        run: |
+          echo "slug=$(printf '%s' "$UNIDAD" | tr -c 'A-Za-z0-9._-' '-')" >> "$GITHUB_OUTPUT"
+
+      # UNA UNIDAD SIN SUITES NO DEBERIA LLEGAR AQUI -- la matriz sale de la misma deteccion --, y si
+      # llega es que las dos proyecciones divergieron. Se dice, y no se traga: una celda verde sin
+      # haber medido nada es exactamente la senal que el guardian confundiria con «certificable».
+      - name: Detener la celda si esta unidad no trae suites
+        if: steps.detectar.outputs.hay-suites != 'true'
+        shell: bash
+        run: |
+          echo "::error::la matriz abrio un trabajo para ${{ matrix.unidad }} pero al acotar a esa subruta no aparece ninguna suite: las dos proyecciones de la deteccion han divergido"
+          exit 1
+
       - name: Preparar Node (motor de evaluacion)
-        if: steps.detectar.outputs.hay-suites == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.VERSION_NODE }}
 
       - name: Instalar el CLI de Copilot
-        if: steps.detectar.outputs.hay-suites == 'true'
         shell: bash
         run: npm install -g @github/copilot
 
@@ -194,7 +334,6 @@ jobs:
       # cumplian por conocimiento general del modelo y la evaluacion no probaba nada del artefacto.
       # Un fallo que pasa se lee como cobertura y no lo es.
       - name: Colocar los artefactos donde el cliente los ve
-        if: steps.detectar.outputs.hay-suites == 'true'
         shell: bash
         run: |
           mkdir -p .github/skills .github/agents
@@ -216,6 +355,11 @@ jobs:
           # peticion pueden cambiar el veredicto del artefacto que si se publica -- y cambiarlo hacia
           # cualquier lado, sin dejar rastro de por que --. Contradice el proposito del paso, que
           # existe justamente para que se evalue el artefacto y no lo que hubiera alrededor.
+          #
+          # SE SIGUEN COLOCANDO LOS DEL REPOSITORIO ENTERO Y NO SOLO LOS DE ESTA UNIDAD, a proposito:
+          # lo que se acota es QUE SUITE SE CORRE, no que artefactos existen. Un artefacto de dominio
+          # puede apoyarse en un vecino del mismo repositorio, y colocar solo el propio mediria algo
+          # distinto de lo que el cliente tendra instalado.
           #
           # Los skills se copian por DIRECTORIO -- un skill es su carpeta con `SKILL.md` y sus
           # recursos --, y los agentes por archivo.
@@ -250,7 +394,6 @@ jobs:
 
       - name: Ejecutar las suites
         id: correr
-        if: steps.detectar.outputs.hay-suites == 'true'
         shell: bash
         env:
           # DOS TOKENS, Y EL ORDEN IMPORTA. El CLI busca `COPILOT_GITHUB_TOKEN`, luego `GH_TOKEN` y
@@ -312,11 +455,10 @@ jobs:
           done < "${{ steps.detectar.outputs.archivo-suites }}"
 
           if [ "$fallidas" -gt 0 ]; then
-            echo "resultado=fallida" >> "$GITHUB_OUTPUT"
-            echo "::error::$fallidas suite(s) no pasan: el artefacto no puede certificarse"
+            echo "::error::$fallidas suite(s) de ${{ matrix.unidad }} no pasan: el artefacto no puede certificarse"
             exit 1
           fi
-          echo "resultado=superada" >> "$GITHUB_OUTPUT"
+          echo "todas las suites de ${{ matrix.unidad }} pasan"
 
       # `if: always()` NO ES DEFENSIVO: ES EL PUNTO ENTERO DEL PASO.
       #
@@ -324,19 +466,19 @@ jobs:
       # subiria SOLO en las corridas verdes -- justo aquellas en las que a nadie le hace falta -- y se
       # perderia en la unica que interesa. Subirlo solo cuando pasa es no subirlo.
       #
-      # UN SOLO ARTEFACTO CON UN INFORME POR SUITE DENTRO, y no uno por suite: `upload-artifact@v4`
-      # RECHAZA dos artefactos con el mismo nombre en la misma corrida, y como todas las suites se llaman
-      # igual, un nombre derivado del archivo colisionaria. La unicidad se resuelve una sola vez, en el
-      # nombre de cada informe (arriba). `run_attempt` distingue los reintentos, que SI son la misma
-      # corrida a efectos de nombre.
+      # UN SOLO ARTEFACTO POR CELDA CON UN INFORME POR SUITE DENTRO: `upload-artifact@v4` RECHAZA dos
+      # artefactos con el mismo nombre en la misma corrida, y con la matriz hay N celdas subiendo a la
+      # vez -- antes habia una sola y el nombre podia ser fijo --. Por eso el nombre lleva la unidad,
+      # ya traducida a algo que la accion acepta. `run_attempt` distingue los reintentos, que SI son
+      # la misma corrida a efectos de nombre.
       #
       # LA RUTA ES LA MISMA EXPRESION QUE ESCRIBE EL PASO ANTERIOR (Y5): esta accion no comparte el
       # directorio de trabajo del `run`, y un relativo aqui subiria un artefacto vacio sin decirlo.
       - name: Conservar el informe del juez — se sube tambien (y sobre todo) si las suites fallan
-        if: always() && steps.detectar.outputs.hay-suites == 'true'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: informes-de-evaluacion-intento-${{ github.run_attempt }}
+          name: informes-de-evaluacion-${{ steps.nombre.outputs.slug }}-intento-${{ github.run_attempt }}
           path: ${{ env.DIRECTORIO_DE_INFORMES }}
           # SI NO HAY NADA, SE DICE. El caso en que el motor muere antes de escribir el informe es
           # posible -- y es informacion: significa que no llego a evaluar --. El silencio por defecto de
@@ -345,29 +487,95 @@ jobs:
           # No hace falta guardarlos noventa dias: sirven para diagnosticar la corrida que los produjo.
           retention-days: 30
 
-      # EL VEREDICTO SE RESUELVE UNA SOLA VEZ, en un paso, y no en dos expresiones gemelas repartidas
-      # entre el output del job y el resumen (Y3). Cuando divergen, el job dice una cosa y el resumen
-      # otra sobre la misma corrida -- y es el output el que decide, asi que el humano lee el que no
-      # manda.
-      - name: Dejar constancia del resultado
+  # EL VEREDICTO QUE CONSUME EL LLAMADOR, Y EL QUE BLOQUEA EL CAMBIO.
+  #
+  # POR QUE HACE FALTA UN JOB APARTE. Con matriz hay N conclusiones y el `output` del workflow es UNA.
+  # Combinarlas en el llamador significaria que cada repositorio de dominio escribiera su propia
+  # regla de agregacion -- y la parte delicada de esa regla es justo la que no se ve: distinguir
+  # `skipped` de `success` --. Vive aqui, una vez, y los llamadores siguen leyendo `resultado` como
+  # antes: el contrato del workflow no cambia.
+  #
+  # `if: always()` ES LA CONDICION DE QUE ESTE JOB EXISTA CUANDO HACE FALTA. Sin el, una celda roja
+  # deja este job en `skipped`, y un job saltado reporta «Success»: el gate del pull request pasaria
+  # a verde justamente cuando una suite acaba de fallar. Es el defecto documentado de los agregadores
+  # requeridos, y aqui seria doblemente grave porque ademas el `resultado` saldria vacio.
+  veredicto:
+    name: Veredicto de comportamiento
+    needs: [unidades, evaluar]
+    if: always()
+    runs-on: ubuntu-latest
+    outputs:
+      resultado: ${{ steps.veredicto.outputs.resultado }}
+    steps:
+      - name: Combinar el resultado de cada unidad
         id: veredicto
-        if: always()
         shell: bash
+        env:
+          DETECCION: ${{ needs.unidades.result }}
+          HAY_SUITES: ${{ needs.unidades.outputs.hay-suites }}
+          # DE UNA MATRIZ, `result` COLAPSA LAS N CELDAS EN UN SOLO VALOR: `success` si todas pasaron,
+          # `failure` si alguna fallo -- y con `fail-fast: false` todas llegan a correr --, `skipped`
+          # si la matriz no se abrio.
+          EVALUACION: ${{ needs.evaluar.result }}
+          UNIDADES: ${{ needs.unidades.outputs.lista }}
         run: |
-          # SIN SUITES SOLO SI LA DETECCION DIJO QUE NO HAY. Si las habia y el paso de ejecucion no
-          # llego a escribir su resultado, es que murio antes de terminar: eso es `fallida`, nunca
-          # «no habia nada que medir». Leerlo al reves certificaria por un fallo de infraestructura.
-          resultado="${{ steps.correr.outputs.resultado }}"
-          if [ -z "$resultado" ]; then
-            [ "${{ steps.detectar.outputs.hay-suites }}" = "true" ] && resultado=fallida || resultado=sin_suites
+          # EL ORDEN DE LAS PREGUNTAS ES EL ARREGLO, no un detalle de estilo.
+          #
+          # 0) FUERA DE UNA SOLICITUD DE CAMBIO NO SE EVALUA, y eso no es un fallo ni un verde. La
+          #    deteccion queda `skipped` por su propia condicion -- no por un error --, y decirlo con
+          #    un valor propio es lo que impide que alguien lo lea como «paso»: exactamente el error
+          #    que se comete con los trabajos saltados, que reportan «Success».
+          # 1) SI LA DETECCION NO TERMINO BIEN, NO SE SABE NADA. Que no haya suites que evaluar y que
+          #    no se haya podido mirar son cosas distintas, y solo la primera permite publicar.
+          #    Leerlas igual certificaria por un fallo de infraestructura.
+          # 2) EL CASO VACIO SE DECIDE POR `hay-suites`, NO POR EL `result` DE LA MATRIZ. Una matriz
+          #    que no se abre deja `skipped`, y `skipped` leido a la ligera pasa por verde: es el
+          #    mismo modo de fallo del trabajo saltado que reporta «Success», ya medido aqui. Con la
+          #    senal explicita, «no habia nada que medir» y «paso todo» no pueden confundirse.
+          # 3) SOLO `success` DE LA MATRIZ ES `superada`. `cancelled` y `skipped` con suites
+          #    presentes son `fallida`: significan que algo impidio medir, y lo que no se midio no se
+          #    certifica.
+          if [ "$DETECCION" = "skipped" ]; then
+            resultado=no_procede
+            detalle="no se invoco desde una solicitud de cambio: la suite se ejecuta UNA sola vez, sobre la rama, y no se repite en el push a main"
+          elif [ "$DETECCION" != "success" ]; then
+            resultado=fallida
+            detalle="la deteccion de suites termino en «${DETECCION}»: no se sabe que habia que evaluar"
+          elif [ "$HAY_SUITES" != "true" ]; then
+            resultado=sin_suites
+            detalle="ninguna unidad tocada por este cambio trae suites"
+          elif [ "$EVALUACION" = "success" ]; then
+            resultado=superada
+            detalle="todas las unidades evaluadas pasan sus suites: ${UNIDADES}"
+          else
+            resultado=fallida
+            detalle="la evaluacion por unidad termino en «${EVALUACION}» sobre ${UNIDADES}"
           fi
           echo "resultado=$resultado" >> "$GITHUB_OUTPUT"
+          echo "$detalle"
           {
             echo "## Evaluacion de comportamiento"
             echo
+            echo "$detalle"
+            echo
             case "$resultado" in
+              no_procede) echo "No se evaluo aqui. La medicion vive en la comprobacion del pull request; la publicacion la recupera de aquel commit sin volver a llamar al modelo." ;;
               sin_suites) echo "Sin suites. El artefacto se publicara como **Conforme**: no se distribuye hasta certificarse." ;;
-              superada)   echo "Suites superadas. El artefacto puede promocionarse a **Certificado**." ;;
-              *)          echo "Suites en rojo. El cambio no avanza hasta corregirlas." ;;
+              superada)   echo "Suites superadas. Cada unidad emitio su propia comprobacion y puede promocionarse a **Certificado** por separado." ;;
+              *)          echo "Alguna unidad esta en rojo. Solo esa deja de certificarse: las demas conservan su comprobacion en verde." ;;
             esac
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # LO QUE BLOQUEA EL PULL REQUEST, y es un paso aparte a proposito: el veredicto se calcula
+      # SIEMPRE y se emite como output aunque el cambio no avance -- mezclar «decidir» con «detener»
+      # haria que la proxima persona que anadiera una rama al `case` no supiera cual de las dos
+      # estaba tocando --.
+      #
+      # SIN ESTO EL GATE NO GATE-A: con la matriz, la celda roja es un job hermano, no un antecesor
+      # del llamador, y el workflow reutilizable terminaria en verde con una suite en rojo dentro.
+      - name: Detener el cambio si alguna unidad esta en rojo
+        if: steps.veredicto.outputs.resultado == 'fallida'
+        shell: bash
+        run: |
+          echo "::error::la evaluacion de comportamiento no esta en verde: el cambio no avanza hasta corregir las suites de la unidad afectada"
+          exit 1
