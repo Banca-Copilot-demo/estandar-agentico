@@ -4,8 +4,15 @@ Tres pruebas de punta a punta contra la organización real. Comprueban lo que BC
 Conforme no se distribuye masivamente, y uno Certificado sí** — y que la frontera entre ambos la decide
 únicamente si sus evaluaciones pasan.
 
-Ejecutadas por última vez el **2026-08-27**. Los resultados de esa ejecución están en
-[Línea base medida](#línea-base-medida); una reejecución que se desvíe de ahí es una señal, no un ruido.
+Ejecutadas por última vez el **2026-08-27**, dos veces: una tras el rediseño de los esquemas y otra tras
+la auditoría del código. Los resultados están en [Línea base medida](#línea-base-medida); una
+reejecución que se desvíe de ahí es una señal, no un ruido.
+
+> **Cada ejecución consume una unidad virgen, y quedan pocas.** El caso 3 le añade evaluaciones a la
+> unidad del caso 1, así que ésa deja de servir para el caso 1 la vez siguiente. A 2026-08-27 sólo
+> quedan sin suites `plugins/catalogo-datos` y `plugins/mcp-aws-knowledge`, **las dos MCP puro**, sin
+> artefacto de comportamiento que evaluar. La próxima reejecución completa de los tres casos tendrá que
+> decidir qué hacer con eso: reutilizar una unidad quitándole su suite, o aceptar un artefacto nuevo.
 
 > **Esta carpeta tiene dos mitades.** Este documento cubre el camino de **publicación**: cómo un cambio
 > llega a ser instalable y con qué estado. `camino-instalacion.sh` cubre el de **instalación**: descarga
@@ -225,7 +232,21 @@ versión anterior sería emitir un veredicto sobre unos bytes distintos de los q
 
 ## Línea base medida
 
-Ejecución del **2026-08-27** contra `Banca-Copilot-demo`, ya con una sola evaluación por artefacto.
+**Segunda ejecución del 2026-08-27**, tras la auditoría del código y con los esquemas nuevos:
+
+| Etapa | Duración | Referencia |
+|---|---|---|
+| `conformidad / validar` | 13–16 s | runs [33045817230](https://github.com/Banca-Copilot-demo/agentes-sdlc/actions/runs/33045817230) y [33047500450](https://github.com/Banca-Copilot-demo/agentes-sdlc/actions/runs/33047500450) |
+| `comportamiento` sin suites | 13 s | run [33045885667](https://github.com/Banca-Copilot-demo/agentes-sdlc/actions/runs/33045885667) |
+| `comportamiento` con suite de 3 casos y juez | 1 m 36 s | run [33046684543](https://github.com/Banca-Copilot-demo/agentes-sdlc/actions/runs/33046684543) |
+| `publicar` + `certificable` + `promocionar` | ~4 min en total | run [33046873228](https://github.com/Banca-Copilot-demo/agentes-sdlc/actions/runs/33046873228) |
+
+Coincide con la primera ejecución dentro del margen esperado. La única diferencia relevante fue una
+corrida de 57 s **en rojo**, que resultó ser la regresión del puente y no el artefacto.
+
+---
+
+Primera ejecución del **2026-08-27** contra `Banca-Copilot-demo`, ya con una sola evaluación por artefacto.
 
 | Etapa | Duración | Referencia |
 |---|---|---|
@@ -277,6 +298,7 @@ había detectado antes.
 | 5 | Se colocaban artefactos ajenos en el cliente | mientras se medía un artefacto, el cliente tenía cargados los del asistente de autoría y una plantilla: **contaminaba el entorno de medición** |
 | 6 | `promocionar` no avisaba al índice | artefacto **certificado y no instalable** hasta la pasada programada del índice, que es diaria |
 | 7 | una suite roja **en una unidad** impedía promocionar **todas las demás** | `revisar-jql` y `referencia`, con 3/3 cada una, se quedaron en Conforme porque la suite de `migracion` estaba roja. Abierto como [estandar-agentico#28](https://github.com/Banca-Copilot-demo/estandar-agentico/issues/28) |
+| 8 | el puente dejó de poder **importarse**, y con él todas las evaluaciones | los tres casos de una suite en rojo con `Error running Python script`, sobre un artefacto intacto. Un `@dataclass` no sobrevive a la carga por ruta que hace el motor. **Lo cazó el informe del juez en su primera ejecución real** |
 
 **El defecto 7 se midió en esta ejecución y sigue abierto.** El guardián de la promoción pregunta si la
 comprobación `Evaluacion de comportamiento` del commit está en verde, y esa comprobación es **una sola
@@ -288,6 +310,63 @@ de BCP: están en el issue.
 En la ejecución del 2026-08-27 no bloqueó, pero **por casualidad**: la suite de `migracion` pasó esa
 vez. Es decir que hoy la promoción de una unidad depende de que las suites de las demás tengan un buen
 día.
+
+### El informe del juez, y el defecto que destapó el primer día
+
+Hasta el 2026-08-27 el motor escribía sus resultados en el `~/.promptfoo` del *runner* y morían con él:
+en el log sólo quedaban las respuestas truncadas a cinco líneas y un `[PASS]`/`[FAIL]`. **El motivo que
+daba la rúbrica se perdía**, y por eso durante días se llamó «azar» a lo que nadie podía mirar.
+
+Hoy cada suite escribe su informe y se sube como artefacto del run —**también, y sobre todo, cuando
+falla**—. Para leerlo:
+
+```bash
+gh api repos/Banca-Copilot-demo/agentes-sdlc/actions/runs/<run>/artifacts \
+  --jq '.artifacts[] | "\(.name) id=\(.id)"'
+gh api repos/Banca-Copilot-demo/agentes-sdlc/actions/artifacts/<id>/zip > informe.zip
+```
+
+Dentro hay un JSON por suite, nombrado por su **ruta** y no por su archivo: todas se llaman
+`evals/promptfooconfig.yaml`, así que un nombre derivado del archivo haría que la segunda sobrescribiera
+a la primera y quedara un informe atribuido a otro artefacto.
+
+**En su primera ejecución real, el informe cazó una regresión que nadie más habría visto.** Los tres
+casos de `revisar-jql` salieron en rojo, y el informe traía la razón:
+
+```
+Error running Python script: AttributeError: 'NoneType' object has no attribute '__dict__'
+dataclasses.py:757  ns = sys.modules.get(cls.__module__).__dict__
+```
+
+No era el artefacto: era el puente, que había dejado de poder importarse. El motor lo carga con
+`spec_from_file_location` **sin registrarlo en `sys.modules`**, y ahí `dataclasses` no puede resolver
+las anotaciones diferidas de `from __future__ import annotations`. El módulo reventaba **antes de
+preguntarle nada al modelo**.
+
+Sin el informe, eso se habría leído como «el artefacto empeoró» — que es exactamente la conclusión más
+cara que este sistema puede producir, y la que el arreglo del cable existía para evitar.
+
+**Y en la misma ejecución sirvió para lo que de verdad se diseñó:** distinguir en minutos una aserción
+mal escrita de un artefacto que incumple. Un caso nuevo de la suite de `validar-contrato-openapi` falló,
+y el informe dijo por qué:
+
+```
+NO icontains: Expected output to contain "paginacion"
+NO llm-rubric: The output does state that '/clientes' ... doesn't declare pagination.
+               However, it does not explain the consequence.
+```
+
+Las dos aserciones estaban mal, y el juez lo dejó por escrito. El ancla buscaba `paginacion` sin tilde
+cuando la salida escribe «paginación» o «paging»; y la rúbrica exigía **explicar la consecuencia**, algo
+que el artefacto no promete —promete *«agrupa por severidad y cita la ruta exacta»*— y que además
+contradice su propia instrucción de *«no rellenes con prosa»*. **El artefacto había hecho exactamente su
+trabajo.**
+
+Antes de tener el informe, ese fallo se habría archivado como «el juez es inestable» o se habría
+arreglado relajando la aserción hasta que pasara. Es la diferencia entre medir y adivinar.
+
+> **La regla que se sostiene:** un ancla determinista sólo puede apoyarse en algo que el artefacto se
+> **comprometa** a escribir. La ruta lo está —el SKILL.md lo promete—; el nombre de un lineamiento, no.
 
 ### El veredicto de certificación no es reproducible
 
