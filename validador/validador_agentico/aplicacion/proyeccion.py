@@ -9,7 +9,7 @@ a cada plugin Y proyectar su contenido hacia estas salidas. Son dos grupos temat
 cruzar el nucleo el umbral de tamano la conjuncion se volvio evidente: «revisa las reglas Y
 construye el inventario Y arma las fichas Y extrae la custodia».
 
-Todas las funciones son PURAS salvo `artefacto_publicado`, que calcula el digesto del archivo y por
+Todas las funciones son PURAS salvo `_artefacto_publicado`, que calcula el digesto del archivo y por
 tanto lee disco: es el unico I/O de este modulo y esta acotado a esa funcion.
 """
 from __future__ import annotations
@@ -60,7 +60,7 @@ def construir_inventario(contenido: ContenidoRepositorio) -> Inventario:
         mcps=contenido.mcps,
         hooks=1 if contenido.hooks else 0,
         tiene_plugin=contenido.manifiesto is not None and contenido.manifiesto.es_legible,
-        nombre_plugin=nombre_del_plugin(contenido),
+        nombre_plugin=_nombre_del_plugin(contenido),
         # LOS IDS DEL ARBOL REAL, que es contra lo que se coteja el inventario declarado desde que
         # dejo de ser un conteo. Salen del `metadata.id` del propio artefacto -- el mismo campo que
         # publica el catalogo -- y no de la ruta: la ruta dice donde esta el archivo, el id es la
@@ -106,7 +106,7 @@ def plugin_publicado(contenido: ContenidoRepositorio, raiz_plugin: Path,
     )
 
 
-def nombre_del_plugin(contenido: ContenidoRepositorio) -> str:
+def _nombre_del_plugin(contenido: ContenidoRepositorio) -> str:
     if contenido.manifiesto is None or not contenido.manifiesto.es_legible:
         return ""
     return contenido.manifiesto.contenido.get("name", "")
@@ -127,7 +127,7 @@ def equipos_declarados(contenido: ContenidoRepositorio) -> list[tuple[str, str]]
     return declarados
 
 
-def artefacto_publicado(tipo: str, ruta: str, frontmatter: dict,
+def _artefacto_publicado(tipo: str, ruta: str, frontmatter: dict,
                          raiz: Path, prefijo: str = "") -> ArtefactoPublicado | None:
     """`None` cuando el envelope no esta completo: un artefacto sin gobierno no tiene ficha que
     publicar, y el gate ya lo habra marcado como error.
@@ -177,20 +177,20 @@ def listar_artefactos(contenido: ContenidoRepositorio, raiz: Path,
         for artefacto in getattr(contenido, coleccion):
             if artefacto.frontmatter is None:
                 continue
-            publicado = artefacto_publicado(tipo, artefacto.ruta_relativa,
+            publicado = _artefacto_publicado(tipo, artefacto.ruta_relativa,
                                              artefacto.frontmatter, raiz, prefijo)
             if publicado is not None:
                 publicados.append(publicado)
-    del_mcp = mcp_publicado(contenido, raiz, prefijo)
+    del_mcp = _mcp_publicado(contenido, raiz, prefijo)
     if del_mcp is not None:
         publicados.append(del_mcp)
-    de_hooks = hooks_publicado(contenido, raiz, prefijo)
+    de_hooks = _hooks_publicado(contenido, raiz, prefijo)
     if de_hooks is not None:
         publicados.append(de_hooks)
     return tuple(publicados)
 
 
-def mcp_publicado(contenido: ContenidoRepositorio, raiz: Path,
+def _mcp_publicado(contenido: ContenidoRepositorio, raiz: Path,
                    prefijo: str = "") -> ArtefactoPublicado | None:
     """El `mcp` como artefacto del predicado, o `None` si no hay o no esta gobernado.
 
@@ -274,7 +274,7 @@ def _endpoints_configurados(configuracion: object) -> dict[str, str]:
             if isinstance(definicion, dict) and definicion.get("url")}
 
 
-def hooks_publicado(contenido: ContenidoRepositorio, raiz: Path,
+def _hooks_publicado(contenido: ContenidoRepositorio, raiz: Path,
                      prefijo: str = "") -> ArtefactoPublicado | None:
     """El `hooks` como artefacto del predicado, con el digesto de sus SCRIPTS.
 

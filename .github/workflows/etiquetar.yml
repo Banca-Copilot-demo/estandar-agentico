@@ -37,6 +37,19 @@ env:
 jobs:
   etiquetar:
     runs-on: ubuntu-latest
+    # DOS FUENTES PARA EL MISMO SECRETO, RESUELTAS UNA SOLA VEZ (Y3). Este workflow tiene dos
+    # disparadores: invocado con `workflow_call` desde un repositorio de dominio, la credencial llega
+    # como PARAMETRO (`secrets.app-id`); disparado por un `push` de este repositorio, ese parametro no
+    # existe y hay que leerlo del propio repositorio u organizacion (`secrets.APP_ID_AGENTICO`).
+    # MEDIDO: sin este `||`, la primera ejecucion por `push` dijo «faltan los secretos de la App» con
+    # los secretos puestos -- leia el parametro vacio y culpaba a la credencial.
+    #
+    # LA EXPRESION VIVE AQUI Y NO EN CADA PASO porque estaba escrita DOS VECES en este mismo job --
+    # en la comprobacion de presencia y en el acuñado del token -- y con dos copias basta con
+    # arreglar una: la comprobacion diria que los secretos estan y el acuñado leeria vacio.
+    env:
+      APP_ID: ${{ secrets.app-id || secrets.APP_ID_AGENTICO }}
+      APP_KEY: ${{ secrets.app-key || secrets.APP_KEY_AGENTICO }}
     steps:
       # SIN LA APP, ESTO NO SE PUEDE HACER, y el workflow lo dice y para en verde en vez de fallar.
       # Un rojo en CADA merge -- cuando lo que falta es una credencial de la organizacion y no un
@@ -45,15 +58,8 @@ jobs:
       # a mano.
       - name: ¿Estan los secretos de la App?
         id: app
-        # DOS FUENTES PARA EL MISMO SECRETO, porque este workflow tiene dos disparadores. Invocado
-        # con `workflow_call` desde un repositorio de dominio, llega como PARAMETRO
-        # (`secrets.app-id`). Disparado por un `push` de este repositorio, ese parametro no existe y
-        # hay que leerlo del propio repositorio u organizacion (`secrets.APP_ID_AGENTICO`).
-        # MEDIDO: sin este `||`, la primera ejecucion por `push` dijo «faltan los secretos de la
-        # App» con los secretos puestos -- leia el parametro vacio y culpaba a la credencial.
-        env:
-          APP_ID: ${{ secrets.app-id || secrets.APP_ID_AGENTICO }}
-          APP_KEY: ${{ secrets.app-key || secrets.APP_KEY_AGENTICO }}
+        # `APP_ID` y `APP_KEY` llegan del `env` del job, donde se resuelven las dos fuentes una sola
+        # vez.
         run: |
           # LA CLAVE SE COMPRUEBA AQUI, y no se deja para la accion que la usa. MEDIDO en la primera
           # ejecucion con los secretos puestos: una clave mal pegada no da un mensaje sobre la clave,
@@ -94,8 +100,8 @@ jobs:
         id: token
         uses: actions/create-github-app-token@v1
         with:
-          app-id: ${{ secrets.app-id || secrets.APP_ID_AGENTICO }}
-          private-key: ${{ secrets.app-key || secrets.APP_KEY_AGENTICO }}
+          app-id: ${{ env.APP_ID }}
+          private-key: ${{ env.APP_KEY }}
           owner: ${{ github.repository_owner }}
 
       - name: Descargar el repositorio con su historial de etiquetas

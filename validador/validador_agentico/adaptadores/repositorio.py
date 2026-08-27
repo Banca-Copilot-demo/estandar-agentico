@@ -6,6 +6,27 @@ las reglas del dominio con lo que este modulo les entrega.
 RESOLUCION SIN SUPUESTOS DE TOPOLOGIA: el validador vive en el repositorio del estandar y corre
 sobre el repositorio de un dominio, asi que la raiz llega siempre como argumento y nunca se
 deduce de la ubicacion del propio codigo.
+
+────────────────────────────────────────────────────────────────────────────────────────────────
+POR QUE ESTE MODULO PASA DE ~300 LINEAS SIN DIVIDIRSE (tripwire de G1)
+
+El umbral cruzo en silencio y el estandar no lo permite: al cruzarlo hay que dividir o justificar.
+Se justifica, y estos son los dos tests aplicados.
+
+TEST DE LA CONJUNCION. Describir el archivo no necesita «y»: LEE DEL DISCO lo que el repositorio
+contiene. Una sola frase, y ademas es la razon de ser de un adaptador. No valida, no decide y no
+produce ni un hallazgo -- eso lo hacen las reglas de `dominio/` con lo que este modulo les entrega.
+
+TEST DE GRUPOS TEMATICOS. Hay UN grupo: lectura. Una funcion publica, `leer`, y el resto son sus
+ayudantes `_leer_*` privados, mas los tres `@dataclass` que describen lo leido. Ningun ayudante
+tiene sentido fuera de `leer` y ninguno se importa desde otro modulo.
+
+POR QUE PARTIRLO SERIA PARTIR POR LA METRICA. La division «natural» por el numero -- un modulo por
+familia de artefacto: skills, prompts, agentes, suites -- rompe una unidad genuina: las cuatro
+familias se componen en UN `ContenidoRepositorio`, comparten el criterio de que es un artefacto
+anidado (`_bajo_un_plugin_anidado`) y el mismo `lector` inyectado. Repartirlas obligaria a exportar
+esos ayudantes compartidos y a que `leer` recosiera cuatro lecturas parciales, que es cambiar una
+funcion cohesiva por cuatro modulos acoplados (G3).
 """
 from __future__ import annotations
 

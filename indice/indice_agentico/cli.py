@@ -47,12 +47,19 @@ FORMATO_CI = "%(levelname)-8s %(name)s - %(message)s"
 FORMATO_LOCAL = "%(asctime)s %(levelname)-8s %(name)s - %(message)s"
 FORMATO_HORA = "%H:%M:%S"
 
+# GitHub Actions define `CI=true`. La copia hermana de `registro.py` ya les habia puesto nombre a
+# estos dos; la duplicacion deliberada se trajo los formatos y se dejo atras las constantes, que es
+# justo la clase de divergencia que el comentario de arriba dice vigilar (P6).
+_VARIABLE_CI = "CI"
+_VALOR_CI = "true"
+
 
 def _configurar_logging(verboso: bool) -> None:
     """A stderr; el catalogo generado va a stdout o a un archivo (L8)."""
     manejador = logging.StreamHandler(sys.stderr)
     manejador.setFormatter(logging.Formatter(
-        fmt=FORMATO_CI if os.getenv("CI") == "true" else FORMATO_LOCAL, datefmt=FORMATO_HORA))
+        fmt=FORMATO_CI if os.getenv(_VARIABLE_CI) == _VALOR_CI else FORMATO_LOCAL,
+        datefmt=FORMATO_HORA))
     raiz = logging.getLogger()
     raiz.setLevel(logging.DEBUG if verboso else logging.INFO)
     raiz.addHandler(manejador)

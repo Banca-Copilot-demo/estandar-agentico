@@ -68,7 +68,7 @@ def _viaja_en_el_paquete(ruta: str) -> bool:
     return primer_segmento not in _PREFIJOS_QUE_NO_VIAJAN
 
 
-def unidades_tocadas(archivos_cambiados: tuple[str, ...],
+def _unidades_tocadas(archivos_cambiados: tuple[str, ...],
                      unidades: tuple[str, ...]) -> frozenset[str]:
     """Las unidades a las que pertenece al menos un archivo cambiado que viaja en el paquete."""
     return frozenset(
@@ -80,7 +80,7 @@ def unidades_tocadas(archivos_cambiados: tuple[str, ...],
 def revisar_subida_de_version(unidades: tuple[VersionDeUnidad, ...],
                               archivos_cambiados: tuple[str, ...]) -> list[Hallazgo]:
     """Un error por cada unidad cuyo contenido cambio sin que su version cambiara."""
-    tocadas = unidades_tocadas(archivos_cambiados, tuple(u.ruta for u in unidades))
+    tocadas = _unidades_tocadas(archivos_cambiados, tuple(u.ruta for u in unidades))
     return [
         error(unidad.ruta if unidad.ruta != "." else unidad.nombre,
               f"`{unidad.nombre}` cambia en este pull request y sigue declarando la version "

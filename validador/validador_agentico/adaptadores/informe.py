@@ -127,7 +127,7 @@ def render_json(veredicto: Veredicto, nombre_repositorio: str) -> str:
     return json.dumps(predicado, indent=_SANGRIA_JSON, sort_keys=True, ensure_ascii=False)
 
 
-def render_gate(resultado: ResultadoGate, nombre_repositorio: str) -> str:
+def _render_gate(resultado: ResultadoGate, nombre_repositorio: str) -> str:
     """Informe del gate completo: primero que comprobaciones pasaron, luego el detalle de los
     hallazgos, y al final el veredicto agregado."""
     partes = [f"Gate de conformidad - {nombre_repositorio}", ""]
@@ -145,4 +145,4 @@ def imprimir_gate(resultado: ResultadoGate, nombre_repositorio: str,
     if formato == FORMATO_JSON:
         print(render_json(resultado.veredicto, nombre_repositorio))
         return
-    print(render_gate(resultado, nombre_repositorio))
+    print(_render_gate(resultado, nombre_repositorio))
