@@ -72,6 +72,11 @@ print(identificador.rsplit('.', 1)[0] if '.' in identificador else identificador
 # se instala y no lo registra nadie -- los archivos aterrizan y no los ve el cliente --. Al
 # declararlo cambia lo que Copilot copia, que es como se comprobo que lo lee. `skills/` y `agents/`
 # si son rutas por defecto en los dos clientes y declararlas seria ruido.
+# La version con la que nace una unidad nueva. Constante nombrada y no un literal repartido (P11):
+# la escriben el manifiesto Y el frontmatter del artefacto, y el gate EXIGE que coincidan -- si el
+# numero viviera en dos sitios, cada unidad nueva naceria ya en rojo.
+VERSION_DE_ARRANQUE="0.1.0"
+
 escribir_manifiesto_de_unidad() {  # ... <destino> <nombre> <descripcion> <tipo>
   local destino="$1" nombre="$2" descripcion="$3" tipo="$4"
   mkdir -p "$(dirname "$destino")"
@@ -79,13 +84,33 @@ escribir_manifiesto_de_unidad() {  # ... <destino> <nombre> <descripcion> <tipo>
 manifiesto = {
     '\$schema': 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
     'name': sys.argv[2],
-    'version': '0.1.0',
+    'version': sys.argv[5],
     'description': sys.argv[3],
 }
 if sys.argv[4] == 'prompt':
     manifiesto['commands'] = './commands'
 open(sys.argv[1], 'w', encoding='utf-8').write(json.dumps(manifiesto, indent=2) + '\n')
-" "$destino" "$nombre" "$descripcion" "$tipo"
+" "$destino" "$nombre" "$descripcion" "$tipo" "$VERSION_DE_ARRANQUE"
+}
+
+# La version que le toca a un artefacto: la de SU UNIDAD. Del manifiesto si lo hay -- es lo que el
+# marketplace resuelve -- y si no, la del gobierno; las dos reglas que ya existen garantizan que hay
+# exactamente una, porque el gate prohibe declararla en el gobierno cuando hay manifiesto y la exige
+# cuando no lo hay.
+#
+# POR QUE LA ESCRIBE EL SCRIPT. Medido: `planificar-migracion` declaraba 0.1.0 con su plugin en 0.1.3,
+# llevaban asi todo el dia y se habia publicado tres veces sin que nadie lo notara. Un numero que hay
+# que copiar a mano de un archivo a otro diverge; el gate ahora lo detecta, y esto evita que haya algo
+# que detectar.
+version_de_la_unidad() {  # version_de_la_unidad <raiz de la unidad>
+  local unidad="$1"
+  if [ -f "$unidad/$RUTA_MANIFIESTO" ]; then
+    campo_json "$unidad/$RUTA_MANIFIESTO" version
+    return
+  fi
+  if [ -f "$unidad/$RUTA_GOBIERNO" ]; then
+    campo_json "$unidad/$RUTA_GOBIERNO" version
+  fi
 }
 
 # Los tipos de artefacto, con la clave bajo la que cada uno se ENUMERA en el inventario del gobierno.

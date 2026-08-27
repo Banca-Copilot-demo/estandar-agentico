@@ -21,11 +21,17 @@ from validador_agentico.aplicacion.validar_repositorio import validar
 
 _ESQUEMAS = Path(__file__).resolve().parent.parent.parent / "schemas"
 
-_ENVELOPE = """  id: {identificador}
+# LA VERSION DEL ARTEFACTO ES LA DE SU UNIDAD, y por eso hay UNA constante en vez de tres numeros
+# sueltos: el gate compara las dos cifras, asi que un fixture con valores distintos fallaria por un
+# defecto que estas pruebas NO miden. Medido en el activo real: un skill declaraba 0.1.0 con su plugin
+# en 0.1.3, llevaban asi todo el dia y se habia publicado tres veces sin que nadie lo notara.
+_VERSION = "1.0.0"
+
+_ENVELOPE = f"""  id: {{identificador}}
   owner_team: squad-sdlc
   owner_contact: squad-sdlc@ejemplo.dev
   status: draft
-  version: 1.0.0
+  version: {_VERSION}
   data_classification: internal
   standard_version: 8.0.0"""
 
@@ -38,7 +44,7 @@ def _gobierno_de_la_raiz(raiz: Path, skills: int = 0, agents: int = 0, prompts: 
         "owner": {"team": "squad-sdlc", "contact": "squad-sdlc@ejemplo.dev"},
         "status": "draft",
         "data_classification": "internal",
-        "version": "1.0.2",
+        "version": _VERSION,
         "standard_version": "8.0.0",
         "artifacts": {"skills": skills, "agents": agents, "prompts": prompts},
     }), encoding="utf-8")
@@ -50,7 +56,7 @@ def _manifiesto(directorio: Path, nombre: str) -> None:
     (destino / "plugin.json").write_text(json.dumps({
         "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
         "name": nombre,
-        "version": "0.1.0",
+        "version": _VERSION,
         "description": "Artefacto suelto de prueba.",
     }), encoding="utf-8")
 
