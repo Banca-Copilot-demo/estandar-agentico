@@ -36,52 +36,52 @@ if [ ! -f "$comprobante" ]; then
   exit 1
 fi
 
-# EL COMMIT DEL COMPROBANTE TIENE QUE SER EL QUE EL CATALOGO VA A INSTALAR.
+# EL COMMIT DEL COMPROBANTE TIENE QUE SER EL QUE EL MARKETPLACE VA A INSTALAR.
 #
-# Lo verificado es un .tar.gz; lo instalado es un clon del repositorio en el commit que el CATALOGO
+# Lo verificado es un .tar.gz; lo instalado es un clon del repositorio en el commit que el MARKETPLACE
 # declara. `verificar-paquete.sh` ya ata la atestacion a un commit; aqui se comprueba la otra mitad:
-# que ese commit sea el que el catalogo apunta. Sin esto, una ficha de Port desincronizada del
-# catalogo dejaria verificar un contenido e instalar otro sin que nada avisara.
+# que ese commit sea el que el marketplace apunta. Sin esto, una ficha de Port desincronizada del
+# marketplace dejaria verificar un contenido e instalar otro sin que nada avisara.
 #
-# Solo aplica a la via del CATALOGO -- `plugin install <nombre>@<catalogo>` --. Un artefacto que se
-# instala por su canal propio no resuelve contra el catalogo y no hay entrada que comparar.
+# Solo aplica a la via del MARKETPLACE -- `plugin install <nombre>@<marketplace>` --. Un artefacto que
+# se instala por su canal propio no resuelve contra el marketplace y no hay entrada que comparar.
 commit_verificado="$(sed -n 's/^commit_atestado=//p' "$comprobante" | head -1)"
-nombre_en_catalogo=""
+nombre_en_marketplace=""
 for argumento in "$@"; do
   case "$argumento" in
-    *"@$CATALOGO") nombre_en_catalogo="${argumento%"@$CATALOGO"}" ;;
+    *"@$MARKETPLACE") nombre_en_marketplace="${argumento%"@$MARKETPLACE"}" ;;
   esac
 done
 
-if [ -n "$nombre_en_catalogo" ]; then
+if [ -n "$nombre_en_marketplace" ]; then
   if [ -z "$commit_verificado" ]; then
     abortar "el comprobante no trae commit_atestado: vuelve a ejecutar verificar-paquete.sh"
   fi
-  if ! commit_en_catalogo="$(commit_que_el_catalogo_instalaria "$nombre_en_catalogo")"; then
-    # NO SE PUDO LEER EL CATALOGO. Se avisa y se sigue: la atestacion ya ato el paquete a un commit,
-    # asi que la garantia principal no depende de esta consulta. Negarse aqui convertiria un fallo de
-    # red en un bloqueo, y quien lo sufriera acabaria saltandose el skill entero.
-    echo "aviso: no se pudo leer el catalogo ($REPO_CATALOGO); no se comparo el commit." >&2
+  if ! commit_en_marketplace="$(commit_que_el_marketplace_instalaria "$nombre_en_marketplace")"; then
+    # NO SE PUDO LEER EL MARKETPLACE. Se avisa y se sigue: la atestacion ya ato el paquete a un
+    # commit, asi que la garantia principal no depende de esta consulta. Negarse aqui convertiria un
+    # fallo de red en un bloqueo, y quien lo sufriera acabaria saltandose el skill entero.
+    echo "aviso: no se pudo leer el marketplace ($REPO_MARKETPLACE); no se comparo el commit." >&2
     echo "aviso: la atestacion SI se verifico. Reintenta con red para la comprobacion completa." >&2
-  elif [ -z "$commit_en_catalogo" ]; then
-    # EL CATALOGO SE LEYO Y NO LISTA EL ARTEFACTO, que no es lo mismo que no poder leerlo. Un
-    # artefacto ausente del catalogo no esta distribuido: esta en Conforme -- publicado pero no
+  elif [ -z "$commit_en_marketplace" ]; then
+    # EL MARKETPLACE SE LEYO Y NO LISTA EL ARTEFACTO, que no es lo mismo que no poder leerlo. Un
+    # artefacto ausente del marketplace no esta distribuido: esta en Conforme -- publicado pero no
     # promocionado -- o Suspendido. En los dos casos instalarlo se salta la decision del gobierno.
-    echo "El catalogo NO lista '$nombre_en_catalogo'." >&2
+    echo "El marketplace NO lista '$nombre_en_marketplace'." >&2
     echo "Puede seguir estando PUBLICADO y ser verificable: publicar y distribuir son dos cosas" >&2
     echo "distintas. Si el estandar promociona al certificar, un artefacto Conforme queda fuera del" >&2
-    echo "catalogo a proposito hasta que supere su evaluacion." >&2
-    echo "Un artefacto ausente del catalogo no esta distribuido: o no ha sido certificado, o fue" >&2
-    echo "suspendido. Consulta su ficha antes de instalarlo." >&2
-    abortar "artefacto ausente del catalogo"
-  elif [ "$commit_en_catalogo" != "$commit_verificado" ]; then
-    echo "El catalogo instalaria un commit DISTINTO del verificado." >&2
-    echo "  verificado (atestacion): $commit_verificado" >&2
-    echo "  catalogo instalaria:     $commit_en_catalogo" >&2
+    echo "marketplace a proposito hasta que supere su evaluacion." >&2
+    echo "Un artefacto ausente del marketplace no esta distribuido: o no ha sido certificado, o fue" >&2
+    echo "suspendido. Consulta su ficha de Port antes de instalarlo." >&2
+    abortar "artefacto ausente del marketplace"
+  elif [ "$commit_en_marketplace" != "$commit_verificado" ]; then
+    echo "El marketplace instalaria un commit DISTINTO del verificado." >&2
+    echo "  verificado (atestacion):  $commit_verificado" >&2
+    echo "  marketplace instalaria:   $commit_en_marketplace" >&2
     echo "Instalar ahora seria instalar contenido que nadie verifico." >&2
-    abortar "el commit del catalogo no coincide con el verificado"
+    abortar "el commit del marketplace no coincide con el verificado"
   else
-    echo "Commit atado: el catalogo instala $commit_verificado, que es el atestado."
+    echo "Commit atado: el marketplace instala $commit_verificado, que es el atestado."
   fi
 fi
 

@@ -147,7 +147,7 @@ def revisar_aprobacion_por_servidor(donde: str, configuracion: object,
         error(donde,
               f"el servidor `{nombre}` esta configurado y el `GOVERNANCE.json` no lo aprueba. Se "
               f"ejecutaria sin aprobacion, sin `tools_digest` con el que detectar que cambio su "
-              f"superficie de herramientas y sin ficha en el catalogo. Anade su entrada bajo `mcp`, o "
+              f"superficie de herramientas y sin ficha en Port. Anade su entrada bajo `mcp`, o "
               f"quitalo de la configuracion")
         for nombre in sorted(set(configurados) - aprobados)
     ]

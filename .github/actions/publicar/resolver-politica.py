@@ -24,7 +24,7 @@ _BANDERA_PRELANZAMIENTO = "--prerelease"
 
 
 def bandera_de(promocion: Promocion) -> str:
-    """La bandera que hace que el release NAZCA fuera del catalogo, o vacio si entra al publicar."""
+    """La bandera que hace que el release NAZCA fuera del marketplace, o vacio si entra al publicar."""
     return "" if promocion is Promocion.AL_PUBLICAR else _BANDERA_PRELANZAMIENTO
 
 

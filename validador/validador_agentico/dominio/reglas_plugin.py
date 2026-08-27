@@ -89,8 +89,8 @@ def _revisar_estado_retirado(donde: str, gobierno: dict) -> list[Hallazgo]:
     """`status` en el gobierno: se ACEPTA, se DESCARTA y se avisa. Nunca bloquea.
 
     POR QUE SE RETIRO. El estado del ciclo de vida se DERIVA de hechos —gates superados, etiqueta,
-    atestacion— y lo publica la ficha del catalogo. Este campo era EDITABLE y decia `draft` mientras
-    el catalogo decia `certified` del mismo artefacto: no se contradicen, significan cosas distintas,
+    atestacion— y lo publica la ficha de Port. Este campo era EDITABLE y decia `draft` mientras
+    Port decia `certified` del mismo artefacto: no se contradicen, significan cosas distintas,
     pero comparten nombre y quien lo leia podia creer que editandolo movia el estado real. Un campo
     que parece una palanca y no lo es es peor que no tenerlo.
 
@@ -111,8 +111,8 @@ def _revisar_estado_retirado(donde: str, gobierno: dict) -> list[Hallazgo]:
     if CAMPO_ESTADO_RETIRADO not in gobierno:
         return []
     return [aviso(donde, f"`{CAMPO_ESTADO_RETIRADO}` ya no forma parte del gobierno y se IGNORA: el "
-                         "estado del ciclo de vida se DERIVA de los gates y lo publica la ficha del "
-                         "catalogo, asi que editarlo aqui no cambiaba nada. Quitalo del archivo; "
+                         "estado del ciclo de vida se DERIVA de los gates y lo publica la ficha de "
+                         "Port, asi que editarlo aqui no cambiaba nada. Quitalo del archivo; "
                          "para el veredicto de la ultima corrida mira `certification.verdict`")]
 
 
@@ -124,7 +124,7 @@ def _revisar_version_del_paquete(donde: str, gobierno: dict,
     Con plugin sale del `plugin.json`, que es lo que el marketplace resuelve; sin plugin no hay otro
     sitio, y sin ella el repositorio no se etiqueta -- asi que no hay release, ni atestacion, ni ficha,
     y el consumidor no puede verificar nada antes de instalar. Ese era exactamente el estado del
-    camino del artefacto suelto: el lineamiento prometia catalogo y sello, y no habia de donde sacar
+    camino del artefacto suelto: el lineamiento prometia marketplace y sello, y no habia de donde sacar
     la version.
 
     Y PROHIBIDA CUANDO HAY MANIFIESTO por el motivo de siempre: dos declaraciones de la misma cosa
@@ -167,12 +167,12 @@ def revisar_gobierno_ausente(unidad: str, que_publica: str) -> list[Hallazgo]:
 
 
 def revisar_inventario(declarado: dict, inventario: Inventario) -> list[Hallazgo]:
-    """Lo declarado contra el arbol real. Un catalogo que publica un inventario inexistente da
+    """Lo declarado contra el arbol real. Una ficha de Port que publica un inventario inexistente da
     falsa confianza, que es peor que no publicar nada.
 
     SE COTEJA POR IDENTIDAD, y el conteo era un falso negativo MEDIDO: borrar un skill y anadir otro
     en el mismo pull request deja el numero EXACTAMENTE igual, asi que el cotejo no encontraba nada
-    que decir mientras el catalogo publicaba una lista que ya no existia. Es la clase de hueco por el
+    que decir mientras Port publicaba una lista que ya no existia. Es la clase de hueco por el
     que un campo inventado sobrevive meses sin que ninguna comprobacion lo toque.
 
     LOS DOS CAMINOS CONVIVEN mientras dure la transicion: por ids cuando el tipo se declaro como
@@ -208,7 +208,7 @@ def _revisar_identidades(tipo: str, declarados: tuple[str, ...],
                           reales: tuple[str, ...]) -> list[Hallazgo]:
     """Los dos sentidos del cotejo, cada uno con su mensaje: sobrar y faltar no son el mismo defecto.
 
-    Un id DECLARADO que no esta en el arbol hace que el catalogo publique un artefacto que nadie puede
+    Un id DECLARADO que no esta en el arbol hace que Port publique un artefacto que nadie puede
     instalar. Un id del arbol SIN DECLARAR se publica sin figurar en el inventario que el aprobador
     leyo. Los dos bloquean, y separarlos evita que quien lee el hallazgo tenga que diferenciar dos
     listas a ojo.
@@ -220,7 +220,7 @@ def _revisar_identidades(tipo: str, declarados: tuple[str, ...],
         hallazgos.append(error(
             RUTA_GOBIERNO,
             f"inventario: `artifacts.{tipo}` declara {_lista(faltan)} y el arbol real no lo tiene. "
-            f"El catalogo publicaria un artefacto que nadie puede instalar"))
+            f"Port publicaria un artefacto que nadie puede instalar"))
     if sobran:
         hallazgos.append(error(
             RUTA_GOBIERNO,
@@ -242,7 +242,7 @@ def _avisar_del_inventario_por_conteo(lectura, reales: dict) -> list[Hallazgo]:
                   f"`artifacts` declara {_lista(sorted(lectura.tipos_por_conteo))} por CONTEO, y el "
                   f"estandar los declara por lista de ids. Un conteo tiene un falso negativo medido: "
                   f"borrar un artefacto y anadir otro deja el numero igual, asi que el gate no ve el "
-                  f"cambio y el catalogo publica una lista que ya no existe. Lo que corresponde a "
+                  f"cambio y Port publica una lista que ya no existe. Lo que corresponde a "
                   f"este arbol es {json.dumps(sugerido, ensure_ascii=False, sort_keys=True)}")]
 
 

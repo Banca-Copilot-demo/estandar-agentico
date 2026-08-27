@@ -2,8 +2,8 @@
 
 QUE ESTABA ROTO, y no eran las pruebas: era el camino. Un repositorio de sueltos pasaba el gate como
 CONFORME y ahi se quedaba. `listar_plugins` hacia `continue` al no encontrar manifiesto, asi que no se
-etiquetaba nada -- y sin etiqueta no hay release, ni paquete, ni atestacion, ni ficha en el catalogo --.
-El lineamiento, en cambio, prometia que un suelto «aparece en el catalogo de Port» y que puede tener
+etiquetaba nada -- y sin etiqueta no hay release, ni paquete, ni atestacion, ni ficha en Port --.
+El lineamiento, en cambio, prometia que un suelto «aparece en Port» y que puede tener
 «release y atestacion, uno por artefacto». Las dos cosas eran falsas.
 
 Y NO ERA UN OLVIDO DE DISENO: el comentario de `etiquetar.yml` ya decia que un repositorio de sueltos

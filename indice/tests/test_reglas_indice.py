@@ -95,7 +95,7 @@ def test_un_suelto_sellado_se_OMITE_y_no_se_rechaza():
 def test_un_suelto_SIN_SELLAR_se_rechaza_y_no_se_omite():
     """El defecto medido: una version de esta regla preguntaba por el plugin ANTES del sello, y
     entonces un artefacto suelto publicado sin atestacion salia como omision limpia y llegaba a la
-    ficha del catalogo. El sello se exige a todos; el plugin solo decide el canal."""
+    ficha de Port. El sello se exige a todos; el plugin solo decide el canal."""
     decision = evaluar(_candidato(lleva_plugin=False, manifiesto=None,
                                   atestacion_verificada=False, veredicto=None))
     assert decision.destino is Destino.RECHAZAR
@@ -226,7 +226,7 @@ _SUELTOS = [
 @pytest.mark.parametrize("nombre, subruta", _SUELTOS,
                          ids=["skill", "prompt", "agente"])
 def test_un_suelto_con_unidad_propia_SE_INDEXA_con_su_subruta(nombre, subruta):
-    """Sin entrada en el catalogo un artefacto no queda sujeto al ESTADO: se instalaria igual
+    """Sin entrada en el marketplace un artefacto no queda sujeto al ESTADO: se instalaria igual
     estuviera certificado, conforme o suspendido. Por eso lo que decide esta regla es si el control
     que pidio el cliente alcanza tambien a los sueltos.
 

@@ -139,13 +139,13 @@ CLAVE_DE_INVENTARIO_prompt="prompts"
 # sueltos de un repositorio acababan con el mismo dueno sin que nadie lo hubiera decidido. Escrito,
 # es un valor que se ve en la revision y se corrige de una linea.
 # EL INVENTARIO SE ESCRIBE POR ID, no por conteo: un conteo tiene un falso negativo medido -- borrar
-# un artefacto y anadir otro deja el numero igual, asi que el gate no ve el cambio y el catalogo
+# un artefacto y anadir otro deja el numero igual, asi que el gate no ve el cambio y Port
 # publica una lista que ya no existe --. Y el id lo pone el generador porque lo conoce: es el mismo
 # que acaba de escribir en el frontmatter del artefacto. Pedirselo a una persona seria pedirle que
 # copiara a mano el valor que el script ya tiene, que es como divergen los campos duplicados.
 #
 # SIN `status`: se retiro del gobierno. El estado del ciclo de vida lo DERIVAN los gates y lo publica
-# la ficha del catalogo; escribirlo aqui creaba una palanca que no movia nada.
+# la ficha de Port; escribirlo aqui creaba una palanca que no movia nada.
 escribir_gobierno_de_unidad() {  # ... <destino> <id de la unidad> <tipo> <gobierno de la raiz> <id del artefacto>
   local destino="$1" identificador="$2" tipo="$3" de_la_raiz="$4" id_artefacto="$5"
   local clave="CLAVE_DE_INVENTARIO_$tipo"

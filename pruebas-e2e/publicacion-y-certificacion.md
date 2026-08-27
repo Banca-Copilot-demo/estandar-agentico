@@ -75,7 +75,7 @@ gh pr merge <n> --repo Banca-Copilot-demo/agentes-sdlc --squash --delete-branch 
 no generó el evento. Comprueba primero que el commit está arriba; si está y no hay ejecución, fuerza el
 evento con `gh pr close <n> && gh pr reopen <n>`.
 
-### Cómo se lee una ficha del catálogo de metadata
+### Cómo se lee una ficha de Port
 
 ```bash
 python /c/PROYECTO_TRACK_AGENTICO_BCP/demo-bcp-copilot/estandar-agentico/pruebas-e2e/leer_ficha.py demo.sdlc.planificar-migracion
@@ -92,7 +92,7 @@ Dos cosas que confunden si no se avisan: el campo del *blueprint* se llama **`st
 `"True"` o `"False"` con mayúscula, porque sale de `str()` de Python: comparar contra `"true"` no
 coincide nunca.
 
-### Cómo se lee el catálogo instalable
+### Cómo se lee el marketplace
 
 ```bash
 gh api repos/Banca-Copilot-demo/marketplace/contents/.claude-plugin/marketplace.json --jq '.content' \
@@ -103,7 +103,7 @@ gh api repos/Banca-Copilot-demo/marketplace/contents/.claude-plugin/marketplace.
 
 ## Caso 1 · Sin evaluaciones termina en Conforme y no se distribuye
 
-**Qué comprueba:** que un artefacto sin suites se publica, se sella y **no llega al catálogo**.
+**Qué comprueba:** que un artefacto sin suites se publica, se sella y **no llega al marketplace**.
 
 **Por qué importa:** es el requisito de BCP. Publicar no se bloquea; **distribuir sí**. Un artefacto cuyo
 comportamiento nadie ha medido no puede repartirse por la organización.
@@ -125,7 +125,7 @@ comportamiento nadie ha medido no puede repartirse por la organización.
 | 3 | Gate con la versión subida | los dos checks en verde |
 | 4 | Acotado de la evaluación | dice `sin suites de evaluacion: se publicara como Conforme` **aunque el repositorio tenga suites de otras unidades** |
 | 5 | Release | `gh release list` lo muestra marcado **`Pre-release`** |
-| 6 | Catálogo instalable | **sigue mostrando la versión anterior** |
+| 6 | Marketplace | **sigue mostrando la versión anterior** |
 | 7 | Ficha | `FICHA_STATUS="conformant"`, `FICHA_MARKETPLACE="False"`, `FICHA_REF` = **su propia etiqueta** |
 | 8 | Fichas ajenas | las de `revisar-jql` y `contratos` **no cambian** — regresión del defecto 1 |
 | 9 | Instalación | instala la versión **anterior**, y el contenido nuevo **no aparece** en el disco |
@@ -166,7 +166,7 @@ Igual que el caso 1, sobre `skills/revisar-jql` — que ya trae su suite — sub
 | 4 | Guardián de la promoción | **no vuelve a evaluar**: comprueba que la unidad trae suites y que la comprobación de comportamiento del commit quedó en verde |
 | 5 | Promoción | se encadena sola y el release queda **sin marca de prelanzamiento** |
 | 6 | Ficha | `FICHA_STATUS="certified"`, `FICHA_MARKETPLACE="True"` |
-| 7 | Catálogo instalable | muestra la versión **nueva** |
+| 7 | Marketplace | muestra la versión **nueva** |
 | 8 | Instalación en Copilot | llega la versión nueva **con** el contenido nuevo |
 | 9 | Instalación en Claude Code | ídem, bajo `~/.claude/plugins/cache/agentico/<nombre>/<version>/` |
 
@@ -189,7 +189,7 @@ rm -rf /c/Users/hvidalsi/.copilot/installed-plugins/agentico/demo.sdlc.revisar-j
 copilot plugin install demo.sdlc.revisar-jql@agentico
 ```
 
-> **Si el catálogo no recoge la versión promocionada**, regenera el índice a mano y vuelve a mirar:
+> **Si el marketplace no recoge la versión promocionada**, regenera el índice a mano y vuelve a mirar:
 > `gh workflow run regenerar-indice.yml --repo Banca-Copilot-demo/marketplace`. Que haga falta es el
 > defecto 6; si ya está corregido, no debería hacer falta.
 
@@ -217,7 +217,7 @@ que el artefacto.
 | 2 | Evaluación de la suite nueva | pasa, y corre **solo** la de esa unidad |
 | 3 | Ficha antes de promocionar | `conformant` / `False`, con la etiqueta nueva |
 | 4 | Ficha después | **`certified`** / **`True`**, y `install_hint` pasa a `copilot plugin install …@agentico` |
-| 5 | Catálogo instalable | muestra la versión nueva |
+| 5 | Marketplace | muestra la versión nueva |
 | 6 | Instalación | llega la versión nueva **con** el cuerpo que en el caso 1 era inalcanzable |
 
 La comprobación 1 es la razón de ser de este caso. **Añadir evaluaciones obliga a una versión nueva** —
@@ -225,7 +225,7 @@ no es burocracia: la suite viaja dentro del paquete sellado, así que el digesto
 versión anterior sería emitir un veredicto sobre unos bytes distintos de los que se firmaron.
 
 > **Si `copilot plugin install` falla con `Access is denied (os error 5)`**, es el directorio de la
-> instalación anterior, no el catálogo. `copilot plugin uninstall` falla igual; bórralo a mano:
+> instalación anterior, no el marketplace. `copilot plugin uninstall` falla igual; bórralo a mano:
 > `rm -rf /c/Users/hvidalsi/.copilot/installed-plugins/agentico/<nombre>`.
 
 ---
@@ -293,7 +293,7 @@ había detectado antes.
 |---|---|---|
 | 1 | Publicar una unidad reescribía las fichas de **todas** | `revisar-jql` mostraba la etiqueta, el sha y el digesto de `contratos`: el campo que sirve para **verificar integridad** apuntaba a bytes que no eran los suyos |
 | 2 | `en_marketplace` era un literal, no un hecho | decía `true` de artefactos que el índice excluía |
-| 3 | `promocionar` no recibía las credenciales de Port | el release quedaba distribuido y la ficha seguía diciendo `conformant`: los dos catálogos contando cosas distintas del mismo artefacto |
+| 3 | `promocionar` no recibía las credenciales de Port | el release quedaba distribuido y la ficha seguía diciendo `conformant`: Port y el marketplace contando cosas distintas del mismo artefacto |
 | 4 | Se evaluaban suites ajenas al repositorio | un repositorio de dominio se ponía rojo por una **plantilla** del estándar, que por construcción no puede pasar |
 | 5 | Se colocaban artefactos ajenos en el cliente | mientras se medía un artefacto, el cliente tenía cargados los del asistente de autoría y una plantilla: **contaminaba el entorno de medición** |
 | 6 | `promocionar` no avisaba al índice | artefacto **certificado y no instalable** hasta la pasada programada del índice, que es diaria |
@@ -424,7 +424,7 @@ Con un check requerido deja el PR bloqueado sin diagnóstico; **con el push de u
 no publicar sin que nadie se entere.**
 
 **Certificar una versión nueva NO llega a quien ya tenía instalada una anterior.** Medido en el caso 2:
-con `demo.sdlc.revisar-jql 0.2.1` ya certificada y en el catálogo, el comando de instalación respondió
+con `demo.sdlc.revisar-jql 0.2.1` ya certificada y en el marketplace, el comando de instalación respondió
 
 ```
 ✔ Plugin "demo.sdlc.revisar-jql@agentico" is already installed (scope: user)
@@ -444,10 +444,10 @@ En Copilot el síntoma es distinto y más honesto: reinstalar sobre una instalac
 callado.
 
 **La consecuencia de gobierno es la que importa, y no es del código.** El estado dice «Certificado y
-distribuido», el catálogo ofrece la versión nueva, y sin embargo **el parque instalado se queda donde
+distribuido», el marketplace ofrece la versión nueva, y sin embargo **el parque instalado se queda donde
 estaba**. Distribuir no es adoptar. Cualquier cosa que dependa de que una corrección llegue de verdad
 —retirar una versión con un defecto, cerrar una capacidad externa— necesita un mecanismo de
-actualización que hoy no existe en el marco: los estados gobiernan lo que el catálogo **ofrece**, no lo
+actualización que hoy no existe en el marco: los estados gobiernan lo que el marketplace **ofrece**, no lo
 que las máquinas **tienen**.
 
 ---
@@ -467,5 +467,5 @@ buscada: el consumidor se descarga unas pruebas que no va a ejecutar.
 declara `ref: demo.sdlc.catalogo-datos--v0.1.0` y `en_marketplace: True`, mientras el artefacto real de
 esa unidad —`demo.sdlc.catalogo-datos.mcp`— va por `--v0.3.0`. No es una regresión de estas pruebas: es
 una entidad de nivel de plugin que dejó de escribirse cuando la unidad de la ficha pasó a ser la
-capacidad. Conviene decidir si se borra o se rellena, porque hoy el catálogo de metadata tiene dos
+capacidad. Conviene decidir si se borra o se rellena, porque hoy Port tiene dos
 fichas de la misma unidad contando versiones distintas.

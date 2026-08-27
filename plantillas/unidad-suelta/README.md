@@ -22,11 +22,11 @@ de un plugin**. Un `mcp` suelto pierde la posibilidad de revocarse por artefacto
 
 Es lo contrario que en un plugin. Sin manifiesto no hay otro sitio donde declarar con qué versión se
 publica el conjunto — y **sin `version` los artefactos de la raíz no se empaquetan**: quedan huérfanos,
-sin etiqueta, sin sello y sin ficha en el catálogo. El gate avisa de eso explícitamente.
+sin etiqueta, sin sello y sin ficha en Port. El gate avisa de eso explícitamente.
 
 ## Lo único que un conjunto suelto no puede tener
 
-**Entrada en el catálogo instalable.** Las entradas de un marketplace son plugins. Todo lo demás lo
-conserva: dueño, versión, estado, etiqueta, paquete, atestación y ficha en el catálogo de metadata.
+**Entrada en el marketplace.** Las entradas de un marketplace son plugins. Todo lo demás lo
+conserva: dueño, versión, estado, etiqueta, paquete, atestación y ficha en Port.
 
 Y se instala igual de bien: un skill suelto tiene comando nativo de instalación fijable a una versión.

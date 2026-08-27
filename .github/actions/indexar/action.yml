@@ -59,7 +59,7 @@ runs:
         # LAS RUTAS SE PREGUNTAN AL CODIGO. Estan declaradas en el enum `Proyeccion`, que es lo que
         # el generador usa para escribirlas: repetirlas aqui crearia un segundo sitio que actualizar
         # al anadir una proyeccion, y el olvido no daria error -- solo dejaria una sin commitear.
-        proyecciones="$(python -c "from indice_agentico.adaptadores.catalogo import Proyeccion; print(' '.join(p.ruta for p in Proyeccion))")"
+        proyecciones="$(python -c "from indice_agentico.adaptadores.marketplace import Proyeccion; print(' '.join(p.ruta for p in Proyeccion))")"
         echo "proyecciones=$proyecciones" >> "$GITHUB_OUTPUT"
         # Se cuenta sobre la primera; las dos llevan las mismas entradas por construccion, y hay una
         # prueba que lo fija.
@@ -75,7 +75,7 @@ runs:
       shell: bash
       run: |
         # LAS DOS PROYECCIONES VAN EN EL MISMO COMMIT: si una pudiera avanzar sin la otra, los
-        # usuarios de un cliente verian un catalogo mas viejo sin que nada lo indicara.
+        # usuarios de un cliente verian un marketplace mas viejo sin que nada lo indicara.
         read -r -a proyecciones <<< "${{ steps.generar.outputs.proyecciones }}"
         if git diff --quiet -- "${proyecciones[@]}"; then
           echo "El indice no cambio: no se commitea."

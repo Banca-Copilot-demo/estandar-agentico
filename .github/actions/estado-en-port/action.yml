@@ -1,4 +1,4 @@
-name: Fijar el estado de una etiqueta en el catalogo
+name: Fijar el estado de una etiqueta en Port
 description: >
   Lleva al estado indicado las fichas de Port que apuntan a una etiqueta, tocando SOLO el estado y
   los dos campos que se derivan de el. No vuelve a sellar nada ni reescribe la ficha: lo que la
@@ -18,7 +18,7 @@ inputs:
   nombre-plugin:
     description: >
       El plugin al que pertenecen los artefactos. Vacio cuando la etiqueta no lo nombra; entonces la
-      pista de instalacion cae en la rama sin catalogo, que es la conservadora.
+      pista de instalacion cae en la rama sin marketplace, que es la conservadora.
     required: false
     default: ""
   port-client-id:
@@ -38,7 +38,7 @@ runs:
       shell: bash
       run: python3 -m pip install --quiet "${{ github.action_path }}/../../../validador"
 
-    - name: Resolver la politica de promocion al catalogo
+    - name: Resolver la politica de promocion al marketplace
       id: politica
       shell: bash
       run: |
@@ -54,7 +54,7 @@ runs:
         esac
         echo "promocion=$politica" >> "$GITHUB_OUTPUT"
 
-    - name: Fijar el estado de las fichas del catalogo
+    - name: Fijar el estado de las fichas de Port
       shell: bash
       env:
         ID: ${{ inputs.port-client-id }}

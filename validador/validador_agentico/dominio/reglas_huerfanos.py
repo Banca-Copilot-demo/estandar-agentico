@@ -16,7 +16,7 @@ Sin esa version no hay de donde derivar la etiqueta, asi que no hay paquete, ni 
 y el artefacto queda igual de invisible que antes -- solo que ahora se dice --.
 
 POR QUE ES UN ERROR Y NO UN AVISO. El estandar existe para que no haya artefactos sin gobierno, y uno
-que el catalogo ignora es indistinguible de uno que no existe. Perderlo callando es peor que
+que Port ignora es indistinguible de uno que no existe. Perderlo callando es peor que
 rechazarlo: quien lo escribio cree que esta publicado.
 """
 from __future__ import annotations
@@ -40,7 +40,7 @@ def artefactos_sin_unidad(raiz: Path, hay_plugins: bool, publica_el_conjunto_sue
     no hay plugins -- ahi el repositorio entero es la unidad y sus artefactos SON el paquete --.
 
     UN ARTEFACTO CON MANIFIESTO PROPIO NO ES HUERFANO: es su propia unidad publicable, con version,
-    digesto y entrada de catalogo propios. `rutas_manifiesto` es lo que permite distinguirlo, y sin
+    digesto y entrada de marketplace propios. `rutas_manifiesto` es lo que permite distinguirlo, y sin
     ese dato esta regla acusaba de huerfano justo al artefacto mejor publicado del repositorio.
     MEDIDO: con un plugin anidado, un skill suelto CON manifiesto y una raiz que no declara version,
     reportaba `skills/`. No salio antes porque el repositorio de prueba SI declaraba version, asi que
@@ -76,7 +76,7 @@ def revisar_sin_unidad(rutas: tuple[str, ...]) -> list[Hallazgo]:
               "hay artefactos aqui, en la raiz de un repositorio que tambien aloja plugins, y el "
               "GOVERNANCE.json de la raiz no declara `version`: sin ella no hay de donde derivar la "
               "etiqueta del conjunto suelto, asi que estos artefactos NO se empaquetan, no se sellan "
-              "y no reciben ficha en el catalogo. Declara `version` en el GOVERNANCE.json de la raiz "
+              "y no reciben ficha en Port. Declara `version` en el GOVERNANCE.json de la raiz "
               "para publicarlos, o muevelos dentro del plugin que les corresponda")
         for ruta in rutas
     ]

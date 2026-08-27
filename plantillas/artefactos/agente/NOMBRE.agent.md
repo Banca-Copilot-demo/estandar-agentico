@@ -22,7 +22,7 @@ metadata:
   campo `name`.
 
   `model` VA COMO UN SOLO VALOR, no como lista. Una lista de modelos fijos obliga a tocar todos los
-  archivos en cada rotacion del catalogo; la alternativa de varios modelos se declara una vez a nivel de
+  archivos en cada rotacion del catalogo de modelos; la alternativa de varios modelos se declara una vez a nivel de
   plugin, no en cada agente.
 
   `tools` ES LA SUPERFICIE DE LO QUE PUEDE HACER, y la pregunta de gobierno de este tipo. Declara solo lo

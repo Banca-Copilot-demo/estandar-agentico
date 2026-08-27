@@ -5,7 +5,7 @@ tocaba, asi que un agente sin `description` pasaba en verde. Un tipo declarado y
 un control que no existe.
 
 Aqui hubo tambien pruebas de `instructions`. Se retiraron con el tipo: no tiene canal de distribucion,
-no esta en el blueprint del catalogo ni en el enum de `kind` del envelope, y no existe ni un artefacto de
+no esta en el blueprint de Port ni en el enum de `kind` del envelope, y no existe ni un artefacto de
 ese tipo en los repositorios. Lo unico que sobrevive es la regresion de `test_reglas_aprobacion`, que fija
 que un archivo con ese nombre NO exija firmante -- porque llego a exigirlo y bloqueaba pull requests por
 un tipo que ya no se gobernaba --.

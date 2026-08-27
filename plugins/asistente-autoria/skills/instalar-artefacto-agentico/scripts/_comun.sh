@@ -10,17 +10,18 @@ set -euo pipefail
 # Sin este dato `gh attestation verify` falla contra el emisor y su mensaje no nombra al firmante.
 REPO_FIRMANTE="Banca-Copilot-demo/estandar-agentico"
 
-# El repositorio del CATALOGO instalable, y el archivo que el cliente resuelve al instalar. Se
-# consulta para comprobar que el commit que el catalogo va a instalar es el que quedo atestado: sin
+# El repositorio del MARKETPLACE, y el archivo que el cliente resuelve al instalar. Se
+# consulta para comprobar que el commit que el marketplace va a instalar es el que quedo atestado: sin
 # esa comparacion, la verificacion demuestra menos de lo que parece -- se verifica un paquete y se
 # instala un clon del repositorio, y nada ata las dos mitades --.
-REPO_CATALOGO="Banca-Copilot-demo/marketplace"
-RUTA_CATALOGO=".github/plugin/marketplace.json"
+REPO_MARKETPLACE="Banca-Copilot-demo/marketplace"
+RUTA_MARKETPLACE=".github/plugin/marketplace.json"
 
-# El nombre con el que el catalogo se registra en el cliente. Es el sufijo de `<plugin>@<catalogo>`
-# que trae el install_hint de la ficha, y lo que permite distinguir una instalacion POR CATALOGO
-# -- comparable contra el commit atestado -- de una por canal propio, que no resuelve contra el.
-CATALOGO="agentico"
+# El nombre con el que el marketplace se registra en el cliente. Es el sufijo de
+# `<plugin>@<marketplace>` que trae el install_hint de la ficha de Port, y lo que permite distinguir
+# una instalacion POR MARKETPLACE -- comparable contra el commit atestado -- de una por canal propio,
+# que no resuelve contra el.
+MARKETPLACE="agentico"
 
 # Estados de la ficha de Port que cambian lo que se puede hacer con el artefacto.
 ESTADO_DEPRECADO="deprecated"
@@ -37,21 +38,21 @@ abortar() {
   exit 1
 }
 
-# El commit que el CATALOGO instalaria para un plugin, o vacio si el catalogo no lo lista.
+# El commit que el MARKETPLACE instalaria para un plugin, o vacio si el marketplace no lo lista.
 #
-# Devuelve por SALIDA el commit y por CODIGO si el catalogo se pudo leer, porque los dos fallos
+# Devuelve por SALIDA el commit y por CODIGO si el marketplace se pudo leer, porque los dos fallos
 # posibles no son el mismo y quien llama tiene que poder distinguirlos:
-#   codigo 2  -> no se pudo LEER el catalogo (red, credencial): la garantia de la atestacion sigue
+#   codigo 2  -> no se pudo LEER el marketplace (red, credencial): la garantia de la atestacion sigue
 #                en pie, asi que no es motivo para negarse a instalar.
-#   salida ""  -> el catalogo se leyo y NO lista el plugin: eso SI es motivo para negarse. Un
-#                artefacto ausente del catalogo esta en Conforme o Suspendido, y ninguno de los dos
-#                se distribuye.
-commit_que_el_catalogo_instalaria() {  # commit_que_el_catalogo_instalaria <nombre del plugin>
-  local nombre="$1" catalogo
-  catalogo="$(gh api "repos/$REPO_CATALOGO/contents/$RUTA_CATALOGO" \
+#   salida ""  -> el marketplace se leyo y NO lista el plugin: eso SI es motivo para negarse. Un
+#                artefacto ausente del marketplace esta en Conforme o Suspendido, y ninguno de los
+#                dos se distribuye.
+commit_que_el_marketplace_instalaria() {  # commit_que_el_marketplace_instalaria <nombre del plugin>
+  local nombre="$1" marketplace
+  marketplace="$(gh api "repos/$REPO_MARKETPLACE/contents/$RUTA_MARKETPLACE" \
     -H "Accept: application/vnd.github.raw" 2>/dev/null)" || return 2
-  [ -n "$catalogo" ] || return 2
-  printf '%s' "$catalogo" \
+  [ -n "$marketplace" ] || return 2
+  printf '%s' "$marketplace" \
     | jq -r --arg n "$nombre" '[.plugins[]? | select(.name == $n) | .source.sha // ""] | first // ""'
 }
 

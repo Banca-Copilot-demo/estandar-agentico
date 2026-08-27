@@ -2,7 +2,7 @@
 
 EL DEFECTO QUE CIERRA, medido mirando el predicado tras instalar el plugin de referencia de verdad:
 los cuatro artefactos con frontmatter y el `mcp` llevaban `sha256`, y `hooks` NO APARECIA. Se declaraba
-en el inventario y se aprobaba en el `GOVERNANCE.json`, pero no llegaba al catalogo ni tenia digesto
+en el inventario y se aprobaba en el `GOVERNANCE.json`, pero no llegaba a Port ni tenia digesto
 propio, asi que su integridad dependia solo del digesto del paquete completo.
 
 Dicho de otra forma: el UNICO tipo que ejecuta codigo era el UNICO cuyo contenido no se podia

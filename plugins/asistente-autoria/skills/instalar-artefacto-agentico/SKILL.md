@@ -1,6 +1,6 @@
 ---
 name: instalar-artefacto-agentico
-description: "Instala un artefacto agentico publicado -skill, agente, prompt o mcp- invirtiendo el orden del cliente. Descarga el release del sha, verifica la atestacion y solo entonces instala, con el alcance elegido de forma explicita. Usalo cuando alguien quiera instalar, anadir, consumir o traerse a su repositorio un artefacto del catalogo, cuando quiera comprobar la firma o el sha256 de un artefacto ya publicado, o cuando una instalacion haya fallado con un mensaje que no explica su causa."
+description: "Instala un artefacto agentico publicado -skill, agente, prompt o mcp- invirtiendo el orden del cliente. Descarga el release del sha, verifica la atestacion y solo entonces instala, con el alcance elegido de forma explicita. Usalo cuando alguien quiera instalar, anadir, consumir o traerse a su repositorio un artefacto del marketplace, cuando quiera comprobar la firma o el sha256 de un artefacto ya publicado, o cuando una instalacion haya fallado con un mensaje que no explica su causa."
 license: Proprietary
 compatibility: Requiere gh (GitHub CLI), copilot, curl y sha256sum en el PATH
 allowed-tools: Bash(gh:*) Bash(copilot:*) Bash(sha256sum:*) Read
@@ -24,7 +24,7 @@ verificar, y solo entonces instalar. **No teclees los comandos a mano: usa los s
 
 ## Paso 1 · Pide la ficha de Port
 
-Todo lo que hace falta esta en la ficha del artefacto en el catalogo, y el desarrollador puede
+Todo lo que hace falta esta en la ficha del artefacto en Port, y el desarrollador puede
 leerla: `install_hint`, `verify_hint`, `sha256_archivo`, `status`, `tipo`, `repo`, `ref`, `sha`,
 `digest`, `superseded_by`, `sunset_date`. **No adivines ninguno de esos valores** ni los deduzcas
 mirando GitHub: la ficha la escribe el CI con lo que salio del sello.

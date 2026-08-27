@@ -66,7 +66,7 @@ class Entrada:
     etiqueta: str
     sha: str
     # Donde vive el plugin dentro del repositorio. `.` = el repositorio ES el plugin, y entonces el
-    # catalogo apunta al repositorio completo; cualquier otro valor se emite como `path` de la
+    # marketplace apunta al repositorio completo; cualquier otro valor se emite como `path` de la
     # fuente, sin el cual el cliente instalaria los plugins vecinos.
     subruta: str = "."
 

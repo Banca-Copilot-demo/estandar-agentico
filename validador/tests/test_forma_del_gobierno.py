@@ -89,7 +89,7 @@ def test_falta_cada_campo_obligatorio_del_gobierno_se_detecta(tmp_path, campo):
 # ── el retiro de `status` del gobierno, y su transicion ──────────────────────────────────────
 def test_un_gobierno_SIN_status_es_conforme(tmp_path):
     """`status` dejo de ser obligatorio: el estado del ciclo de vida se DERIVA de los gates y lo
-    publica la ficha del catalogo, asi que nadie lo declara. Si siguiera en `required`, el gobierno
+    publica la ficha de Port, asi que nadie lo declara. Si siguiera en `required`, el gobierno
     que ya no lo lleva —el de las plantillas, el de este repositorio— seria no conforme."""
     assert "status" not in _errores(_repositorio(tmp_path, _GOBIERNO_CONFORME))
 
@@ -117,7 +117,7 @@ def test_un_status_en_el_gobierno_produce_un_aviso_que_lo_declara_ignorado(tmp_p
 def test_el_status_del_FRONTMATTER_del_artefacto_sigue_siendo_obligatorio():
     """Hay DOS campos llamados `status` y solo se retiro uno. El del gobierno describia al PAQUETE y
     era la palanca falsa; el del envelope vive en `metadata` DENTRO del artefacto, es lo que lo hace
-    auditable cuando viaja suelto sin plugin ni catalogo, y sigue vigente. Sin esta prueba, el
+    auditable cuando viaja suelto sin plugin ni marketplace, y sigue vigente. Sin esta prueba, el
     siguiente que lea «se retiro status» puede quitar el que no era."""
     assert "status" in CAMPOS_ENVELOPE
 

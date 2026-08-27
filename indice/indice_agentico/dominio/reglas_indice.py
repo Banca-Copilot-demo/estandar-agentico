@@ -37,10 +37,11 @@ _SIN_DESCRIPCION = "(sin descripcion en el manifiesto)"
 LONGITUD_SHA_COMMIT = 40
 
 # La subruta que significa «el plugin ES el repositorio entero». PUBLICA y definida SOLO aqui: el
-# adaptador del catalogo la declaraba por su cuenta con el mismo valor, y una constante con el mismo
-# valor en dos sitios es lo que G2 nombra literalmente. El dominio la posee porque el significado de
-# `.` es una regla del estandar -- que la raiz del repositorio es una subruta valida -- y no un detalle
-# de como se escribe el catalogo. El adaptador la importa, o sea la flecha apunta hacia dentro (G5).
+# adaptador del marketplace la declaraba por su cuenta con el mismo valor, y una constante con el
+# mismo valor en dos sitios es lo que G2 nombra literalmente. El dominio la posee porque el significado
+# de `.` es una regla del estandar -- que la raiz del repositorio es una subruta valida -- y no un
+# detalle de como se escribe el marketplace. El adaptador la importa, o sea la flecha apunta hacia
+# dentro (G5).
 SUBRUTA_DEL_REPOSITORIO = "."
 
 
@@ -73,7 +74,7 @@ def evaluar(candidato: Candidato) -> Decision:
 
     EL ORDEN DE LAS PREGUNTAS ES DELIBERADO, y se corrigio: el SELLO se exige PRIMERO y a TODOS.
     Preguntar antes por el plugin dejaba que un artefacto suelto se omitiera sin verificar nada, y
-    entonces algo publicado sin sellar llegaba a la ficha del catalogo como si estuviera bien --
+    entonces algo publicado sin sellar llegaba al marketplace como si estuviera bien --
     exactamente el hueco que el sello existe para cerrar.
 
     El plugin se pregunta DESPUES porque no decide si algo es instalable, solo DONDE se lista.

@@ -13,7 +13,7 @@ import os
 import sys
 from pathlib import Path
 
-from indice_agentico.adaptadores import catalogo, esquema
+from indice_agentico.adaptadores import esquema, marketplace
 from indice_agentico.aplicacion.generar import generar
 from indice_agentico.dominio.candidato import Indice
 
@@ -25,7 +25,7 @@ TOPICO_POR_DEFECTO = "agent-skills"
 # Donde vive `marketplace.schema.json`: en el repositorio del estandar, que es donde se publica el
 # contrato. No se empaqueta dentro del indice para que no haya dos copias que puedan derivar (G2).
 DIRECTORIO_DE_ESQUEMAS_POR_DEFECTO = Path("schemas")
-NOMBRE_CATALOGO_POR_DEFECTO = "agentico"
+NOMBRE_MARKETPLACE_POR_DEFECTO = "agentico"
 # ESTOS TRES FORMATOS SON IDENTICOS a los de `validador_agentico.adaptadores.registro`, y la
 # duplicacion es DELIBERADA. Se deja escrito porque G2 no admite duplicar en silencio:
 #
@@ -55,7 +55,7 @@ _VALOR_CI = "true"
 
 
 def _configurar_logging(verboso: bool) -> None:
-    """A stderr; el catalogo generado va a stdout o a un archivo (L8)."""
+    """A stderr; el marketplace generado va a stdout o a un archivo (L8)."""
     manejador = logging.StreamHandler(sys.stderr)
     manejador.setFormatter(logging.Formatter(
         fmt=FORMATO_CI if os.getenv(_VARIABLE_CI) == _VALOR_CI else FORMATO_LOCAL,
@@ -72,10 +72,11 @@ def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("organizacion", help="organizacion de GitHub donde viven los dominios")
     parser.add_argument("--topico", default=TOPICO_POR_DEFECTO,
                         help="topico que marca un repositorio de dominio")
-    parser.add_argument("--nombre", default=NOMBRE_CATALOGO_POR_DEFECTO, help="`name` del catalogo")
+    parser.add_argument("--nombre", default=NOMBRE_MARKETPLACE_POR_DEFECTO,
+                        help="`name` del marketplace")
     parser.add_argument("--equipo", default="Plataforma Agentica (demo)")
     parser.add_argument("--contacto", default="plataforma-agentica@ejemplo.dev")
-    parser.add_argument("--version", default="0.1.0", help="version del catalogo")
+    parser.add_argument("--version", default="0.1.0", help="version del marketplace")
     parser.add_argument("--raiz", type=Path,
                         help="raiz del repositorio del marketplace donde escribir LAS DOS "
                              "proyecciones, cada una en la ruta que su cliente lee; por defecto, "
@@ -104,11 +105,12 @@ def escribir(indice: Indice, raiz: Path, contenidos: dict,
     el guardarail sin parchear nada: recibe el indice y la raiz, y devuelve el codigo de salida.
 
     Las dos se escriben en la misma llamada a proposito: si una se pudiera actualizar sin la otra,
-    los usuarios de un cliente veran un catalogo mas viejo que los del otro sin que nada lo indique.
+    los usuarios de un cliente veran un marketplace mas viejo que los del otro sin que nada lo
+    indique.
     """
     if indice.entradas:
         # SE VALIDAN LAS DOS ANTES DE ESCRIBIR NINGUNA. Validar despues solo documentaria que se
-        # publico algo malo, y escribir una y abortar en la otra dejaria el catalogo a medias.
+        # publico algo malo, y escribir una y abortar en la otra dejaria el marketplace a medias.
         defectos = {
             proyeccion: esquema.incumplimientos(texto, proyeccion.subesquema,
                                                 directorio_de_esquemas)
@@ -119,8 +121,8 @@ def escribir(indice: Indice, raiz: Path, contenidos: dict,
                 for defecto in incumplimientos:
                     log.error("%s no cumple el esquema del marketplace: %s",
                               proyeccion.ruta, defecto)
-            log.error("no se escribe ninguna proyeccion: un catalogo que no cumple el esquema es un "
-                      "catalogo que algun cliente no sabra instalar")
+            log.error("no se escribe ninguna proyeccion: un marketplace que no cumple el esquema es "
+                      "un marketplace que algun cliente no sabra instalar")
             return SALIDA_ERROR
 
         for proyeccion, texto in contenidos.items():
@@ -131,7 +133,7 @@ def escribir(indice: Indice, raiz: Path, contenidos: dict,
         return SALIDA_OK
 
     # Un indice vacio sobreescribiendo uno que funcionaba desinstalaria todo de golpe. Nunca es un
-    # catalogo legitimo, asi que no se escribe -- pero el MOTIVO se distingue, porque los dos casos
+    # marketplace legitimo, asi que no se escribe -- pero el MOTIVO se distingue, porque los dos casos
     # se arreglan en sitios distintos.
     #
     # Medido en CI: con el GITHUB_TOKEN del propio repositorio del indice, el descubrimiento
@@ -141,7 +143,7 @@ def escribir(indice: Indice, raiz: Path, contenidos: dict,
     # de los dominios en vez de el token.
     if indice.omisiones and not indice.rechazos:
         log.error("los %d repositorio(s) descubiertos son artefactos SUELTOS, sin plugin: no hay "
-                  "nada que indexar. No es un fallo -- pero tampoco se sobreescribe un catalogo "
+                  "nada que indexar. No es un fallo -- pero tampoco se sobreescribe un marketplace "
                   "que si tenia entradas", len(indice.omisiones))
     elif indice.rechazos:
         log.error("se descubrieron %d repositorio(s) y NINGUNO paso las comprobaciones: revisa los "
@@ -163,15 +165,15 @@ def main(argv: list[str] | None = None) -> int:
 
     propietario = {"name": argumentos.equipo, "email": argumentos.contacto}
     contenidos = {
-        proyeccion: catalogo.render(indice, argumentos.nombre, propietario, argumentos.version,
-                                    proyeccion)
-        for proyeccion in catalogo.Proyeccion
+        proyeccion: marketplace.render(indice, argumentos.nombre, propietario, argumentos.version,
+                                       proyeccion)
+        for proyeccion in marketplace.Proyeccion
     }
 
     if argumentos.raiz is None:
         # A stdout va UNA, porque stdout es un solo flujo que otro proceso consume. Se dice cual por
         # el log (stderr) para que nadie asuma que es la del cliente que le interesa.
-        proyeccion = catalogo.Proyeccion.CLAUDE_CODE
+        proyeccion = marketplace.Proyeccion.CLAUDE_CODE
         log.info("sin --raiz: se emite la proyeccion de %s por stdout", proyeccion.ruta)
         print(contenidos[proyeccion], end="")
         return SALIDA_OK

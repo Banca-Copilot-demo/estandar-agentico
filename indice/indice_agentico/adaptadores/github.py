@@ -75,9 +75,9 @@ def etiquetas_publicadas(repositorio: str) -> tuple[str, ...]:
         return ()
     releases = json.loads(salida)
     # NI BORRADORES NI PRELANZAMIENTOS. Un borrador no esta publicado, y `prerelease` es la senal
-    # NATIVA de GitHub para «esto no es para consumo general»: es lo que permite RETIRAR del catalogo
-    # un release cuyo plugin ya no se mantiene sin borrarlo -- un release publicado no se puede
-    # borrar sin romper las atestaciones que cuelgan de el, y marcarlo se deshace en un clic.
+    # NATIVA de GitHub para «esto no es para consumo general»: es lo que permite RETIRAR del
+    # marketplace un release cuyo plugin ya no se mantiene sin borrarlo -- un release publicado no
+    # se puede borrar sin romper las atestaciones que cuelgan de el, y marcarlo se deshace en un clic.
     publicados = [r for r in releases if not r.get("isDraft") and not r.get("isPrerelease")]
     retirados = len(releases) - len(publicados)
     if retirados:
@@ -118,8 +118,8 @@ def _sha_de_la_etiqueta(repositorio: str, etiqueta: str) -> str | None:
     """El commit al que apunta la etiqueta, resuelto.
 
     NO se usa `targetCommitish` del release, y esto se midio: para un release creado desde una
-    etiqueta devuelve el NOMBRE DE LA RAMA -- literalmente `main` --, asi que la entrada del catalogo
-    quedaba con `sha: main`. Un puntero movil es exactamente lo que el `sha` existe para evitar: la
+    etiqueta devuelve el NOMBRE DE LA RAMA -- literalmente `main` --, asi que la entrada del
+    marketplace quedaba con `sha: main`. Un puntero movil es exactamente lo que el `sha` existe para evitar: la
     etiqueta se puede reescribir si el repositorio no tiene releases inmutables, y `main` avanza con
     cada commit.
     """

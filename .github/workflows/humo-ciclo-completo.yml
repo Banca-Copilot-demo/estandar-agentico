@@ -1,6 +1,6 @@
 name: Humo del ciclo completo
 
-# Recorre el camino de INSTALACION contra lo que esta publicado de verdad: la ficha del catalogo, el
+# Recorre el camino de INSTALACION contra lo que esta publicado de verdad: la ficha de Port, el
 # release, su atestacion, y los casos negativos.
 #
 # NO corre en cada push. Depende de que haya un release publicado y de credenciales de la
@@ -10,11 +10,11 @@ on:
   workflow_dispatch:
     inputs:
       id-skill:
-        description: Id del artefacto de tipo skill en el catalogo.
+        description: Id del artefacto de tipo skill en Port.
         required: false
         default: demo.sdlc.validar-contrato-openapi
       id-prompt:
-        description: Id del artefacto de tipo prompt en el catalogo.
+        description: Id del artefacto de tipo prompt en Port.
         required: false
         default: demo.sdlc.migrar
       nombre-skill:
@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: ¿Estan las credenciales del catalogo?
+      - name: ¿Estan las credenciales de Port?
         id: port
         env:
           ID: ${{ secrets.PORT_CLIENT_ID }}

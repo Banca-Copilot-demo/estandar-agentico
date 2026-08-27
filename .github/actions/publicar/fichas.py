@@ -10,7 +10,7 @@ verdad sobre el mismo artefacto -- el problema que el sello existe para eliminar
 
 UN FALLO AQUI NO DESHACE LA PUBLICACION. El release y las atestaciones ya existen y son
 inmutables; la ficha es la vitrina. Si Port no responde, se avisa y se sigue: el artefacto YA es
-instalable y el catalogo se pone al dia en la siguiente publicacion.
+instalable y Port se pone al dia en la siguiente publicacion.
 
 LA FICHA SE VALIDA CONTRA EL BLUEPRINT ANTES DE ENVIARLA, y esto corrige una asimetria de nuestro
 propio diseno: las dos proyecciones del marketplace se validan contra su esquema ANTES de escribirse
@@ -45,14 +45,14 @@ from validador_agentico.dominio.politica import ESTADO_AL_PUBLICAR, promocion_de
 # Reexportado a proposito: `plugin_que_contiene` era una regla pura viviendo en este adaptador, y
 # ahora la comparte con la pieza que fija el estado en transiciones posteriores.
 plugin_que_contiene = ficha.plugin_que_contiene
-CATALOGO = ficha.CATALOGO
+MARKETPLACE = ficha.MARKETPLACE
 
 log = logging.getLogger(__name__)
 
 # El blueprint vive en el repositorio del estandar, tres niveles por encima de esta accion. Es la misma
 # forma de referencia que usa el `pip install` de la accion, asi que la topologia ya es parte del
 # contrato de este directorio y no se introduce nada nuevo.
-_BLUEPRINT_DEL_CATALOGO = Path(__file__).resolve().parents[3] / "port" / \
+_BLUEPRINT_DE_PORT = Path(__file__).resolve().parents[3] / "port" / \
     "blueprint-artefacto-agentico.json"
 
 # Cuanto se cita del cuerpo de una respuesta de error: lo justo para diagnosticar sin volcar
@@ -78,7 +78,7 @@ def _pista_de_verificacion(artefacto: dict, viaja_en_un_paquete: bool, repositor
 
     LA CONDICION ES SI EL CONSUMIDOR ACABA CON UN PAQUETE, no si el artefacto se distribuye. Son
     cosas distintas desde que publicar y distribuir se separaron: un artefacto Conforme dentro de un
-    plugin NO esta en el catalogo y aun asi se entrega empaquetado -- descargando el release --, asi
+    plugin NO esta en el marketplace y aun asi se entrega empaquetado -- descargando el release --, asi
     que lo que tiene que verificar es la atestacion y no un sha256 suelto.
     """
     if viaja_en_un_paquete or artefacto["tipo"] == ficha.TIPO_SKILL:
@@ -91,7 +91,7 @@ def _pista_de_verificacion(artefacto: dict, viaja_en_un_paquete: bool, repositor
 
 def _entidad(artefacto: dict, veredicto: dict, argumentos: argparse.Namespace) -> dict:
     # EL PLUGIN DE ESTE ARTEFACTO, no el del repositorio. `tiene_plugin` es del repositorio entero, y
-    # usarlo aqui daba por instalable-por-catalogo a un artefacto suelto SIN plugin solo porque un
+    # usarlo aqui daba por instalable-por-marketplace a un artefacto suelto SIN plugin solo porque un
     # vecino si lo tenia -- y entonces la pista salia como `plugin install @agentico`, con el nombre
     # vacio: un comando que no resuelve. Con la publicacion por artefacto suelto individual el caso
     # deja de ser teorico, porque en un mismo repositorio conviven sueltos con manifiesto y sin el.
@@ -129,7 +129,7 @@ def _entidad(artefacto: dict, veredicto: dict, argumentos: argparse.Namespace) -
             "sha256_archivo": artefacto.get("sha256", ""),
             # Solo lo trae un `mcp`, y solo cuando su credencial exige que alguien la conceda. Va en
             # la ficha porque ningun cliente lo muestra: es un campo propio sin convencion, y su
-            # consumidor es el catalogo y el instalador.
+            # consumidor es Port y el instalador.
             **_custodia_de_la_credencial(veredicto),
             "en_marketplace": en_marketplace,
         },
@@ -155,11 +155,11 @@ def _validador_del_blueprint() -> Draft202012Validator | None:
 
     `None` si el blueprint no se puede leer. Es degradacion deliberada y NO un error: este script
     corre despues de que el release y las atestaciones ya existan, asi que abortar aqui no protegeria
-    nada -- el artefacto ya es instalable -- y dejaria el catalogo desactualizado por un problema de
+    nada -- el artefacto ya es instalable -- y dejaria Port desactualizado por un problema de
     lectura de archivo. Se avisa, que es lo que hace el resto del modulo ante un fallo de vitrina.
     """
     try:
-        blueprint = json.loads(_BLUEPRINT_DEL_CATALOGO.read_text(encoding="utf-8"))
+        blueprint = json.loads(_BLUEPRINT_DE_PORT.read_text(encoding="utf-8"))
     except OSError as fallo:
         log.warning("no se pudo leer el blueprint (%s): las fichas se envian sin validar", fallo)
         return None
@@ -194,7 +194,7 @@ def _publicar(entidad: dict, token: str) -> str:
 
 
 def _parsear_argumentos() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Publica las fichas del catalogo en Port.")
+    parser = argparse.ArgumentParser(description="Publica las fichas de los artefactos en Port.")
     parser.add_argument("--veredicto", type=Path, required=True,
                         help="predicado firmado del que se construye la ficha")
     parser.add_argument("--repositorio", required=True)
@@ -206,14 +206,14 @@ def _parsear_argumentos() -> argparse.Namespace:
                         help="subruta de la unidad que ESTA publicacion sella; `.` es el "
                              "repositorio entero o su conjunto suelto")
     parser.add_argument("--promocion", required=True,
-                        help="politica de promocion al catalogo ya resuelta por la accion")
+                        help="politica de promocion al marketplace ya resuelta por la accion")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Activa logging DEBUG (detalles internos de ejecucion).")
     argumentos = parser.parse_args()
     # Se convierte aqui y no en cada uso: `promocion_declarada` degrada a la politica MAS
     # RESTRICTIVA ante un valor que no reconoce, asi que un fallo de cableado deja de distribuir en
     # vez de distribuir de mas.
-    argumentos.promocion = promocion_declarada({"promocion_al_catalogo": argumentos.promocion})
+    argumentos.promocion = promocion_declarada({"promocion_al_marketplace": argumentos.promocion})
     return argumentos
 
 
@@ -256,7 +256,7 @@ def main() -> int:
     if fallos:
         # Aviso y no error: el release y las atestaciones ya son inmutables, y el artefacto YA es
         # instalable. La ficha se pone al dia en la siguiente publicacion.
-        print(f"::warning::{fallos} ficha(s) no se pudieron publicar en el catalogo. "
+        print(f"::warning::{fallos} ficha(s) no se pudieron publicar en Port. "
               "El artefacto ya es instalable: la vitrina se pone al dia despues.")
     return 0
 

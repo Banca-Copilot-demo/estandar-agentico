@@ -59,15 +59,15 @@ def raices_de_artefacto_individual(raiz: Path, rutas_manifiesto: tuple[str, ...]
                                     directorios_de_artefactos: tuple[str, ...]) -> tuple[Path, ...]:
     """Los artefactos SUELTOS que traen manifiesto propio: `skills/<n>/`, `commands/<n>/`, ...
 
-    POR QUE EXISTEN. Un artefacto suelto sin manifiesto NO se puede distribuir por el catalogo, y esta
-    MEDIDO contra los dos clientes: con el contenido en otro repositorio -- que es la topologia real,
-    catalogo aparte y artefactos en repos de dominio -- la instalacion falla con «No plugin.json found
-    in repository». `strict: false` solo exime del manifiesto cuando el contenido vive DENTRO del
-    propio catalogo, que no es nuestro caso. Sin entrada en el catalogo, un suelto no queda sujeto al
-    estado: se instala igual este certificado, conforme o suspendido.
+    POR QUE EXISTEN. Un artefacto suelto sin manifiesto NO se puede distribuir por el marketplace, y
+    esta MEDIDO contra los dos clientes: con el contenido en otro repositorio -- que es la topologia
+    real, marketplace aparte y artefactos en repos de dominio -- la instalacion falla con «No
+    plugin.json found in repository». `strict: false` solo exime del manifiesto cuando el contenido
+    vive DENTRO del propio marketplace, que no es nuestro caso. Sin entrada en el marketplace, un
+    suelto no queda sujeto al estado: se instala igual este certificado, conforme o suspendido.
 
     Con manifiesto propio, cada suelto es su propia unidad publicable: version propia, digesto propio y
-    entrada propia en el catalogo. Antes compartian los tres con todos los sueltos del repositorio, asi
+    entrada propia en el marketplace. Antes compartian los tres con todos los sueltos del repositorio, asi
     que tocar un prompt cambiaba el digesto del skill que nadie habia tocado.
 
     SE RECONOCEN POR EL MANIFIESTO, igual que los plugins anidados. La diferencia es DONDE se busca:

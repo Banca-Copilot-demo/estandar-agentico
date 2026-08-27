@@ -4,7 +4,7 @@ QUE CAMBIO Y POR QUE. El inventario se declaraba con CONTEOS -- `{"skills": 2, "
 pasa a declararse con LISTAS DE IDS -- `{"skills": ["demo.sdlc.revisar-cobertura"]}` --. El motivo
 esta medido y es un falso negativo del conteo: en un mismo pull request, borrar un skill y anadir
 otro deja el numero EXACTAMENTE igual, asi que el cotejo contra el arbol real no encuentra nada que
-decir y el catalogo publica un inventario que ya no corresponde. Con nombres, lo que se compara son
+decir y Port publica un inventario que ya no corresponde. Con nombres, lo que se compara son
 identidades y ese cambio se ve.
 
 QUE SALE DEL BLOQUE, y tampoco es cosmetico:

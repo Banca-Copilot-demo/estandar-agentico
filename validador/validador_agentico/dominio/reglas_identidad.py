@@ -39,7 +39,7 @@ class Identidad:
 def _identidad_declarada(texto: str, campo_nombre: str, donde: str) -> Identidad | None:
     """La identidad de un JSON ya leido, o `None` si no es JSON o le falta alguno de los dos campos.
 
-    Una unidad sin nombre no se puede resolver en el catalogo y una sin version no se puede
+    Una unidad sin nombre no se puede resolver en el marketplace y una sin version no se puede
     etiquetar: devolver una identidad a medias haria que el llamador la tratara como valida.
     """
     try:

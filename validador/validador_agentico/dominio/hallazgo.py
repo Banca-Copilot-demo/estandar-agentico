@@ -45,8 +45,8 @@ def aviso(donde: str, mensaje: str) -> Hallazgo:
 class Inventario:
     """Cuantos artefactos de cada tipo encontro el validador en el arbol real, y si hay plugin.
 
-    Se compara contra lo DECLARADO en `GOVERNANCE.json`: un catalogo que publica un inventario
-    que no existe es peor que no tener catalogo.
+    Se compara contra lo DECLARADO en `GOVERNANCE.json`: una ficha de Port que publica un inventario
+    que no existe es peor que no tener ficha.
     """
 
     skills: int = 0
@@ -55,12 +55,12 @@ class Inventario:
     mcps: int = 0
     hooks: int = 0
     tiene_plugin: bool = False
-    # El `name` del manifiesto. Es lo que se instala -- `copilot plugin install <name>@<catalogo>` --,
+    # El `name` del manifiesto. Es lo que se instala -- `copilot plugin install <name>@<marketplace>` --,
     # y no el id de un artefacto: un plugin se instala completo.
     nombre_plugin: str = ""
     # LAS IDENTIDADES DEL ARBOL REAL, por tipo. Estan aqui y no solo el conteo porque un CONTEO tiene
     # un falso negativo MEDIDO: borrar un skill y anadir otro en el mismo pull request deja el numero
-    # igual, asi que el cotejo contra el inventario declarado no ve NADA y el catalogo publica una
+    # igual, asi que el cotejo contra el inventario declarado no ve NADA y Port publica una
     # lista que ya no existe. Con nombres, el gate compara identidades y ese cambio si se ve.
     #
     # Un artefacto sin `metadata.id` no aporta identidad -- su propia regla ya lo reprocha --, asi que
@@ -85,7 +85,7 @@ class Inventario:
 
 @dataclass(frozen=True)
 class ArtefactoPublicado:
-    """Lo que el catalogo necesita saber de UN artefacto. Sale del envelope, que el gate ya valido."""
+    """Lo que Port necesita saber de UN artefacto. Sale del envelope, que el gate ya valido."""
 
     id: str
     tipo: str

@@ -80,7 +80,7 @@ def render_json(veredicto: Veredicto, nombre_repositorio: str) -> str:
             "tiene_plugin": veredicto.inventario.tiene_plugin,
             "nombre_plugin": veredicto.inventario.nombre_plugin,
         },
-        # Una entrada por artefacto, para que la ficha del catalogo se construya de lo SELLADO y no
+        # Una entrada por artefacto, para que la ficha de Port se construya de lo SELLADO y no
         # releyendo el repositorio -- que seria una segunda fuente de verdad.
         "artefactos": [
             # LOS CAMPOS POR TIPO SE OMITEN CUANDO NO APLICAN en vez de emitirse vacios: un campo

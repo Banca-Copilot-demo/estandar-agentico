@@ -57,7 +57,7 @@ caminos y ninguno es un artefacto nuevo:
   artefacto es un **skill** o un **prompt**, que sí viajan en el plugin. Pierdes la
   aplicación automática y ganas que exista de verdad en el repositorio de quien lo instale.
 - **Si la regla es local del equipo**, escribe unas `instructions` en tu repositorio y ya
-  está: es legítimo y así funciona el cliente. Queda fuera del catálogo, y el gate solo
+  está: es legítimo y así funciona el cliente. Queda fuera de Port y del marketplace, y el gate solo
   avisará de que existen y de su alcance.
 
 Y si la regla **debe ser inviolable**, no puede vivir en una instrucción de ninguna forma:
@@ -78,12 +78,12 @@ Ejecuta `scripts/generar.sh <tipo> <nombre>`. El script copia el esqueleto de `a
 Si el desarrollador quiere publicarlo **suelto** —porque no viaja con nadie y tiene su propio
 ritmo de cambio— usa `scripts/generar.sh --unidad <tipo> <nombre>`. Crea el artefacto **con su
 propio manifiesto**, asi que se publica como una unidad independiente: version, etiqueta, digesto y
-entrada de catalogo propios.
+entrada de marketplace propios.
 
 **No es opcional si se quiere distribuir.** Un artefacto suelto sin manifiesto **no entra al
-catalogo**, y esta medido contra los dos clientes: con el contenido en otro repositorio —que es la
+marketplace**, y esta medido contra los dos clientes: con el contenido en otro repositorio —que es la
 topologia real— la instalacion falla con `No plugin.json found in repository`. Y lo que no esta en
-el catalogo no lo gobierna el estado: se instalaria igual estuviera certificado, conforme o
+el marketplace no lo gobierna el estado: se instalaria igual estuviera certificado, conforme o
 suspendido.
 
 Lo que el modo `--unidad` resuelve por su cuenta, y conviene no rehacerlo a mano:

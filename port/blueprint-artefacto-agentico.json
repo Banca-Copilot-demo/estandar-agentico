@@ -8,7 +8,7 @@
       "tipo": {
         "type": "string",
         "title": "Tipo",
-        "description": "Uno de los CINCO tipos que el estandar gobierna. `instructions` estaba en la lista y se retiro: dejo de ser un tipo gobernado porque no hay canal que la distribuya. Son mas que el `kind` del envelope -- que solo cubre skill, agent y prompt -- porque el catalogo si publica ficha del `mcp` y de los `hooks`: su gobierno vive en el GOVERNANCE.json del plugin, no en un frontmatter, y aun asi son capacidades que alguien tiene que poder encontrar y auditar.",
+        "description": "Uno de los CINCO tipos que el estandar gobierna. `instructions` estaba en la lista y se retiro: dejo de ser un tipo gobernado porque no hay canal que la distribuya. Son mas que el `kind` del envelope -- que solo cubre skill, agent y prompt -- porque Port si publica ficha del `mcp` y de los `hooks`: su gobierno vive en el GOVERNANCE.json del plugin, no en un frontmatter, y aun asi son capacidades que alguien tiene que poder encontrar y auditar.",
         "enum": [
           "skill",
           "agent",
@@ -122,7 +122,7 @@
       "credential_owner": {
         "type": "string",
         "title": "Quien custodia la credencial",
-        "description": "Equipo al que se le pide el acceso, SIEMPRE un grupo. No es el `owner_team` del artefacto: ese es quien lo publico. Son dos duenos distintos, y el consumidor necesita el segundo. Campo propio: no existe convencion en la industria -- el server.json del registro de MCP declara que la credencial es secreta, pero no quien la concede -- asi que ningun cliente lo muestra: lo muestra el catalogo y lo imprime el instalador antes del prompt."
+        "description": "Equipo al que se le pide el acceso, SIEMPRE un grupo. No es el `owner_team` del artefacto: ese es quien lo publico. Son dos duenos distintos, y el consumidor necesita el segundo. Campo propio: no existe convencion en la industria -- el server.json del registro de MCP declara que la credencial es secreta, pero no quien la concede -- asi que ningun cliente lo muestra: lo muestra Port y lo imprime el instalador antes del prompt."
       },
       "access_request_url": {
         "type": "string",

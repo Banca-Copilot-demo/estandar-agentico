@@ -1,4 +1,4 @@
-"""Lo que la ficha del catalogo dice de un artefacto SEGUN SU ESTADO. Regla pura: sin I/O.
+"""Lo que la ficha de Port dice de un artefacto SEGUN SU ESTADO. Regla pura: sin I/O.
 
 POR QUE ESTO ES UNA REGLA Y NO TRES LINEAS EN EL SCRIPT QUE ESCRIBE LA FICHA. La pregunta «¿este
 artefacto se distribuye?» tiene hoy DOS escritores -- la publicacion, que escribe la ficha entera, y
@@ -6,10 +6,10 @@ las transiciones de estado, que solo tocan lo que el estado cambia -- y manana t
 (suspension, reactivacion, obsolescencia, retirada). Si cada uno la respondiera por su cuenta,
 tendriamos siete formas de decir lo mismo y divergirian en la primera correccion.
 
-EL DEFECTO QUE CIERRA, medido en el catalogo real: una ficha en estado `conformant` -- que por
+EL DEFECTO QUE CIERRA, medido en Port real: una ficha en estado `conformant` -- que por
 politica NO se distribuye -- declaraba `en_marketplace: True` y una pista de instalacion
-`copilot plugin install <plugin>@<catalogo>`. Ese comando NO RESUELVE, porque el artefacto no esta en
-el marketplace. La ficha prometia algo que el catalogo no puede cumplir.
+`copilot plugin install <plugin>@<marketplace>`. Ese comando NO RESUELVE, porque el artefacto no esta
+en el marketplace. La ficha de Port prometia algo que el marketplace no puede cumplir.
 
 La causa era que `en_marketplace` significaba «es un componente que un plugin transporta», que es una
 propiedad del TIPO. Desde que publicar y distribuir son dos actos distintos, lo que decide si algo se
@@ -18,17 +18,17 @@ necesaria.
 """
 from __future__ import annotations
 
-from validador_agentico.dominio.politica import Promocion, entra_al_catalogo
+from validador_agentico.dominio.politica import Promocion, entra_al_marketplace
 from validador_agentico.dominio.reglas_layout import RAIZ_DEL_REPOSITORIO, unidad_de
 
-# `name` del catalogo del marketplace: el que resuelve `<plugin>@<catalogo>`.
-CATALOGO = "agentico"
+# `name` del marketplace: el que resuelve `<plugin>@<marketplace>`.
+MARKETPLACE = "agentico"
 
 # Donde espera cada cliente un prompt traido a mano. `commands/` en el origen; en el destino lo fija
 # el cliente, no nosotros.
 DESTINO_PROMPT = ".github/prompts"
 
-# Los tipos que un plugin TRANSPORTA. Es condicion NECESARIA para distribuirse por el catalogo, pero
+# Los tipos que un plugin TRANSPORTA. Es condicion NECESARIA para distribuirse por el marketplace, pero
 # ya no suficiente: hace falta ademas que el estado lo permita.
 #
 # `prompt` SE AÑADIO DESPUES, y el comentario anterior decia lo contrario: que ni `prompt` ni
@@ -90,7 +90,7 @@ def _unidad_que_contiene(ruta_del_artefacto: str, unidades: list[dict]) -> dict 
 def plugin_que_contiene(ruta_del_artefacto: str, plugins: list[dict]) -> str:
     """El nombre del plugin dentro del que vive `ruta_del_artefacto`, o cadena vacia si ninguno.
 
-    EL DEFECTO QUE ESTO ARREGLA, visto mirando el catalogo real y no el codigo: la pista de
+    EL DEFECTO QUE ESTO ARREGLA, visto mirando Port real y no el codigo: la pista de
     instalacion se construia con `inventario.nombre_plugin`, que es UN nombre a nivel de
     REPOSITORIO. En un repositorio con varios plugins ese unico nombre se aplicaba a TODOS los
     artefactos, asi que cuatro de los cinco quedaban apuntando al plugin equivocado.
@@ -106,7 +106,7 @@ def es_de_la_unidad(ruta_del_artefacto: str, subruta_publicada: str,
                     unidades: list[dict]) -> bool:
     """Si el artefacto pertenece a la unidad que ESTA publicacion sella.
 
-    EL DEFECTO QUE CIERRA, medido en el catalogo real: la publicacion de UNA unidad reescribia la
+    EL DEFECTO QUE CIERRA, medido en Port real: la publicacion de UNA unidad reescribia la
     ficha de TODOS los artefactos del repositorio, porque el predicado firmado es del repositorio
     entero. Consecuencia: publicar un skill le ponia a los artefactos vecinos -- sin tocarlos, sin
     volver a sellarlos -- la etiqueta, el sha y el digest de una version que no es la suya. La ficha
@@ -124,7 +124,7 @@ def es_de_la_unidad(ruta_del_artefacto: str, subruta_publicada: str,
 
 def esta_distribuido(estado: str, promocion: Promocion, pertenece_a_un_plugin: bool,
                      tipo: str) -> bool:
-    """Si el artefacto esta HOY en el marketplace instalable, y por tanto se instala por nombre.
+    """Si el artefacto esta HOY en el marketplace, y por tanto se instala por nombre.
 
     TRES CONDICIONES, y las tres hacen falta:
 
@@ -136,7 +136,7 @@ def esta_distribuido(estado: str, promocion: Promocion, pertenece_a_un_plugin: b
     """
     if tipo not in TIPOS_QUE_UN_PLUGIN_TRANSPORTA or not pertenece_a_un_plugin:
         return False
-    return entra_al_catalogo(estado, promocion)
+    return entra_al_marketplace(estado, promocion)
 
 
 def pista_de_instalacion(tipo: str, ruta: str, distribuido: bool, repositorio: str,
@@ -154,13 +154,13 @@ def pista_de_instalacion(tipo: str, ruta: str, distribuido: bool, repositorio: s
     if distribuido:
         # Se instala el PLUGIN, no el artefacto: un plugin se instala completo. Poner aqui el id del
         # artefacto daba un comando que no resuelve contra ninguna entrada del marketplace.
-        return f"copilot plugin install {nombre_plugin}@{CATALOGO}"
+        return f"copilot plugin install {nombre_plugin}@{MARKETPLACE}"
 
     # LAS DOS RAMAS DE ABAJO NECESITAN LA RUTA, y una ficha ya escrita puede no traerla: `ruta` se
-    # anadio al catalogo justo para que las transiciones de estado pudieran reconstruir la pista, asi
-    # que las fichas anteriores a ese cambio la tienen vacia. Sin esta guarda, una promocion sobre
-    # una ficha vieja reventaria al partir una cadena vacia -- y reventar en una transicion de estado
-    # es peor que dar la pista generica, porque deja el catalogo a medio actualizar.
+    # anadio a la ficha de Port justo para que las transiciones de estado pudieran reconstruir la
+    # pista, asi que las fichas anteriores a ese cambio la tienen vacia. Sin esta guarda, una
+    # promocion sobre una ficha vieja reventaria al partir una cadena vacia -- y reventar en una
+    # transicion de estado es peor que dar la pista generica, porque deja Port a medio actualizar.
     if tipo == TIPO_SKILL and ruta.count("/") >= _PROFUNDIDAD_MINIMA_DE_SKILL:
         # La forma es `gh skill install <repo> <skill[@version]>`, MEDIDO ejecutandolo: el nombre del
         # skill es un argumento aparte, no parte del repositorio. Concatenar la ruta al repositorio
@@ -169,7 +169,7 @@ def pista_de_instalacion(tipo: str, ruta: str, distribuido: bool, repositorio: s
         return f"gh skill install {repositorio} {ruta.rsplit('/', 2)[-2]}@{etiqueta}"
 
     if tipo == TIPO_PROMPT and ruta:
-        # UN PROMPT SIN CATALOGO. Es el unico camino que no pasa por un canal gobernado: quien lo
+        # UN PROMPT SIN MARKETPLACE. Es el unico camino que no pasa por un canal gobernado: quien lo
         # siga se traera el archivo este certificado, conforme o suspendido. La salida es publicarlo
         # como su propia unidad -- con manifiesto que declare `commands` --, no mejorar esta pista.
         #

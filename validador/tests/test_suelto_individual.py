@@ -1,11 +1,11 @@
 """Un artefacto SUELTO publicado por separado: que el gate lo trate como su propia unidad.
 
-POR QUE EXISTE ESTE CAMINO. Un artefacto suelto sin manifiesto propio NO entra al catalogo, y sin
-entrada de catalogo no queda sujeto al estado: se instala igual este certificado, conforme o
+POR QUE EXISTE ESTE CAMINO. Un artefacto suelto sin manifiesto propio NO entra al marketplace, y sin
+entrada de marketplace no queda sujeto al estado: se instala igual este certificado, conforme o
 suspendido. Esta MEDIDO contra los dos clientes -- con el contenido en otro repositorio, que es la
 topologia real, la instalacion falla con «No plugin.json found in repository» --.
 
-Con manifiesto propio cada suelto es una unidad: version, digesto, entrada de catalogo Y GOBIERNO
+Con manifiesto propio cada suelto es una unidad: version, digesto, entrada de marketplace Y GOBIERNO
 propios. El gobierno lo trae la unidad y no se hereda de la raiz, que es el defecto que estas
 pruebas fijan: heredarlo atribuia el `owner.team` del repositorio a un artefacto que se publica
 solo, en silencio y sin que ningun hallazgo lo dijera.

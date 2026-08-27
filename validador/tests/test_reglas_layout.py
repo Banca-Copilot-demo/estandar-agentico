@@ -176,9 +176,9 @@ def test_tiene_artefactos_propios_distingue_vacio_de_ausente(tmp_path):
 # ── artefactos sueltos con manifiesto propio ────────────────────────────────────────────────
 #
 # EL DEFECTO QUE CUBREN, medido contra los DOS clientes: un artefacto suelto sin manifiesto no se
-# puede instalar desde el catalogo cuando el contenido vive en otro repositorio -- que es la
+# puede instalar desde el marketplace cuando el contenido vive en otro repositorio -- que es la
 # topologia real --. Falla con «No plugin.json found in repository», asi que el suelto quedaba fuera
-# del catalogo y, por tanto, fuera del control de estado: se instalaba igual estuviera certificado,
+# del marketplace y, por tanto, fuera del control de estado: se instalaba igual estuviera certificado,
 # conforme o suspendido.
 def test_un_skill_con_manifiesto_propio_es_su_propia_unidad(tmp_path):
     _crear_skill(tmp_path, "revisar-jql")
@@ -189,7 +189,7 @@ def test_un_skill_con_manifiesto_propio_es_su_propia_unidad(tmp_path):
 
 def test_el_conjunto_suelto_NO_reempaqueta_lo_que_ya_es_unidad(tmp_path):
     """Si el conjunto suelto siguiera existiendo, cada artefacto viajaria en DOS paquetes con dos
-    digestos, y el catalogo tendria dos punteros al mismo contenido."""
+    digestos, y el marketplace tendria dos punteros al mismo contenido."""
     _crear_skill(tmp_path, "revisar-jql")
     _crear_plugin(tmp_path / "skills" / "revisar-jql")
 
