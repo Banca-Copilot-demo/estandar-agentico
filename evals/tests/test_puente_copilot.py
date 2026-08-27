@@ -10,6 +10,7 @@ desde fuera, la prueba no necesita conocer las tripas del modulo.
 """
 from __future__ import annotations
 
+import importlib.util
 import logging
 import os
 from dataclasses import dataclass
@@ -300,3 +301,33 @@ def test_la_orden_llega_completa_al_lanzador():
 
     assert lanzador.entrada == "la consulta", "la consulta llega por stdin"
     assert "-C" in lanzador.orden, "y el proyecto en la orden"
+
+
+def test_el_puente_se_puede_importar_COMO_LO_IMPORTA_EL_MOTOR():
+    """REGRESION del defecto que dejo TODAS las evaluaciones en rojo, y que ninguna otra prueba podia ver.
+
+    El envoltorio de promptfoo carga el script con `spec_from_file_location` + `exec_module` y **no lo
+    registra en `sys.modules`**. Con un `@dataclass` en el modulo eso revienta al importar, antes de
+    preguntarle nada al modelo: `dataclasses` resuelve las anotaciones diferidas -- las de
+    `from __future__ import annotations` -- consultando `sys.modules.get(cls.__module__).__dict__`, y
+    ese `get` devuelve `None`.
+
+        dataclasses.py:757  ns = sys.modules.get(cls.__module__).__dict__
+        AttributeError: 'NoneType' object has no attribute '__dict__'
+
+    MEDIDO en el run 33046073072 de `agentes-sdlc`: los tres casos de la suite de `revisar-jql` en rojo
+    con `Error running Python script`, sobre un artefacto que no tenia nada malo.
+
+    POR QUE NINGUNA OTRA PRUEBA LO ATRAPA: todas importan `puente_copilot` de la forma normal, que si lo
+    registra en `sys.modules`, y ahi `dataclass` funciona perfectamente. La unica forma de verlo es
+    reproducir la carga del motor, que es lo que hace esta prueba.
+    """
+    ruta = Path(__file__).resolve().parents[1] / "puente_copilot.py"
+    especificacion = importlib.util.spec_from_file_location("puente_cargado_por_ruta", ruta)
+    modulo = importlib.util.module_from_spec(especificacion)
+
+    # NO se registra en `sys.modules` A PROPOSITO: registrarlo haria pasar la prueba con el defecto
+    # puesto, que es exactamente lo que hacian las demas sin saberlo.
+    especificacion.loader.exec_module(modulo)
+
+    assert callable(modulo.call_api), "el motor busca `call_api` por reflexion sobre el modulo cargado"

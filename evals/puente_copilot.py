@@ -31,8 +31,8 @@ import logging
 import os
 import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 log = logging.getLogger(__name__)
 
@@ -140,9 +140,26 @@ def construir_orden(raiz_del_proyecto: Path, cli: str, agente: str | None = None
     ]
 
 
-@dataclass(frozen=True)
-class RespuestaDelCliente:
+class RespuestaDelCliente(NamedTuple):
     """Lo que el CLI devolvio, con el fallo de la HERRAMIENTA separado de la respuesta del ARTEFACTO.
+
+    ES UN `NamedTuple` Y NO UN `@dataclass`, y no es una preferencia de estilo: con `@dataclass` este
+    modulo NO SE PUEDE IMPORTAR por la via que usa promptfoo, y eso dejaba TODAS las evaluaciones en
+    rojo. MEDIDO y reproducido: el envoltorio del motor carga el script con
+    `spec_from_file_location` + `exec_module` y NO lo registra en `sys.modules`; `dataclasses` resuelve
+    las anotaciones diferidas -- las que crea `from __future__ import annotations` -- consultando
+    `sys.modules.get(cls.__module__).__dict__`, y ahi ese `get` devuelve `None`:
+
+        dataclasses.py:757  ns = sys.modules.get(cls.__module__).__dict__
+        AttributeError: 'NoneType' object has no attribute '__dict__'
+
+    El motor lo reporta como `Error running Python script`, asi que los tres casos de la suite fallaban
+    ANTES de preguntarle nada al modelo. `NamedTuple` no hace esa resolucion y sobrevive a la carga por
+    ruta -- comprobado con el mismo mecanismo --.
+
+    POR QUE NO LO VIERON LAS PRUEBAS: importan el modulo de la forma normal, que SI lo registra en
+    `sys.modules`. La unica forma de atraparlo es importarlo como lo hace el motor, y esa es justo la
+    prueba de regresion que acompana a este cambio.
 
     POR QUE UN TIPO Y NO UN `str` (P7, OO1): estas dos cosas se parecen -- ambas son texto -- y son
     exactamente lo contrario la una de la otra. `salida` es material sobre el que el motor puede opinar;
