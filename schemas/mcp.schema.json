@@ -2,71 +2,21 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/mcp.schema.json",
   "title": "MCP — las piezas de gobierno de un servidor de contexto",
-  "description": "El unico tipo que anade capacidades EJECUTABLES desde fuera de la organizacion, y el unico que se degrada SOLO: su aprobacion llega a su `review_by`, o el proveedor cambia las herramientas sin avisar y nadie se entera.\n\nESTE ARCHIVO NO DESCRIBE UN ARTEFACTO CON ENVELOPE, y ese cambio es deliberado. El gobierno del `mcp` vive en `GOVERNANCE.json`, bajo la clave `mcp`, asi que aqui solo estan las PIEZAS que ese archivo referencia con `$ref`. Dos razones, las dos medidas contra plugins reales:\n  1. `.mcp.json` es la configuracion que lee el CLIENTE. Los plugins oficiales de AWS la llevan con UNA sola clave de primer nivel -- `mcpServers` -- y ningun archivo de metadata al lado. Meter claves nuestras ahi nos haria depender de lo estricto que sea cada cliente, y ese fallo lo descubre el desarrollador al instalar, no el gate.\n  2. Un `mcp` es UNO POR PLUGIN, igual que el manifiesto y el gobierno. Los skills son muchos -- cada uno con su carpeta, donde un hermano es inequivoco --; un hermano en la raiz del plugin tendria nombre generico y competiria con `GOVERNANCE.json`.\n\nCONSECUENCIA: el `mcp` HEREDA del plugin el dueno, la clasificacion, el estado y la version del estandar. Antes los declaraba por su cuenta y eran cinco campos duplicados; duplicarlos es pedir que divergan. Lo unico que declara aparte es la custodia de la CREDENCIAL, que es de otro equipo -- quien publica el plugin no es quien concede el acceso --.\n\nSOBRE `server.json`: el registro oficial de MCP define ese formato para PUBLICAR un servidor en el registro. Aqui no se publica, se CONSUME desde un plugin, asi que no aplica -- y ninguno de los plugins reales que consumen un MCP lleva uno.\n\nAlineado a: el registro oficial de MCP (`packages[]` -> `source`, `remotes[].url` -> `endpoint`), y CVE-2025-54136 / taxonomia MCP-38 para el `tools_digest`.",
+  "description": "El unico tipo que anade capacidades EJECUTABLES desde fuera de la organizacion, y el unico que se degrada SOLO: su aprobacion llega a su `review_by`, o el proveedor cambia las herramientas sin avisar y nadie se entera.\n\nESTE ARCHIVO NO DESCRIBE UN ARTEFACTO CON ENVELOPE. El gobierno del `mcp` vive en `GOVERNANCE.json`, bajo la clave `mcp`, asi que aqui solo estan las PIEZAS que ese archivo referencia con `$ref`. Dos razones, las dos medidas contra plugins reales:\n  1. `.mcp.json` es la configuracion que lee el CLIENTE. Los plugins oficiales de AWS la llevan con UNA sola clave de primer nivel -- `mcpServers` -- y ningun archivo de metadata al lado. Meter claves nuestras ahi nos haria depender de lo estricto que sea cada cliente, y ese fallo lo descubre el desarrollador al instalar, no el gate.\n  2. Un `mcp` es UNO POR PLUGIN, igual que el manifiesto y el gobierno. Los skills son muchos -- cada uno con su carpeta, donde un hermano es inequivoco --; un hermano en la raiz del plugin tendria nombre generico y competiria con `GOVERNANCE.json`.\n\nCONSECUENCIA: el `mcp` HEREDA del plugin el dueno, la clasificacion y la version del estandar. Antes los declaraba por su cuenta y eran cinco campos duplicados; duplicarlos es pedir que divergan. Lo unico que declara aparte es la custodia de la CREDENCIAL, que es de otro equipo -- quien publica el plugin no es quien concede el acceso --.\n\nQUE CAMBIO EN ESTA VERSION, y no es cosmetico. El gobierno del `mcp` era una LISTA POSICIONAL de servidores y pasa a ser un OBJETO INDEXADO POR EL NOMBRE DEL SERVIDOR -- la misma clave que usa `mcpServers` --. Eso permite EMPAREJAR cada aprobacion con la entrada exacta de la configuracion, y con ello detectar dos derivas que la lista dejaba pasar en verde: un servidor CONFIGURADO Y NO APROBADO, y una APROBACION QUE SOBREVIVE a un servidor que ya no esta. El nombre no decide si algo es de fiar -- la plataforma documenta que un `serverName` NO es un control de seguridad, y quien decide que se ejecuta sigue siendo la identidad, la URL o el `paquete@version` -- sino que empareja dos declaraciones del MISMO repositorio.\n\nY DESAPARECEN `source`, `transport`, `endpoint` y `version_pin`, los cuatro por el mismo motivo: REPETIAN o DERIVABAN lo que ya esta en `.mcp.json`. Una copia que nada obliga a sincronizar se queda atras, y entonces el gate compara la configuracion contra una copia rancia en vez de contra la realidad. El fijado de version lo DERIVA el gate leyendo `.mcp.json`, que es el archivo que el cliente ejecuta.\n\nSOBRE `server.json`: el registro oficial de MCP define ese formato para PUBLICAR un servidor en el registro. Aqui no se publica, se CONSUME desde un plugin, asi que no aplica -- y ninguno de los plugins reales que consumen un MCP lleva uno.\n\nAlineado a: el registro oficial de MCP (`environmentVariables` y `headers`, con `isRequired` e `isSecret`, -> `credentials`), y CVE-2025-54136 / taxonomia MCP-38 para el `tools_digest`.",
   "$defs": {
-    "servidorGobernado": {
+    "servidorAprobado": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "name",
-        "source",
-        "transport"
+        "write_operations",
+        "approval"
       ],
+      "x-read-from": "GOVERNANCE.json",
+      "description": "La aprobacion de UN servidor, bajo su propio nombre. La clave del objeto es el nombre del servidor en `mcpServers`, asi que el nombre NO se repite dentro: repetirlo seria pedir que la clave y el campo divergieran, y entonces no se sabria cual manda.",
       "properties": {
-        "name": {
-          "type": "string"
-        },
-        "source": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "kind",
-            "ref",
-            "version_pin"
-          ],
-          "description": "De donde sale el servidor. Equivale a `packages[]` del registro oficial: `kind` es su `registryType`, `ref` su `identifier`, `version_pin` su `version`.",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "enum": [
-                "npm",
-                "pypi",
-                "oci",
-                "git",
-                "remote"
-              ]
-            },
-            "ref": {
-              "type": "string"
-            },
-            "version_pin": {
-              "type": "string",
-              "not": {
-                "const": "latest"
-              },
-              "description": "Version FIJADA. `latest` esta prohibido y el registro oficial tambien lo rechaza: sin fijar, el contenido que se aprobo y el que se ejecuta pueden ser distintos y nadie lo nota."
-            },
-            "integrity": {
-              "type": "string",
-              "description": "Digest del paquete, cuando el origen lo publica."
-            }
-          }
-        },
-        "transport": {
-          "type": "string",
-          "enum": [
-            "stdio",
-            "http",
-            "sse"
-          ]
-        },
-        "endpoint": {
-          "type": "string",
-          "description": "Solo para http y sse. Equivale a `remotes[].url` del registro oficial."
-        },
         "write_operations": {
           "type": "boolean",
-          "description": "Si alguna herramienta MODIFICA algo fuera del cliente. Es el unico indicador de RIESGO que se declara, porque es el que decide quien tiene que aprobar. Deliberadamente NO se pide la lista de herramientas PERMITIDAS ni los alcances de la credencial: el control efectivo lo ejerce la credencial, no este archivo, y un campo que parece un control sin serlo da falsa confianza. Eso NO alcanza a `tools_digest`, que es otra cosa: no autoriza nada, DETECTA que la superficie declarada cambio. Autorizar y detectar son problemas distintos y se resuelven en sitios distintos."
+          "description": "Si alguna herramienta MODIFICA algo fuera del cliente. Es el unico indicador de RIESGO que se declara, porque es el que decide quien tiene que aprobar y con que plazo de revision. Deliberadamente NO se pide la lista de herramientas PERMITIDAS ni los alcances de la credencial: el control efectivo lo ejerce la credencial, no este archivo, y un campo que parece un control sin serlo da falsa confianza. Eso NO alcanza a `tools_digest`, que es otra cosa: no autoriza nada, DETECTA que la superficie declarada cambio. Autorizar y detectar son problemas distintos y se resuelven en sitios distintos."
         },
         "tools_digest": {
           "type": "string",
@@ -76,131 +26,101 @@
         "tools_digest_date": {
           "type": "string",
           "format": "date",
-          "description": "Cuando se registro el digest. Sin esta fecha no se sabe si la comprobacion periodica compara contra algo reciente o contra algo de hace un año."
-        }
-      },
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "transport": {
-                "enum": [
-                  "http",
-                  "sse"
-                ]
-              }
-            },
-            "required": [
-              "transport"
-            ]
-          },
-          "then": {
-            "required": [
-              "endpoint"
-            ],
-            "description": "Con transporte remoto, DONDE conecta es parte del gobierno: es el destino al que sale el dato. Con stdio no hay endpoint que declarar."
+          "description": "Cuando se registro el digest. Sin esta fecha no se sabe si la comprobacion periodica compara contra algo reciente o contra algo de hace un ano."
+        },
+        "credentials": {
+          "type": "array",
+          "description": "Las credenciales que ESTE servidor necesita. Lista y no un `mechanism`, y la diferencia es que esto SE PUEDE COMPROBAR: el gate contrasta cada entrada contra los `${VAR}` que aparecen en el `env` y en los `headers` del `.mcp.json`. Con el campo anterior -- `{\"mechanism\": \"none\"}` -- el gobierno AFIRMABA que no habia credencial y no habia NADA contra que contrastarlo, asi que un servidor que declaraba `none` y traia una cabecera `Authorization: ${API_TOKEN}` salia CONFORME. Una lista vacia significa «este servidor no pide ninguna credencial», y eso el gate si lo verifica. Sigue el patron del registro oficial de MCP (`environmentVariables` y `headers`, con `isRequired` e `isSecret`).",
+          "items": {
+            "$ref": "#/$defs/credencial"
           }
         },
-        {
-          "if": {
-            "properties": {
-              "source": {
-                "properties": {
-                  "kind": {
-                    "const": "remote"
-                  }
-                },
-                "required": [
-                  "kind"
-                ]
-              }
-            },
-            "required": [
-              "source"
-            ]
-          },
-          "then": {
-            "required": [
-              "tools_digest",
-              "tools_digest_date"
-            ],
-            "description": "UN SERVIDOR REMOTO NO SE APRUEBA SIN EL DIGEST DE SUS HERRAMIENTAS. En los demas origenes el codigo se descarga y `version_pin` lo fija: ese paquete exacto es inmutable, y cambiarlo exige subir la version y pasar por un pull request. Un remoto corre en la infraestructura de otro y NO HAY VERSION QUE FIJAR -- su dueño puede cambiar mañana lo que sus herramientas declaran, y las descripciones son instrucciones para el modelo --. Ahi el digest no es un refuerzo: es el UNICO control que existe, y aprobar un remoto sin el es confianza ciega en un tercero. En los origenes descargables el digest es opcional porque `version_pin` ya cubre lo esencial."
-          }
+        "approval": {
+          "$ref": "#/$defs/aprobacion"
         }
-      ]
+      }
     },
-    "credenciales": {
+    "credencial": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "mechanism"
+        "name",
+        "kind",
+        "is_secret",
+        "is_required"
       ],
-      "x-read-from": "GOVERNANCE.json",
-      "description": "APORTACION NETA: el `server.json` del registro oficial declara que una credencial es necesaria y secreta, pero NO su dueno; y Backstage no tiene anotacion de «como se solicita el acceso». Es el unico campo del que no encontre equivalente en ningun origen.",
+      "description": "Una credencial que el servidor necesita, con DONDE viaja. El sitio importa y no es un matiz: una cabecera SALE POR LA RED hacia el servidor del tercero, y una variable de entorno se queda en el proceso local. Quien aprueba esta valorando cosas distintas segun cual sea.",
       "properties": {
-        "mechanism": {
+        "name": {
+          "type": "string",
+          "description": "El nombre de la variable o de la cabecera, NUNCA su valor. Es lo que el gate busca como `${...}` dentro del `.mcp.json`."
+        },
+        "kind": {
           "type": "string",
           "enum": [
-            "none",
-            "secret-ref",
-            "oauth",
-            "workload-identity"
-          ]
+            "env",
+            "header"
+          ],
+          "description": "`env` para una variable de entorno del proceso -- el mecanismo de un `stdio` --; `header` para una cabecera HTTP -- el de un remoto --. El gate comprueba que coincida con donde el `.mcp.json` la usa de verdad."
         },
-        "refs": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Los nombres de las variables de entorno, nunca sus valores. Equivale a `environmentVariables` del registro oficial."
+        "is_secret": {
+          "type": "boolean",
+          "description": "Si su valor es un secreto. Un `false` aqui dice que es un dato de configuracion -- una region, un identificador de cuenta -- y que no hace falta custodia."
+        },
+        "is_required": {
+          "type": "boolean",
+          "description": "Si el servidor no arranca sin ella. Un opcional que falta degrada; un obligatorio que falta deja el plugin instalado y muerto."
         },
         "ownership": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "SOLO se exige con `secret-ref`, porque es el unico mecanismo donde alguien tiene que CONCEDER algo a mano: con oauth o workload-identity el desarrollador se autentica con su propia identidad y no hay nada que pedir. El defecto que cierra no es tecnico, es de enrutado: el artefacto viaja sin secreto, el cliente pide el valor, y el desarrollador no sabe a quien pedirlo — el `owner_team` del artefacto es quien lo PUBLICO, no quien lo custodia.",
-          "properties": {
-            "credential_owner": {
-              "type": "string",
-              "description": "El EQUIPO que custodia el secreto, nunca una persona: un dueno individual deja la entrada huerfana en cuanto cambia de puesto."
-            },
-            "access_request_url": {
-              "type": "string",
-              "description": "DONDE se pide. Saber el equipo no basta: sin la via, el flujo acaba en un correo a ciegas."
-            },
-            "entitlement": {
-              "type": "string"
-            },
-            "secret_ref": {
-              "type": "string",
-              "description": "DONDE vive la credencial, nunca su valor: la ruta en la boveda de la organizacion -- p. ej. `secret/agentico/mcp/<id>` en HashiCorp Vault --. Tiene DOS consumidores: el desarrollador, que asi sabe de donde sacarla una vez concedida; y la comprobacion periodica del `tools_digest`, que necesita conectarse al servidor para listar sus herramientas y con esto sabe que leer sin que nadie cablee rutas a mano en un workflow. UNA RUTA POR MCP, no una compartida: si se filtra la de un servidor, no debe abrir la de otro. Y LA CREDENCIAL QUE HAYA AHI DEBE PODER SOLO LISTAR -- la comprobacion nunca invoca una herramienta, solo pide `tools/list` --: acotarla a eso convierte una fuga en «se conocen los nombres de las herramientas» en vez de «se puede hacer todo lo que las herramientas hacen». Custodiar bien una credencial demasiado amplia no arregla que sea demasiado amplia."
-            }
-          },
-          "required": [
-            "credential_owner",
-            "access_request_url"
-          ]
+          "$ref": "#/$defs/custodia"
         }
       },
       "allOf": [
         {
           "if": {
             "properties": {
-              "mechanism": {
-                "const": "secret-ref"
+              "is_secret": {
+                "const": true
               }
             },
             "required": [
-              "mechanism"
+              "is_secret"
             ]
           },
           "then": {
             "required": [
               "ownership"
             ],
-            "description": "Con `secret-ref` alguien tiene que CONCEDER el acceso a mano, asi que hay que decir quien y donde se pide. Con oauth o workload-identity el desarrollador usa su propia identidad y no hay nada que pedir."
+            "description": "UN SECRETO SIN CUSTODIA DECLARADA NO SE APRUEBA. El defecto que cierra no es tecnico, es de enrutado: el artefacto viaja SIN el secreto -- G3 rechaza cualquier token literal --, al instalar el cliente pide el valor, y el desarrollador se queda ahi porque el `owner_team` del plugin es quien lo PUBLICO y no quien ADMINISTRA el servicio. Son dos duenos distintos. Con `is_secret: false` no hay nada que conceder y no se exige."
           }
         }
       ]
+    },
+    "custodia": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "credential_owner",
+        "access_request_url"
+      ],
+      "description": "APORTACION NETA: el `server.json` del registro oficial declara que una credencial es necesaria y secreta, pero NO su dueno; y Backstage no tiene anotacion de «como se solicita el acceso». Es el unico campo del que no hay equivalente en ningun origen.",
+      "properties": {
+        "credential_owner": {
+          "type": "string",
+          "description": "El EQUIPO que custodia el secreto, nunca una persona: un dueno individual deja la entrada huerfana en cuanto cambia de puesto."
+        },
+        "access_request_url": {
+          "type": "string",
+          "description": "DONDE se pide. Saber el equipo no basta: sin la via, el flujo acaba en un correo a ciegas."
+        },
+        "entitlement": {
+          "type": "string"
+        },
+        "secret_ref": {
+          "type": "string",
+          "description": "DONDE vive la credencial, nunca su valor: la ruta en la boveda de la organizacion -- p. ej. `secret/agentico/mcp/<id>` en HashiCorp Vault --. Tiene DOS consumidores: el desarrollador, que asi sabe de donde sacarla una vez concedida; y la comprobacion periodica del `tools_digest`, que necesita conectarse al servidor para listar sus herramientas y con esto sabe que leer sin que nadie cablee rutas a mano en un workflow. UNA RUTA POR MCP, no una compartida: si se filtra la de un servidor, no debe abrir la de otro. Y LA CREDENCIAL QUE HAYA AHI DEBE PODER SOLO LISTAR -- la comprobacion nunca invoca una herramienta, solo pide `tools/list` --: acotarla a eso convierte una fuga en «se conocen los nombres de las herramientas» en vez de «se puede hacer todo lo que las herramientas hacen». Custodiar bien una credencial demasiado amplia no arregla que sea demasiado amplia."
+        }
+      }
     },
     "aprobacion": {
       "type": "object",
@@ -212,7 +132,7 @@
         "security_review"
       ],
       "x-read-from": "GOVERNANCE.json",
-      "description": "Obligatorio porque un `mcp` es el unico tipo cuyo estado se degrada SIN QUE NADIE TOQUE NADA. `review_by` no es burocracia: es la fecha en que la aprobacion vence y el artefacto vuelve a revision.",
+      "description": "Obligatorio porque un `mcp` es el unico tipo cuyo estado se degrada SIN QUE NADIE TOQUE NADA. `review_by` no es burocracia: es la fecha en que la aprobacion vence y el artefacto vuelve a revision. UNA POR SERVIDOR desde que el gobierno se indexa por nombre, y eso arregla un defecto de la forma anterior: con una sola aprobacion para la lista entera no se le podia dar a cada servidor el plazo de revision de SU perfil de riesgo -- un remoto sin version que fijar y un paquete fijado no merecen el mismo --.",
       "properties": {
         "approved_by": {
           "type": "string"
@@ -230,6 +150,61 @@
         },
         "notes": {
           "type": "string"
+        }
+      }
+    },
+    "servidorGobernado": {
+      "deprecated": true,
+      "type": "object",
+      "description": "FORMA ANTIGUA — no la uses en artefactos nuevos. Se conserva EXCLUSIVAMENTE para que los `GOVERNANCE.json` que todavia declaran `mcp.servers` no se rompan mientras se migran, y el gate emite un aviso que NO BLOQUEA. POR QUE NO SE BORRA YA: el gate es comprobacion REQUERIDA en los repositorios de dominio, asi que rechazar esta forma de golpe los pondria rojos a la vez e impediria mergear incluso el pull request que viene a migrarlos -- ya paso al retirar `status` --. SE ELIMINARA cuando ningun repositorio de dominio declare `mcp.servers`. QUE MIRAR EN SU LUGAR: `servidorAprobado`, indexado por el nombre del servidor.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "object",
+          "description": "RETIRADO: repetia `packages[]` del registro oficial y, sobre todo, duplicaba lo que ya esta en `.mcp.json`. El fijado de version lo DERIVA el gate de ese archivo."
+        },
+        "transport": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "RETIRADO: es la `url` de `mcpServers`. El gate la lee de ahi."
+        },
+        "write_operations": {
+          "type": "boolean"
+        },
+        "tools_digest": {
+          "type": "string"
+        },
+        "tools_digest_date": {
+          "type": "string"
+        }
+      }
+    },
+    "credenciales": {
+      "deprecated": true,
+      "type": "object",
+      "description": "FORMA ANTIGUA del bloque de credenciales — no la uses. Declaraba un `mechanism` que NO SE PODIA COMPROBAR CONTRA NADA: era una afirmacion del autor y el gate se la creia, asi que `{\"mechanism\": \"none\"}` conviviendo con una cabecera `Authorization: ${API_TOKEN}` en el `.mcp.json` salia en verde. La forma vigente es una LISTA por servidor -- ver `credencial` --, contrastable contra los `${VAR}` reales del archivo. Se conserva para la transicion, con aviso que no bloquea.",
+      "properties": {
+        "mechanism": {
+          "type": "string",
+          "enum": [
+            "none",
+            "secret-ref",
+            "oauth",
+            "workload-identity"
+          ]
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ownership": {
+          "$ref": "#/$defs/custodia"
         }
       }
     }

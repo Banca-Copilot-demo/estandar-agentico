@@ -58,10 +58,29 @@ class Inventario:
     # El `name` del manifiesto. Es lo que se instala -- `copilot plugin install <name>@<catalogo>` --,
     # y no el id de un artefacto: un plugin se instala completo.
     nombre_plugin: str = ""
+    # LAS IDENTIDADES DEL ARBOL REAL, por tipo. Estan aqui y no solo el conteo porque un CONTEO tiene
+    # un falso negativo MEDIDO: borrar un skill y anadir otro en el mismo pull request deja el numero
+    # igual, asi que el cotejo contra el inventario declarado no ve NADA y el catalogo publica una
+    # lista que ya no existe. Con nombres, el gate compara identidades y ese cambio si se ve.
+    #
+    # Un artefacto sin `metadata.id` no aporta identidad -- su propia regla ya lo reprocha --, asi que
+    # estas tuplas pueden ser mas cortas que el conteo. El cotejo lo tiene en cuenta.
+    ids_skills: tuple[str, ...] = ()
+    ids_agentes: tuple[str, ...] = ()
+    ids_prompts: tuple[str, ...] = ()
 
     def como_declarado(self) -> dict[str, int]:
         """Las claves con las que el inventario se declara en `GOVERNANCE.json`."""
         return {"skills": self.skills, "agents": self.agentes, "prompts": self.prompts}
+
+    def ids_como_declarado(self) -> dict[str, tuple[str, ...]]:
+        """Los ids del arbol real, bajo las MISMAS claves que `como_declarado()`.
+
+        Las dos vistas conviven mientras dure la transicion de conteos a listas: la de conteos sirve a
+        los `GOVERNANCE.json` que todavia declaran numeros y la de ids a los que ya declaran nombres.
+        """
+        return {"skills": self.ids_skills, "agents": self.ids_agentes,
+                "prompts": self.ids_prompts}
 
 
 @dataclass(frozen=True)

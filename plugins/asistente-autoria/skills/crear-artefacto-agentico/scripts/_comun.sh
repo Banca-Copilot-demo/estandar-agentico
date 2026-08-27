@@ -88,9 +88,9 @@ open(sys.argv[1], 'w', encoding='utf-8').write(json.dumps(manifiesto, indent=2) 
 " "$destino" "$nombre" "$descripcion" "$tipo"
 }
 
-# Los tipos de artefacto, con la clave con la que cada uno se cuenta en el inventario del gobierno.
-# El plural del gate no es el nombre del tipo -- `agent` cuenta en `agents` -- y escribirlo en el
-# sitio de uso lo convertiria en un literal disperso.
+# Los tipos de artefacto, con la clave bajo la que cada uno se ENUMERA en el inventario del gobierno.
+# El plural del gate no es el nombre del tipo -- `agent` va en `agents` -- y escribirlo en el sitio de
+# uso lo convertiria en un literal disperso.
 CLAVE_DE_INVENTARIO_skill="skills"
 CLAVE_DE_INVENTARIO_agent="agents"
 CLAVE_DE_INVENTARIO_prompt="prompts"
@@ -113,8 +113,16 @@ CLAVE_DE_INVENTARIO_prompt="prompts"
 # diferencia que importa: antes se heredaba en tiempo de validacion, sin dejar rastro, y todos los
 # sueltos de un repositorio acababan con el mismo dueno sin que nadie lo hubiera decidido. Escrito,
 # es un valor que se ve en la revision y se corrige de una linea.
-escribir_gobierno_de_unidad() {  # ... <destino> <id> <tipo> <gobierno de la raiz>
-  local destino="$1" identificador="$2" tipo="$3" de_la_raiz="$4"
+# EL INVENTARIO SE ESCRIBE POR ID, no por conteo: un conteo tiene un falso negativo medido -- borrar
+# un artefacto y anadir otro deja el numero igual, asi que el gate no ve el cambio y el catalogo
+# publica una lista que ya no existe --. Y el id lo pone el generador porque lo conoce: es el mismo
+# que acaba de escribir en el frontmatter del artefacto. Pedirselo a una persona seria pedirle que
+# copiara a mano el valor que el script ya tiene, que es como divergen los campos duplicados.
+#
+# SIN `status`: se retiro del gobierno. El estado del ciclo de vida lo DERIVAN los gates y lo publica
+# la ficha del catalogo; escribirlo aqui creaba una palanca que no movia nada.
+escribir_gobierno_de_unidad() {  # ... <destino> <id de la unidad> <tipo> <gobierno de la raiz> <id del artefacto>
+  local destino="$1" identificador="$2" tipo="$3" de_la_raiz="$4" id_artefacto="$5"
   local clave="CLAVE_DE_INVENTARIO_$tipo"
   mkdir -p "$(dirname "$destino")"
   python -c "import json,sys
@@ -126,14 +134,13 @@ gobierno = {
         'team': (raiz.get('owner') or {}).get('team', 'PENDIENTE'),
         'contact': (raiz.get('owner') or {}).get('contact', 'PENDIENTE'),
     },
-    'status': 'draft',
     'data_classification': raiz.get('data_classification', 'internal'),
     'standard_version': raiz.get('standard_version', ''),
-    'artifacts': {'skills': 0, 'agents': 0, 'prompts': 0},
+    'artifacts': {'skills': [], 'agents': [], 'prompts': []},
 }
-gobierno['artifacts'][sys.argv[3]] = 1
+gobierno['artifacts'][sys.argv[3]] = [sys.argv[5]]
 open(sys.argv[1], 'w', encoding='utf-8').write(json.dumps(gobierno, indent=2) + '\n')
-" "$destino" "$identificador" "${!clave}" "$de_la_raiz"
+" "$destino" "$identificador" "${!clave}" "$de_la_raiz" "$id_artefacto"
 }
 
 # DOS FORMAS DE ETIQUETA, y desde aqui no se puede deducir cual usa un repositorio. Un repositorio

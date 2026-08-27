@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import re
 
-from validador_agentico.dominio import declaracion_mcp, forma_mcp
+from validador_agentico.dominio import declaracion_mcp, forma_mcp, gobierno_mcp
+from validador_agentico.dominio.especificacion import RUTA_GOBIERNO
+from validador_agentico.dominio.gobierno_mcp import GobiernoMcp
 from validador_agentico.dominio.hallazgo import Hallazgo, aviso, error
 
 # Etiquetas moviles habituales de los registros de paquetes. Ninguna fija nada: el mismo nombre
@@ -104,6 +106,86 @@ def revisar_declaracion(donde: str, configuracion: object,
             f"{', '.join(sin_configurar)}. La aprobacion cubre algo que no existe -- suele ser un "
             f"renombrado a medias -- y deja al aprobador creyendo que reviso lo que se ejecuta"))
     return hallazgos
+
+
+def revisar_aprobacion_por_servidor(donde: str, configuracion: object,
+                                     gobierno: GobiernoMcp) -> list[Hallazgo]:
+    """Cada servidor de `mcpServers` tiene SU entrada de aprobacion, y al reves.
+
+    LAS DOS DERIVAS QUE ESTO DETECTA Y LA FORMA ANTERIOR NO PODIA. Con el gobierno como LISTA
+    posicional, el cotejo se hacia por lo que IDENTIFICA a cada servidor -- su URL, su
+    `paquete@version` --, que responde «¿se ejecuta lo aprobado?» pero no «¿quien aprobo ESTE?». Al
+    indexar el gobierno por el mismo nombre que usa `mcpServers`, cada entrada apunta a una entrada
+    exacta de la configuracion y aparecen:
+
+      1. UN SERVIDOR CONFIGURADO SIN APROBACION. Se ejecuta, sale por la red y nadie lo reviso.
+         Error: es la via de acceso abierta.
+
+      2. UNA APROBACION QUE SOBREVIVE A SU SERVIDOR. El servidor ya no esta y el bloque de aprobacion
+         sigue ahi con su `review_by` y su `security_review: true`. Tambien error, y no por
+         pedanteria: quien audite el gobierno vera un servidor aprobado que cree en ejecucion, y quien
+         vuelva a anadir uno con ese nombre lo encontrara «ya aprobado» sin que nadie lo haya mirado.
+         Es el sintoma tipico de un renombrado a medias.
+
+    EL NOMBRE SIRVE PARA ESTO aunque la plataforma documente que un `serverName` NO ES UN CONTROL DE
+    SEGURIDAD. Las dos cosas son ciertas y no chocan: el nombre no decide si algo es de fiar -- eso lo
+    sigue decidiendo la identidad, en `revisar_declaracion` --, sino que EMPAREJA dos declaraciones del
+    mismo repositorio que un mismo autor escribe a la vez.
+    """
+    configurados = forma_mcp.servidores_de(configuracion)
+    if configurados is None:
+        # Sin poder leer los servidores no hay nada que emparejar, y `revisar_servidores` ya dijo que
+        # el archivo no tiene forma reconocible. Afirmar aqui una deriva seria inventarsela.
+        return []
+    if gobierno.forma_antigua:
+        # La forma vieja no indexa por nombre, asi que este emparejamiento no aplica: su cotejo es el
+        # de identidad, que sigue corriendo. El aviso de migracion lo emite `revisar_forma_del_bloque`.
+        return []
+
+    aprobados = set(gobierno.servidores)
+    hallazgos = [
+        error(donde,
+              f"el servidor `{nombre}` esta configurado y el `GOVERNANCE.json` no lo aprueba. Se "
+              f"ejecutaria sin aprobacion, sin `tools_digest` con el que detectar que cambio su "
+              f"superficie de herramientas y sin ficha en el catalogo. Anade su entrada bajo `mcp`, o "
+              f"quitalo de la configuracion")
+        for nombre in sorted(set(configurados) - aprobados)
+    ]
+    hallazgos += [
+        error(RUTA_GOBIERNO,
+              f"`mcp.{nombre}` aprueba un servidor que el `.mcp.json` YA NO configura. La aprobacion "
+              f"sobrevivio al servidor: quien audite el gobierno vera un servidor aprobado que cree "
+              f"en ejecucion, y quien vuelva a anadir uno con ese nombre lo encontrara «ya aprobado» "
+              f"sin que nadie lo haya mirado. Suele ser un renombrado a medias")
+        for nombre in sorted(aprobados - set(configurados))
+    ]
+    return hallazgos
+
+
+def revisar_forma_del_bloque(gobierno: GobiernoMcp) -> list[Hallazgo]:
+    """La forma vieja del bloque `mcp` se acepta con AVISO mientras dure la transicion.
+
+    POR QUE AVISO Y NO ERROR, que es lo que decide si esto se puede desplegar. El gate es comprobacion
+    REQUERIDA en los repositorios de dominio: si la forma vieja bloqueara, todos los repositorios que
+    aun no se han migrado se pondrian rojos a la vez y ninguno podria mergear NI SIQUIERA el pull
+    request que viene a migrarlos, porque ese PR tambien pasa por el gate. Ya paso al retirar `status`.
+
+    CUANDO SE PUEDE ENDURECER: cuando ningun `GOVERNANCE.json` de un repositorio de dominio declare
+    `mcp.servers`. El aviso nombra los campos exactos a borrar para que la migracion sea mecanica.
+    """
+    if not gobierno.forma_antigua:
+        return []
+    derivados = gobierno_mcp.campos_derivados_declarados(gobierno)
+    sobran = (f" Borra ademas {', '.join(f'`{c}`' for c in derivados)}: repiten o derivan lo que ya "
+              f"esta en `.mcp.json`, y una copia que nada obliga a sincronizar se queda atras -- el "
+              f"gate acabaria comparando la configuracion contra una copia rancia." if derivados
+              else "")
+    return [aviso(RUTA_GOBIERNO,
+                  "`mcp.servers` es la forma ANTIGUA del bloque de gobierno y se acepta solo durante "
+                  "la transicion. La forma vigente indexa por el NOMBRE del servidor -- la misma clave "
+                  "que `mcpServers` usa en `.mcp.json` --, que es lo que permite detectar un servidor "
+                  "configurado y no aprobado, y una aprobacion que sobrevive a su servidor. Con la "
+                  f"lista posicional esas dos derivas pasan en verde.{sobran}")]
 
 
 def revisar_que_esta_en_un_plugin(donde: str, hay_manifiesto: bool) -> list[Hallazgo]:

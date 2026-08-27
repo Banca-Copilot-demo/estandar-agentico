@@ -113,9 +113,38 @@ def test_inventario_desalineado_es_error():
     assert "declara 1" in _mensajes(errores)
 
 
-def test_inventario_alineado_no_produce_hallazgos():
+def test_inventario_por_conteo_alineado_no_bloquea_pero_avisa_de_la_migracion():
+    # El conteo es la forma ANTIGUA. No puede ser error: el gate es comprobacion requerida y
+    # rechazarlo de golpe impediria mergear hasta el propio PR que viene a migrarlo -- ya paso al
+    # retirar `status` --. Asi que no bloquea, y avisa.
     declarado = {"skills": 2, "agents": 1, "prompts": 0}
-    assert revisar_inventario(declarado, Inventario(skills=2, agentes=1)) == []
+    hallazgos = revisar_inventario(declarado, Inventario(skills=2, agentes=1))
+    assert _errores(hallazgos) == []
+    assert "CONTEO" in _mensajes(hallazgos)
+
+
+def test_inventario_por_ids_alineado_no_produce_hallazgos():
+    declarado = {"skills": ["demo.x.uno"], "agents": [], "prompts": []}
+    assert revisar_inventario(declarado, Inventario(skills=1, ids_skills=("demo.x.uno",))) == []
+
+
+def test_intercambiar_un_artefacto_por_otro_no_pasa_desapercibido():
+    # EL FALSO NEGATIVO DEL CONTEO, que es el motivo entero de este cambio. Medido: se borra un skill
+    # y se anade otro en el mismo pull request; el numero sigue siendo 1, asi que el cotejo por conteo
+    # no encuentra NADA que decir y el catalogo publica un id que ya no existe.
+    inventario = Inventario(skills=1, ids_skills=("demo.x.nuevo",))
+    errores = _errores(revisar_inventario({"skills": ["demo.x.viejo"]}, inventario))
+    assert "demo.x.viejo" in _mensajes(errores)
+    assert "demo.x.nuevo" in _mensajes(errores)
+    # Y la prueba de que el conteo NO lo veia: mismo arbol, inventario declarado por numero.
+    assert _errores(revisar_inventario({"skills": 1}, inventario)) == []
+
+
+def test_una_clave_retirada_del_inventario_avisa_y_no_bloquea():
+    for clave in ("mcps", "hooks", "scripts"):
+        hallazgos = revisar_inventario({clave: 1}, Inventario())
+        assert _errores(hallazgos) == [], clave
+        assert f"artifacts.{clave}" in _mensajes(hallazgos), clave
 
 
 # ── hooks ──────────────────────────────────────────────────────────────────────────────────

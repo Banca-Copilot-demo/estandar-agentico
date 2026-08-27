@@ -74,36 +74,37 @@
     "artifacts": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Inventario declarado por tipo. El gate G1 lo compara contra el arbol real DEL PLUGIN al que pertenece este archivo — no del repositorio: cuando un repositorio aloja varios plugins, contar el arbol completo haria que cada plugin fallara por los artefactos de sus VECINOS. Si el inventario declarado y el real no coinciden, el PR se bloquea. Es lo que evita que el catalogo publique un inventario que no existe. `instructions` no se cuenta: dejo de ser un tipo gobernado, y contar algo que no se gobierna daria a entender que el catalogo lo conoce.",
+      "description": "Inventario declarado por tipo, POR LISTA DE IDS. El gate G1 lo compara contra el arbol real DEL PLUGIN al que pertenece este archivo — no del repositorio: cuando un repositorio aloja varios plugins, recorrer el arbol completo haria que cada plugin fallara por los artefactos de sus VECINOS. Si lo declarado y lo real no coinciden, el PR se bloquea. Es lo que evita que el catalogo publique un inventario que no existe.\n\nPOR QUE IDS Y NO CONTEOS, medido: un conteo tiene un FALSO NEGATIVO. Borrar un artefacto y anadir otro en el mismo pull request deja el numero EXACTAMENTE igual, asi que el cotejo no encuentra nada que decir mientras el catalogo publica una lista que ya no corresponde. Con nombres, lo que se compara son identidades y ese cambio si se ve. Es la clase de hueco por el que un campo inventado sobrevive meses sin que ninguna comprobacion lo toque.\n\nSOLO TRES TIPOS, y los tres son los que tienen IDENTIDAD PROPIA -- cada uno lleva su `metadata.id` en su frontmatter --. `mcps` y `hooks` SALIERON: el servidor MCP ya se enumera en `.mcp.json`, que es el archivo que el cliente ejecuta y contra el que el gate coteja el gobierno; y los hooks NO TIENEN IDENTIDAD INDIVIDUAL -- se distinguen por evento y `matcher`, no llevan `id` en ninguna parte --, asi que no son enumerables. `instructions` tampoco se cuenta: dejo de ser un tipo gobernado, y contar algo que no se gobierna daria a entender que el catalogo lo conoce.\n\nTRANSICION: el conteo se sigue aceptando con AVISO, y el aviso trae la lista ya escrita. Ver `$defs.inventarioPorTipo`.",
       "properties": {
         "skills": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Componente ESTANDAR de Agent Plugins 1.0. Portable a los seis clientes."
-        },
-        "mcps": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Componente ESTANDAR de Agent Plugins 1.0 (.mcp.json). Portable a los seis clientes."
+          "$ref": "#/$defs/inventarioPorTipo",
+          "description": "Ids de los skills del plugin. Componente ESTANDAR de Agent Plugins 1.0, portable a los seis clientes."
         },
         "agents": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "EXTENSION DE CLIENTE: la v1 de la especificacion cubre solo skills y MCP. Porta a Copilot y Claude Code, no mas alla."
+          "$ref": "#/$defs/inventarioPorTipo",
+          "description": "Ids de los agentes. EXTENSION DE CLIENTE: la v1 de la especificacion cubre solo skills y MCP. Porta a Copilot y Claude Code, no mas alla."
         },
         "prompts": {
+          "$ref": "#/$defs/inventarioPorTipo",
+          "description": "Ids de los prompts. EXTENSION DE CLIENTE. Preferir skill con user_invocable=true: hace lo mismo, porta a los seis clientes y viaja versionado."
+        },
+        "mcps": {
+          "deprecated": true,
           "type": "integer",
           "minimum": 0,
-          "description": "EXTENSION DE CLIENTE. Preferir skill con user_invocable=true: hace lo mismo, porta a los seis clientes y viaja versionado. Decision abierta 11."
-        },
-        "scripts": {
-          "type": "integer",
-          "minimum": 0
+          "description": "RETIRADO DEL INVENTARIO — no lo declares. Se acepta y se DESCARTA, con un aviso que no bloquea. POR QUE SALIO: el servidor ya se enumera en `.mcp.json`, que es el archivo que ejecuta el cliente y contra el que el gate coteja el bloque `mcp` de este mismo archivo. Declararlo aqui era una segunda declaracion de lo mismo, y dos declaraciones de la misma cosa divergen. SE CONSERVA EN EL ESQUEMA solo para la transicion: el objeto declara `additionalProperties: false`, asi que borrar la propiedad convertiria su presencia en ERROR automatico -- justo el bloqueo que hay que evitar en una comprobacion requerida."
         },
         "hooks": {
+          "deprecated": true,
           "type": "integer",
           "minimum": 0,
-          "description": "EXTENSION DE CLIENTE. Declararlo es OBLIGATORIO cuando el plugin trae un `hooks.json`, y el gate lo exige por una razon distinta del resto del inventario: un hook EJECUTA CODIGO en la maquina del desarrollador, asi que no puede entrar por sorpresa. Faltaba en el esquema mientras la regla ya lo exigia, asi que un plugin con hooks no podia ser conforme de ninguna forma -- declararlo lo rechazaba el esquema y no declararlo, la regla --."
+          "description": "RETIRADO DEL INVENTARIO — no lo declares. Se acepta y se DESCARTA con aviso. POR QUE SALIO: los hooks no tienen identidad individual -- verificado contra el formato, un hook se distingue por su EVENTO y su `matcher` y no lleva `id` en ninguna parte --, asi que no son enumerables; y el conteo nunca podia ser otra cosa que 0 o 1, porque hay como mucho un `hooks.json` por unidad. Que la unidad TRAE hooks se ve del propio archivo, y su aprobacion se declara en la clave `hooks` de primer nivel de este documento, que es lo unico que el archivo no dice de si mismo."
+        },
+        "scripts": {
+          "deprecated": true,
+          "type": "integer",
+          "minimum": 0,
+          "description": "RETIRADO DEL INVENTARIO — no lo declares. Un script no es un artefacto publicable: viaja DENTRO del que lo referencia, y su integridad la cubre el digesto por archivo de la ficha."
         }
       }
     },
@@ -280,28 +281,50 @@
     },
     "mcp": {
       "type": "object",
-      "additionalProperties": false,
-      "description": "Gobierno del servidor MCP que este plugin consume, si consume alguno. VIVE AQUI Y NO EN UN ARCHIVO HERMANO, y la razon esta MEDIDA en los plugins reales: `.mcp.json` es la configuracion que lee el CLIENTE, y los plugins oficiales de AWS la llevan con UNA sola clave de primer nivel -- `mcpServers` -- y ningun archivo de metadata al lado. Meter claves nuestras ahi nos haria depender de lo estricto que sea cada cliente, y ese fallo lo descubre el desarrollador al instalar, no el gate. Y un hermano en la raiz del plugin tendria nombre generico y competiria con este archivo. DIFERENCIA CON LOS SKILLS: un plugin tiene MUCHOS skills -- cada uno con su carpeta, donde un hermano es inequivoco -- y UN solo `.mcp.json`, igual que un solo manifiesto y un solo gobierno. NOTA SOBRE `server.json`: el registro oficial de MCP define ese formato para PUBLICAR un servidor, no para consumirlo desde un plugin; aqui se consume, asi que no aplica.",
-      "properties": {
-        "servers": {
-          "type": "array",
-          "minItems": 1,
-          "description": "Un elemento por servidor declarado en `mcpServers`. El gate contrasta esta lista contra el `.mcp.json` real: si declaran cosas distintas, el PR se bloquea.",
-          "items": {
-            "$ref": "mcp.schema.json#/$defs/servidorGobernado"
+      "minProperties": 1,
+      "description": "Gobierno de los servidores MCP que este plugin consume, INDEXADO POR EL NOMBRE DEL SERVIDOR — la misma clave que `mcpServers` usa en `.mcp.json`.\n\nVIVE AQUI Y NO EN UN ARCHIVO HERMANO, y la razon esta MEDIDA en los plugins reales: `.mcp.json` es la configuracion que lee el CLIENTE, y los plugins oficiales de AWS la llevan con UNA sola clave de primer nivel -- `mcpServers` -- y ningun archivo de metadata al lado. Meter claves nuestras ahi nos haria depender de lo estricto que sea cada cliente, y ese fallo lo descubre el desarrollador al instalar, no el gate. Y un hermano en la raiz del plugin tendria nombre generico y competiria con este archivo.\n\nPOR QUE INDEXADO Y NO UNA LISTA, que es lo que era. Con una lista posicional el gate solo podia cotejar por lo que IDENTIFICA a cada servidor -- su URL, su `paquete@version` --, que responde «¿se ejecuta lo aprobado?» pero deja sin respuesta «¿quien aprobo ESTE?». Con el nombre como clave, cada entrada apunta a una entrada exacta de `mcpServers` y aparecen DOS DERIVAS que antes pasaban en verde: un servidor CONFIGURADO Y NO APROBADO, y una APROBACION QUE SOBREVIVE a un servidor que ya no esta -- el sintoma tipico de un renombrado a medias, que deja al aprobador creyendo que reviso lo que se ejecuta --. El gate implementa las dos. El nombre no decide si algo es de fiar (la plataforma documenta que un `serverName` NO es un control de seguridad): empareja dos declaraciones del MISMO repositorio, que es otra cosa.\n\nY CADA SERVIDOR TRAE SU PROPIA APROBACION, lo que arregla un defecto de la forma anterior: una sola aprobacion para la lista entera no permitia darle a cada servidor el plazo de revision de SU perfil de riesgo.\n\nTRANSICION: la forma antigua -- `{\"servers\": [...], \"credentials\": {...}, \"approval\": {...}}` -- se sigue aceptando con AVISO. Ver la segunda rama de `oneOf`.",
+      "oneOf": [
+        {
+          "title": "Forma vigente: un servidor por clave",
+          "additionalProperties": {
+            "$ref": "mcp.schema.json#/$defs/servidorAprobado"
+          },
+          "propertyNames": {
+            "not": {
+              "enum": [
+                "servers",
+                "credentials",
+                "approval"
+              ]
+            },
+            "description": "Las tres claves de la forma antigua NO pueden ser nombres de servidor: un `mcpServers` con una entrada llamada `approval` seria legal en el cliente y aqui haria indistinguibles las dos formas. Rechazarlas por nombre es lo que permite decidir cual es cual sin adivinar."
           }
         },
-        "credentials": {
-          "$ref": "mcp.schema.json#/$defs/credenciales"
-        },
-        "approval": {
-          "$ref": "mcp.schema.json#/$defs/aprobacion"
+        {
+          "title": "Forma antigua (transicion) — lista posicional",
+          "deprecated": true,
+          "additionalProperties": false,
+          "required": [
+            "servers",
+            "approval"
+          ],
+          "description": "SE ACEPTA CON AVISO mientras dure la migracion, y no bloquea. POR QUE: el gate es comprobacion REQUERIDA en los repositorios de dominio, asi que rechazar esta forma de golpe los pondria rojos a la vez y ninguno podria mergear NI SIQUIERA el pull request que viene a migrarlos -- ya paso al retirar `status` --. SE ENDURECERA a error cuando ningun `GOVERNANCE.json` de un repositorio de dominio declare `mcp.servers`. Nota: `credentials` deja de ser obligatorio incluso aqui, porque su unico valor comprobable era el `ownership`; el `mechanism` no se podia contrastar contra nada.",
+          "properties": {
+            "servers": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "mcp.schema.json#/$defs/servidorGobernado"
+              }
+            },
+            "credentials": {
+              "$ref": "mcp.schema.json#/$defs/credenciales"
+            },
+            "approval": {
+              "$ref": "mcp.schema.json#/$defs/aprobacion"
+            }
+          }
         }
-      },
-      "required": [
-        "servers",
-        "credentials",
-        "approval"
       ]
     },
     "hooks": {
@@ -320,6 +343,29 @@
     "x_extensions": {
       "type": "object",
       "description": "Valvula de escape VISIBLE para lo que el estandar aun no cubre. El resto del esquema rechaza claves desconocidas a proposito: un esquema permisivo habria aceptado sin protestar las variantes que conviven hoy en el baseline (user-invocable / user-invokable, applyTo / applies_to) y no habria unificado nada. Lo que aparezca aqui en tres o mas plugins es candidato a subir al estandar."
+    }
+  },
+  "$defs": {
+    "inventarioPorTipo": {
+      "description": "Un tipo del inventario, en cualquiera de sus dos formas. La vigente es la LISTA DE IDS; el CONTEO se acepta con aviso mientras dure la transicion y no bloquea, porque el gate es comprobacion REQUERIDA y rechazarlo de golpe impediria mergear hasta el pull request que viene a migrarlo. SE ENDURECERA a error cuando ningun `GOVERNANCE.json` de un repositorio de dominio declare el inventario por conteo.",
+      "oneOf": [
+        {
+          "title": "Forma vigente: lista de ids",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(\\.[a-z0-9][a-z0-9-]*)+$",
+            "description": "El `metadata.id` del artefacto, con el MISMO patron que el `id` del plugin: es la identidad que el consumidor resuelve, y la ruta en disco no lo es."
+          }
+        },
+        {
+          "title": "Forma antigua (transicion): conteo",
+          "deprecated": true,
+          "type": "integer",
+          "minimum": 0
+        }
+      ]
     }
   }
 }

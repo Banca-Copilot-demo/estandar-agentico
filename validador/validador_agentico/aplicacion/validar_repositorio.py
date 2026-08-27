@@ -63,6 +63,7 @@ from validador_agentico.dominio import reglas_higiene, reglas_hooks, reglas_huer
 from validador_agentico.dominio import scripts_de_hooks
 from validador_agentico.dominio import reglas_artefacto, reglas_plugin
 from validador_agentico.dominio import ensamblado, forma_frontmatter
+from validador_agentico.dominio import forma_mcp, gobierno_mcp
 from validador_agentico.dominio.especificacion import RUTAS_MANIFIESTO
 from validador_agentico.dominio.hallazgo import (
     Hallazgo,
@@ -358,20 +359,40 @@ def _revisar_mcp(contenido: ContenidoRepositorio) -> list[Hallazgo]:
         hay_manifiesto=contenido.manifiesto is not None and contenido.manifiesto.es_legible)
     hallazgos += reglas_mcp.revisar_servidores(
         contenido.mcp.ruta_relativa, contenido.mcp.contenido)
-    # EL COTEJO GOBIERNO <-> CONFIGURACION. Necesita los dos archivos, asi que se despacha aqui.
-    hallazgos += reglas_mcp.revisar_declaracion(
-        contenido.mcp.ruta_relativa, contenido.mcp.contenido,
-        (_gobierno_del_mcp(contenido) or {}).get("servers"))
-
-    gobierno_del_mcp = _gobierno_del_mcp(contenido)
-    if gobierno_del_mcp is None:
+    bloque = _gobierno_del_mcp(contenido)
+    if bloque is None:
         return [*hallazgos, error(RUTA_GOBIERNO,
                                  "hay un `.mcp.json` pero el gobierno no declara `mcp`: sin eso el "
                                  "servidor no tiene dueno de la credencial ni aprobacion, y el "
                                  "`.mcp.json` no puede llevarlos porque lo consume el cliente")]
 
-    return [*hallazgos, *reglas_credenciales.revisar_credenciales(
-        RUTA_GOBIERNO, gobierno_del_mcp.get("credentials"))]
+    gobierno = gobierno_mcp.leer(bloque)
+    hallazgos += reglas_mcp.revisar_forma_del_bloque(gobierno)
+    # EL EMPAREJAMIENTO POR NOMBRE. Es lo que detecta un servidor CONFIGURADO Y NO APROBADO, y una
+    # APROBACION QUE SOBREVIVE a su servidor. Solo aplica a la forma nueva, que es la que indexa por
+    # el mismo nombre que usa `mcpServers`.
+    hallazgos += reglas_mcp.revisar_aprobacion_por_servidor(
+        contenido.mcp.ruta_relativa, contenido.mcp.contenido, gobierno)
+    # EL COTEJO POR IDENTIDAD sigue respondiendo «¿se ejecuta lo aprobado?», y en la forma vieja es el
+    # UNICO cotejo que hay -- por eso se le pasa la declaracion tal como venia --.
+    hallazgos += reglas_mcp.revisar_declaracion(
+        contenido.mcp.ruta_relativa, contenido.mcp.contenido,
+        [servidor.declaracion_antigua for servidor in gobierno.servidores.values()]
+        if gobierno.forma_antigua and gobierno.servidores else None)
+    # `None` -- «no hay nada que cotejar» -- tambien cuando la forma vieja no llego a declarar
+    # `servers`: es un bloque a medias, un caso real durante una migracion, y lo que le falta ya lo
+    # dice el esquema con el campo exacto. Pasar una lista vacia lo convertiria en «se ejecuta un
+    # servidor que el gobierno no declara», que es cierto pero es un segundo hallazgo por el mismo
+    # defecto y apunta al archivo equivocado.
+
+    if gobierno.credenciales_del_bloque is not None:
+        hallazgos += reglas_credenciales.revisar_credenciales(
+            RUTA_GOBIERNO, gobierno.credenciales_del_bloque)
+    # LA LISTA VERIFICABLE contra los `${VAR}` del `.mcp.json`. Es lo que convierte `credentials` de
+    # una afirmacion del autor en una comprobacion: declarar cero credenciales y traer un
+    # `Authorization` deja de pasar en verde.
+    return [*hallazgos, *reglas_credenciales.revisar_credenciales_declaradas(
+        RUTA_GOBIERNO, gobierno, forma_mcp.servidores_de(contenido.mcp.contenido) or {})]
 
 
 def _gobierno_del_mcp(contenido: ContenidoRepositorio) -> dict | None:
