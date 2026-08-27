@@ -28,6 +28,17 @@ RUTAS_MANIFIESTO = (
 )
 RUTA_MANIFIESTO_UNIFICADA = RUTAS_MANIFIESTO[0]
 
+# ── Gobierno del estandar ──────────────────────────────────────────────────────────────────
+RUTA_GOBIERNO = "GOVERNANCE.json"
+"""El archivo de gobierno, en la raiz DE LA UNIDAD publicable -- que no siempre es la del repositorio.
+
+VIVE AQUI Y NO EN EL ADAPTADOR, que es donde estaba. El nombre del archivo es un hecho del ESTANDAR y
+no un detalle de como se lee el disco, y las reglas de dominio necesitan nombrarlo para decir DONDE
+esta el defecto. Importarlo de `adaptadores/repositorio.py` habria puesto a `dominio/` a depender de
+un adaptador -- la flecha apuntando hacia afuera, que es justo lo que G5 prohibe -- y volver a
+escribir la cadena en el dominio habria dejado dos definiciones del mismo valor (G2). El adaptador lo
+reexporta, asi que quien ya lo importaba de alli sigue funcionando."""
+
 # ── Agent Skills ───────────────────────────────────────────────────────────────────────────
 MAX_CARACTERES_DESCRIPCION = 1024
 """Limite de `description` en la especificacion Agent Skills."""

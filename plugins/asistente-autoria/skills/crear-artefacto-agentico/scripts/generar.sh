@@ -104,7 +104,11 @@ if [ "$modo_unidad" = "si" ]; then
   # EL GOBIERNO DE LA UNIDAD SE GENERA AQUI, y es lo que hace viable exigirlo. Sin generarlo, cada
   # suelto obligaria a escribir a mano un archivo con los mismos campos -- y ese coste fue justo el
   # argumento con el que el gate acabo heredando el gobierno de la raiz, con su dueno incluido.
-  escribir_gobierno_de_unidad "$unidad/$RUTA_GOBIERNO" "$id_plugin" "$tipo" "$raiz/$RUTA_GOBIERNO"
+  # EL ID DEL ARTEFACTO ES EL MISMO que la plantilla acaba de escribir en su frontmatter --
+  # `ID_DEL_PLUGIN.NOMBRE` -- y se pasa en vez de recalcularse dentro: con la formula en dos sitios
+  # acabarian divergiendo, y el gate lo veria como un id declarado que el arbol real no tiene.
+  escribir_gobierno_de_unidad "$unidad/$RUTA_GOBIERNO" "$id_plugin" "$tipo" "$raiz/$RUTA_GOBIERNO" \
+    "$id_plugin.$nombre"
   echo "Creado: ${unidad#"$raiz"/}/$RUTA_GOBIERNO   (dueno: $equipo)"
   echo
   echo "Falta lo que solo tu sabes: la description y el cuerpo. Todo lo marcado PENDIENTE."

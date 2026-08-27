@@ -4,5 +4,12 @@
   "owner": { "team": "plataforma-agentica", "contact": "plataforma-agentica@ejemplo.dev" },
   "data_classification": "internal",
   "standard_version": "7.0.0",
-  "artifacts": { "skills": 2, "agents": 0, "prompts": 0, "mcps": 0 }
+  "artifacts": {
+    "skills": [
+      "demo.plataforma.crear-artefacto-agentico",
+      "demo.plataforma.instalar-artefacto-agentico"
+    ],
+    "agents": [],
+    "prompts": []
+  }
 }

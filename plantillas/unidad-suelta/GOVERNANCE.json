@@ -9,8 +9,8 @@
   "version": "<<VERSION>>",
   "standard_version": "8.0.0",
   "artifacts": {
-    "skills": 0,
-    "agents": 0,
-    "prompts": 0
+    "skills": [],
+    "agents": [],
+    "prompts": []
   }
 }

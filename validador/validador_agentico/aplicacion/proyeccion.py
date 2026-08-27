@@ -19,7 +19,7 @@ from pathlib import Path
 
 from validador_agentico.adaptadores import digesto
 from validador_agentico.adaptadores.repositorio import ContenidoRepositorio
-from validador_agentico.dominio import scripts_de_hooks
+from validador_agentico.dominio import forma_mcp, gobierno_mcp, scripts_de_hooks
 from validador_agentico.dominio.hallazgo import (
     ArtefactoPublicado,
     Inventario,
@@ -46,7 +46,10 @@ def sumar_inventarios(a: Inventario, b: Inventario) -> Inventario:
         skills=a.skills + b.skills, agentes=a.agentes + b.agentes,
         prompts=a.prompts + b.prompts, mcps=a.mcps + b.mcps, hooks=a.hooks + b.hooks,
         tiene_plugin=a.tiene_plugin or b.tiene_plugin,
-        nombre_plugin=a.nombre_plugin or b.nombre_plugin)
+        nombre_plugin=a.nombre_plugin or b.nombre_plugin,
+        ids_skills=a.ids_skills + b.ids_skills,
+        ids_agentes=a.ids_agentes + b.ids_agentes,
+        ids_prompts=a.ids_prompts + b.ids_prompts)
 
 
 def construir_inventario(contenido: ContenidoRepositorio) -> Inventario:
@@ -58,6 +61,27 @@ def construir_inventario(contenido: ContenidoRepositorio) -> Inventario:
         hooks=1 if contenido.hooks else 0,
         tiene_plugin=contenido.manifiesto is not None and contenido.manifiesto.es_legible,
         nombre_plugin=nombre_del_plugin(contenido),
+        # LOS IDS DEL ARBOL REAL, que es contra lo que se coteja el inventario declarado desde que
+        # dejo de ser un conteo. Salen del `metadata.id` del propio artefacto -- el mismo campo que
+        # publica el catalogo -- y no de la ruta: la ruta dice donde esta el archivo, el id es la
+        # identidad que el consumidor resuelve.
+        ids_skills=_ids_de(contenido.skills),
+        ids_agentes=_ids_de(contenido.agentes_leidos),
+        ids_prompts=_ids_de(contenido.prompts),
+    )
+
+
+def _ids_de(artefactos) -> tuple[str, ...]:
+    """Los `metadata.id` declarados, en orden de lectura y sin los que faltan.
+
+    Un artefacto sin id se OMITE en vez de aparecer como cadena vacia: su ausencia ya la reprocha
+    `revisar_envelope`, y una cadena vacia en esta lista se cotejaria contra el inventario declarado
+    produciendo un segundo hallazgo -- «el arbol real tiene ``» -- que no ayuda a nadie.
+    """
+    return tuple(
+        str((artefacto.frontmatter.get("metadata") or {}).get("id"))
+        for artefacto in artefactos
+        if artefacto.frontmatter and (artefacto.frontmatter.get("metadata") or {}).get("id")
     )
 
 
@@ -207,11 +231,11 @@ def mcp_publicado(contenido: ContenidoRepositorio, raiz: Path,
         standard_version=str(gobierno.get("standard_version", "")),
         sha256=digesto.sha256_de(raiz / contenido.mcp.ruta_relativa),
         tools_digest=_digest_de_herramientas_declarado(bloque),
-        servidores=_servidores_publicados(bloque),
+        servidores=_servidores_publicados(bloque, contenido.mcp.contenido),
     )
 
 
-def _servidores_publicados(gobierno_del_mcp: dict) -> tuple:
+def _servidores_publicados(gobierno_del_mcp: dict, configuracion: object) -> tuple:
     """Un elemento por servidor con lo que la comprobacion de deriva necesita para funcionar.
 
     `nombre`, `endpoint` y `tools_digest`. El endpoint va porque sin el no hay a donde conectarse, y
@@ -226,12 +250,28 @@ def _servidores_publicados(gobierno_del_mcp: dict) -> tuple:
     que la deriva los marcara «sin comprobar», que es un estado legitimo y visible. Omitirlos daria una
     lista de servidores que no coincide con la del gobierno.
     """
-    servidores = gobierno_del_mcp.get("servers") or []
+    gobierno = gobierno_mcp.leer(gobierno_del_mcp)
+    if gobierno is None:
+        return ()
+    # EL ENDPOINT SALE DE `.mcp.json` cuando el gobierno ya no lo declara, que es el caso de la forma
+    # nueva: el campo se retiro del gobierno porque era una COPIA de lo que el cliente ejecuta, y una
+    # copia que nada obliga a sincronizar se queda atras. Derivarlo de la configuracion es justo lo
+    # que hace que la linea base de la comprobacion de deriva apunte al servidor que corre de verdad.
+    endpoints = _endpoints_configurados(configuracion)
     return tuple(
-        {"nombre": str(s.get("name", "")),
-         "endpoint": str(s.get("endpoint", "")),
-         "tools_digest": str(s.get("tools_digest", ""))}
-        for s in servidores if isinstance(s, dict))
+        {"nombre": servidor.nombre,
+         "endpoint": endpoints.get(servidor.nombre,
+                                   str(servidor.declaracion_antigua.get("endpoint", ""))),
+         "tools_digest": servidor.tools_digest}
+        for servidor in gobierno.servidores.values())
+
+
+def _endpoints_configurados(configuracion: object) -> dict[str, str]:
+    """`nombre -> url` de los servidores remotos del `.mcp.json`. Los `stdio` no tienen endpoint."""
+    servidores = forma_mcp.servidores_de(configuracion) or {}
+    return {str(nombre): str(definicion.get("url", ""))
+            for nombre, definicion in servidores.items()
+            if isinstance(definicion, dict) and definicion.get("url")}
 
 
 def hooks_publicado(contenido: ContenidoRepositorio, raiz: Path,
@@ -303,10 +343,11 @@ def _digest_de_herramientas_declarado(gobierno_del_mcp: dict) -> str:
     artefacto, no uno por servidor. Vacio si ninguno lo declara, que es legitimo cuando todos son
     descargables y fijados.
     """
-    servidores = gobierno_del_mcp.get("servers") or []
-    declarados = sorted(
-        str(s.get("tools_digest")) for s in servidores
-        if isinstance(s, dict) and s.get("tools_digest"))
+    gobierno = gobierno_mcp.leer(gobierno_del_mcp)
+    if gobierno is None:
+        return ""
+    declarados = sorted(servidor.tools_digest for servidor in gobierno.servidores.values()
+                        if servidor.tools_digest)
     if not declarados:
         return ""
     if len(declarados) == 1:
@@ -315,8 +356,31 @@ def _digest_de_herramientas_declarado(gobierno_del_mcp: dict) -> str:
 
 
 def custodia_declarada(contenido: ContenidoRepositorio) -> dict:
-    """El bloque `ownership` del `.mcp.json`, si lo hay. Se propaga tal cual: la regla ya comprobo
-    que este completo, y aqui solo se transporta hacia el predicado firmado."""
-    if contenido.mcp is None or not contenido.mcp.es_legible:
+    """Quien custodia la credencial y donde se pide. Se propaga tal cual hacia el predicado firmado.
+
+    SALE DEL `GOVERNANCE.json` Y NO DEL `.mcp.json`, y esto era un defecto silencioso: se leia
+    `contenido.mcp.contenido["credentials"]["ownership"]`, o sea del archivo que consume el CLIENTE --
+    donde ese bloque NUNCA ha estado, porque el gobierno del `mcp` vive en `GOVERNANCE.json` desde que
+    se decidio no meter claves nuestras en la configuracion --. El resultado era `{}` SIEMPRE, y el
+    sintoma es el que este dato existe para evitar: el desarrollador instala, el cliente le pide un
+    token y la ficha no dice a quien pedirselo. No fallaba nada; simplemente no habia custodia que
+    publicar y nadie lo notaba porque un diccionario vacio es un valor legitimo.
+
+    LAS DOS FORMAS. En la vieja, `ownership` cuelga del `credentials` del bloque entero; en la nueva
+    va dentro de la credencial que lo necesita, porque las credenciales pasaron a ser una lista por
+    servidor. Se devuelve la PRIMERA que lo declare: el predicado lleva una custodia por artefacto y
+    el `mcp` es un artefacto, no uno por credencial.
+    """
+    if contenido.gobierno is None or not contenido.gobierno.es_legible:
         return {}
-    return (contenido.mcp.contenido.get("credentials") or {}).get("ownership") or {}
+    gobierno = gobierno_mcp.leer(contenido.gobierno.contenido.get("mcp"))
+    if gobierno is None:
+        return {}
+    if gobierno.credenciales_del_bloque is not None:
+        return gobierno.credenciales_del_bloque.get("ownership") or {}
+    for servidor in gobierno.servidores.values():
+        for credencial in servidor.credenciales:
+            custodia = credencial.get("ownership")
+            if isinstance(custodia, dict) and custodia:
+                return custodia
+    return {}

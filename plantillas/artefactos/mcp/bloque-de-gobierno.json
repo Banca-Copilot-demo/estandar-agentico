@@ -1,30 +1,19 @@
 {
-  "_INSTRUCCIONES": "Este NO es un archivo suelto: es el bloque `mcp` que hay que PEGAR dentro del GOVERNANCE.json del plugin, al mismo nivel que `artifacts`. Se entrega aparte porque su forma es la que mas se equivoca. Borra esta clave al pegarlo.",
+  "_INSTRUCCIONES": "Este NO es un archivo suelto: es el bloque `mcp` que hay que PEGAR dentro del GOVERNANCE.json del plugin, al mismo nivel que `artifacts`. Se entrega aparte porque su forma es la que mas se equivoca. Borra esta clave al pegarlo. LA CLAVE ES EL NOMBRE DEL SERVIDOR, y tiene que ser EXACTAMENTE la misma que la de `mcpServers` en el `.mcp.json`: es lo que el gate empareja para ver un servidor configurado y no aprobado, o una aprobacion que sobrevive a un servidor que ya no esta. Ya no se declaran `source`, `transport`, `endpoint` ni `version_pin`: repiten lo que hay en `.mcp.json`, y el gate deriva el fijado de version leyendo ese archivo -- no una copia que puede quedarse atras.",
   "mcp": {
-    "servers": [
-      {
-        "name": "<<NOMBRE_DEL_SERVIDOR>>",
-        "source": {
-          "kind": "remote",
-          "ref": "<<ENDPOINT>>",
-          "version_pin": "sin-version"
-        },
-        "transport": "http",
-        "endpoint": "<<ENDPOINT>>",
-        "write_operations": false,
-        "tools_digest": "<<DIGESTO_DE_HERRAMIENTAS>>",
-        "tools_digest_date": "<<FECHA>>"
+    "<<NOMBRE_DEL_SERVIDOR>>": {
+      "write_operations": false,
+      "tools_digest": "<<DIGESTO_DE_HERRAMIENTAS>>",
+      "tools_digest_date": "<<FECHA>>",
+      "credentials": [],
+      "approval": {
+        "approved_by": "<<EQUIPO_DE_SEGURIDAD>>",
+        "date": "<<FECHA>>",
+        "review_by": "<<FECHA_DE_REVISION>>",
+        "security_review": true,
+        "notes": "<<POR_QUE_SE_APRUEBA>>"
       }
-    ],
-    "credentials": {
-      "mechanism": "none"
-    },
-    "approval": {
-      "approved_by": "<<EQUIPO_DE_SEGURIDAD>>",
-      "date": "<<FECHA>>",
-      "review_by": "<<FECHA_DE_REVISION>>",
-      "security_review": true,
-      "notes": "<<POR_QUE_SE_APRUEBA>>"
     }
-  }
+  },
+  "_CREDENCIALES": "`credentials` es una LISTA y el gate la CONTRASTA contra los `${VAR}` que aparezcan en el `env` y en los `headers` del `.mcp.json`. Dejarla vacia afirma que el servidor no pide ninguna credencial, y eso se comprueba: declarar cero y traer un `Authorization` es ERROR. Cada entrada: { \"name\": \"GITHUB_PERSONAL_ACCESS_TOKEN\", \"kind\": \"header\" | \"env\", \"is_secret\": true, \"is_required\": true }. Con `is_secret: true` hay que anadir ademas `ownership` -- `credential_owner` (un EQUIPO, nunca una persona) y `access_request_url` --: el artefacto viaja SIN el secreto, el cliente lo pide al instalar, y quien publica el plugin no es quien concede el acceso. Borra esta clave al pegarlo."
 }

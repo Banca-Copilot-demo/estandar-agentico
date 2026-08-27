@@ -16,13 +16,18 @@ from pathlib import Path
 
 from validador_agentico.dominio.especificacion import (
     EXTENSIONES_ESCANEABLES,
+    RUTA_GOBIERNO,
     RUTAS_HOOKS,
     RUTAS_MANIFIESTO,
 )
 
 log = logging.getLogger(__name__)
 
-RUTA_GOBIERNO = "GOVERNANCE.json"
+# `RUTA_GOBIERNO` se REEXPORTA desde `dominio/especificacion.py`, que es donde vive ahora: el nombre
+# del archivo de gobierno es un hecho del estandar, las reglas de dominio necesitan nombrarlo para
+# decir donde esta el defecto, y `dominio/` no puede importar de un adaptador (G5). Se mantiene
+# visible aqui para no romper a quien ya lo importaba de este modulo, en vez de definirlo dos veces.
+
 DIRECTORIO_SKILLS = "skills"
 DIRECTORIO_AGENTES = "agents"
 DIRECTORIO_PROMPTS = "commands"

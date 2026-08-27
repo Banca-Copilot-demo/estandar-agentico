@@ -9,12 +9,15 @@ PURAS (G5): reciben datos ya parseados y devuelven hallazgos.
 """
 from __future__ import annotations
 
+import json
 import re
 
+from validador_agentico.dominio import inventario_declarado
 from validador_agentico.dominio.especificacion import (
     CAMPOS_PLUGIN_OBLIGATORIOS,
     CAMPOS_PLUGIN_PERMITIDOS,
     PATRON_SEMVER,
+    RUTA_GOBIERNO,
     RUTA_MANIFIESTO_UNIFICADA,
 )
 from validador_agentico.dominio.hallazgo import Hallazgo, Inventario, aviso, error
@@ -51,7 +54,7 @@ def revisar_gobierno(gobierno: dict, manifiesto: dict | None) -> list[Hallazgo]:
     gobierno podia ser el del repositorio que aloja al artefacto suelto; se retiro con la herencia,
     asi que los dos campos describen lo que se publica aqui y se comprueban sin excepcion.
     """
-    donde = "GOVERNANCE.json"
+    donde = RUTA_GOBIERNO
     hallazgos: list[Hallazgo] = []
     if not (gobierno.get("owner") or {}).get("team"):
         hallazgos.append(error(donde, "`owner.team` vacio: el dueno debe ser RESOLUBLE contra la "
@@ -149,7 +152,7 @@ def revisar_gobierno_ausente(unidad: str, que_publica: str) -> list[Hallazgo]:
     `unidad` y `que_publica` van en el mensaje porque el hallazgo se lee en un repositorio con varias
     unidades, y «falta el gobierno» a secas no dice cual ni por que le toca declararlo.
     """
-    return [error("GOVERNANCE.json",
+    return [error(RUTA_GOBIERNO,
                   f"la unidad `{unidad}` se publica por separado -- {que_publica} -- y no declara su "
                   "GOVERNANCE.json. Cada unidad publicable declara el suyo: el dueno, el estado y la "
                   "clasificacion NO se heredan del repositorio que la aloja, o todos los artefactos "
@@ -158,13 +161,86 @@ def revisar_gobierno_ausente(unidad: str, que_publica: str) -> list[Hallazgo]:
 
 def revisar_inventario(declarado: dict, inventario: Inventario) -> list[Hallazgo]:
     """Lo declarado contra el arbol real. Un catalogo que publica un inventario inexistente da
-    falsa confianza, que es peor que no publicar nada."""
-    return [
-        error("GOVERNANCE.json",
-              f"inventario: declara {declarado.get(tipo, 0)} `{tipo}` y el arbol real tiene {real}")
-        for tipo, real in inventario.como_declarado().items()
-        if declarado.get(tipo, 0) != real
+    falsa confianza, que es peor que no publicar nada.
+
+    SE COTEJA POR IDENTIDAD, y el conteo era un falso negativo MEDIDO: borrar un skill y anadir otro
+    en el mismo pull request deja el numero EXACTAMENTE igual, asi que el cotejo no encontraba nada
+    que decir mientras el catalogo publicaba una lista que ya no existia. Es la clase de hueco por el
+    que un campo inventado sobrevive meses sin que ninguna comprobacion lo toque.
+
+    LOS DOS CAMINOS CONVIVEN mientras dure la transicion: por ids cuando el tipo se declaro como
+    lista, por conteo cuando se declaro como numero. La forma vieja no bloquea -- el gate es
+    comprobacion REQUERIDA, y rechazarla de golpe impediria mergear hasta el pull request que viene a
+    migrarla -- pero si avisa, y el aviso trae la lista ya escrita para que copiarla sea el trabajo
+    entero.
+    """
+    lectura = inventario_declarado.leer(declarado)
+    reales = inventario.ids_como_declarado()
+    conteos_reales = inventario.como_declarado()
+    hallazgos: list[Hallazgo] = []
+    for tipo, ids_declarados in sorted(lectura.ids.items()):
+        hallazgos += _revisar_identidades(tipo, ids_declarados, reales.get(tipo, ()))
+    hallazgos += [
+        error(RUTA_GOBIERNO,
+              f"inventario: declara {lectura.conteos[tipo]} `{tipo}` y el arbol real tiene "
+              f"{conteos_reales[tipo]}")
+        for tipo in lectura.tipos_por_conteo
+        if lectura.conteos[tipo] != conteos_reales[tipo]
     ]
+    hallazgos += _avisar_del_inventario_por_conteo(lectura, reales)
+    hallazgos += [
+        aviso(RUTA_GOBIERNO,
+              f"`artifacts.{clave}` ya no forma parte del inventario y se IGNORA: "
+              f"{inventario_declarado.por_que_sale(clave)}. Quitalo del archivo")
+        for clave in lectura.claves_retiradas
+    ]
+    return hallazgos
+
+
+def _revisar_identidades(tipo: str, declarados: tuple[str, ...],
+                          reales: tuple[str, ...]) -> list[Hallazgo]:
+    """Los dos sentidos del cotejo, cada uno con su mensaje: sobrar y faltar no son el mismo defecto.
+
+    Un id DECLARADO que no esta en el arbol hace que el catalogo publique un artefacto que nadie puede
+    instalar. Un id del arbol SIN DECLARAR se publica sin figurar en el inventario que el aprobador
+    leyo. Los dos bloquean, y separarlos evita que quien lee el hallazgo tenga que diferenciar dos
+    listas a ojo.
+    """
+    faltan = sorted(set(declarados) - set(reales))
+    sobran = sorted(set(reales) - set(declarados))
+    hallazgos: list[Hallazgo] = []
+    if faltan:
+        hallazgos.append(error(
+            RUTA_GOBIERNO,
+            f"inventario: `artifacts.{tipo}` declara {_lista(faltan)} y el arbol real no lo tiene. "
+            f"El catalogo publicaria un artefacto que nadie puede instalar"))
+    if sobran:
+        hallazgos.append(error(
+            RUTA_GOBIERNO,
+            f"inventario: el arbol real tiene {_lista(sobran)} y `artifacts.{tipo}` no lo declara. "
+            f"Se publicaria sin figurar en el inventario que el aprobador leyo"))
+    return hallazgos
+
+
+def _avisar_del_inventario_por_conteo(lectura, reales: dict) -> list[Hallazgo]:
+    """El aviso de migracion, con la lista ya escrita.
+
+    UNO por unidad y no uno por tipo: son la misma decision -- migrar el bloque -- y repetirlo tres
+    veces convierte una senal en ruido, que es exactamente como se ensena a ignorar los avisos.
+    """
+    if not lectura.tipos_por_conteo:
+        return []
+    sugerido = {tipo: list(reales.get(tipo, ())) for tipo in sorted(lectura.tipos_por_conteo)}
+    return [aviso(RUTA_GOBIERNO,
+                  f"`artifacts` declara {_lista(sorted(lectura.tipos_por_conteo))} por CONTEO, y el "
+                  f"estandar los declara por lista de ids. Un conteo tiene un falso negativo medido: "
+                  f"borrar un artefacto y anadir otro deja el numero igual, asi que el gate no ve el "
+                  f"cambio y el catalogo publica una lista que ya no existe. Lo que corresponde a "
+                  f"este arbol es {json.dumps(sugerido, ensure_ascii=False, sort_keys=True)}")]
+
+
+def _lista(elementos: list[str]) -> str:
+    return ", ".join(f"`{elemento}`" for elemento in elementos)
 
 
 def revisar_ausencia_de_plugin() -> list[Hallazgo]:
