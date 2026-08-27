@@ -1,10 +1,17 @@
-name: Promocionar a Certificado
+name: Certificar
 
 # LO QUE ESTE WORKFLOW HACE, y no existia: llevar un artefacto de Conforme a Certificado.
 #
 # Hasta ahora `certified` era un estado alcanzable en el diseño y por nadie en la practica: la
 # publicacion escribia siempre `conformant` y no habia nada que promocionara. Un estado al que no se
 # llega no es un estado, es documentacion.
+#
+# GLOSARIO: «promocionar» nombra el MECANISMO -- quitar la marca de prelanzamiento y avisar al indice
+# --, y «certificar» nombra lo que ese mecanismo SIGNIFICA. `certificar` es el termino del ciclo de
+# vida -- el estado es `certified` --, y por eso es el que se lee en los nombres, los mensajes y los
+# resumenes. El codigo conserva `promocionar` porque describe con precision lo que este workflow hace:
+# no evalua nada, y quien decide la certificacion es el guardian `certificable` leyendo el veredicto
+# del pull request. Este glosario existe para que el vocabulario y el codigo no divergan en silencio.
 #
 # PROMOCIONAR ES QUITAR LA MARCA DE PRELANZAMIENTO, no republicar. El paquete, su digesto y su
 # atestacion son los MISMOS: lo unico que cambia es que el indice deja de excluirlo, asi que el
@@ -17,7 +24,7 @@ on:
   workflow_call:
     inputs:
       etiqueta:
-        description: La etiqueta publicada que se promociona.
+        description: La etiqueta publicada que se certifica.
         required: true
         type: string
       repositorio-indice:
@@ -39,7 +46,7 @@ on:
       app-id:
         description: >
           App ID de la App del ciclo de vida, con la que se acuna el token efimero que despierta al
-          indice. Sin ella la promocion se completa igual y el marketplace espera a la pasada programada.
+          indice. Sin ella la certificacion se completa igual y el marketplace espera a la pasada programada.
         required: false
       app-key:
         description: Clave privada de esa App. Solo sirve para pedir tokens, nunca es un token.
@@ -47,7 +54,7 @@ on:
   workflow_dispatch:
     inputs:
       etiqueta:
-        description: La etiqueta publicada que se promociona.
+        description: La etiqueta publicada que se certifica.
         required: true
         type: string
       repositorio-indice:
@@ -61,7 +68,7 @@ permissions:
 
 jobs:
   promocionar:
-    name: Promocionar
+    name: Certificar
     runs-on: ubuntu-latest
     # EL SECRETO SE LEE AQUI Y NO EN EL `if:` DE CADA PASO. `secrets` NO es un contexto valido en un
     # `if:` de paso: el workflow no falla en el paso, falla al ARRANCAR -- `startup_failure`, cero
@@ -71,7 +78,7 @@ jobs:
     env:
       PORT_CLIENT_ID: ${{ secrets.port-client-id }}
     steps:
-      - name: Comprobar que la etiqueta existe y esta sin promocionar
+      - name: Comprobar que la etiqueta existe y esta sin certificar
         id: estado
         shell: bash
         env:
@@ -86,7 +93,7 @@ jobs:
           # sin aviso y sin promocionar --. Un `if:` que nunca se cumple es invisible.
           if ! prelanzamiento="$(gh release view "${{ inputs.etiqueta }}" \
                 --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease' 2>&1)"; then
-            echo "::error::la etiqueta ${{ inputs.etiqueta }} no tiene release publicado: no hay nada que promocionar"
+            echo "::error::la etiqueta ${{ inputs.etiqueta }} no tiene release publicado: no hay nada que certificar"
             exit 1
           fi
           case "$prelanzamiento" in
@@ -100,7 +107,7 @@ jobs:
           esac
           echo "era_prelanzamiento=$prelanzamiento" >> "$GITHUB_OUTPUT"
           if [ "$prelanzamiento" = "false" ]; then
-            echo "La etiqueta ya estaba promocionada: no se toca nada."
+            echo "La etiqueta ya estaba certificada: no se toca nada."
           fi
 
       - name: Quitar la marca de prelanzamiento
@@ -110,7 +117,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release edit "${{ inputs.etiqueta }}" --repo "$GITHUB_REPOSITORY" --prerelease=false
-          echo "Promocionado: ${{ inputs.etiqueta }} entra al marketplace en la proxima regeneracion del indice."
+          echo "Certificado: ${{ inputs.etiqueta }} entra al marketplace en la proxima regeneracion del indice."
 
       # EL RELEASE PRIMERO Y LA FICHA DESPUES, y el orden es la decision. El release es el HECHO --
       # es lo que el indice mira y lo que decide si el artefacto se instala --; la ficha es la
@@ -182,20 +189,20 @@ jobs:
         if: env.PORT_CLIENT_ID == ''
         shell: bash
         run: |
-          echo "::warning::sin credenciales de Port: el release ya esta promocionado, pero su ficha sigue diciendo el estado anterior"
+          echo "::warning::sin credenciales de Port: el release ya esta certificado, pero su ficha sigue diciendo el estado anterior"
 
       - name: Dejar constancia en el resumen
         shell: bash
         run: |
           {
-            echo "## Promocion a Certificado"
+            echo "## Certificacion"
             echo
             echo "| | |"
             echo "|---|---|"
             echo "| Etiqueta | \`${{ inputs.etiqueta }}\` |"
-            echo "| Estaba sin promocionar | ${{ steps.estado.outputs.era_prelanzamiento }} |"
+            echo "| Estaba sin certificar | ${{ steps.estado.outputs.era_prelanzamiento }} |"
             echo "| Ficha de Port | ${{ env.PORT_CLIENT_ID != '' && 'fijada en `certified`' || 'sin actualizar (sin credenciales)' }} |"
             echo
-            echo "El paquete, su digesto y su atestacion NO cambian: promocionar solo decide si el"
+            echo "El paquete, su digesto y su atestacion NO cambian: certificar solo decide si el"
             echo "artefacto entra al marketplace."
           } >> "$GITHUB_STEP_SUMMARY"

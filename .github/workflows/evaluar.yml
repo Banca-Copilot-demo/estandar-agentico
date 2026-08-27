@@ -5,9 +5,9 @@ name: Evaluar el comportamiento
 # UN TRABAJO POR UNIDAD, Y NO UNO POR REPOSITORIO. Es el cambio que estructura este archivo, y viene
 # de un defecto MEDIDO: mientras hubo un solo trabajo para todo, su unica conclusion se contagiaba.
 # En el run 33040368778 de `agentes-sdlc`, `revisar-jql` con 3 de 3 y `referencia` con 3 de 3 NO se
-# promocionaron porque la suite de `migracion` estaba en 2 de 3 -- dos artefactos que cumplian se
+# certificaron porque la suite de `migracion` estaba en 2 de 3 -- dos artefactos que cumplian se
 # quedaron en Conforme por una unidad que sus equipos no habian tocado --. Acotar la deteccion no
-# bastaba: el guardian de la promocion preguntaba por una senal de REPOSITORIO, y no existia ninguna
+# bastaba: el guardian de la certificacion preguntaba por una senal de REPOSITORIO, y no existia ninguna
 # senal por unidad que pudiera preguntar. Con la matriz existe: cada unidad emite SU comprobacion,
 # con su nombre, y el guardian busca la suya. De paso el portal de Actions muestra que artefacto
 # corre y cual fallo sin abrir un log.
@@ -237,7 +237,7 @@ jobs:
 
   # UNA CELDA POR UNIDAD, Y SU NOMBRE ES EL DE LA UNIDAD.
   #
-  # EL NOMBRE NO ES DECORACION: es la senal que consume el guardian de la promocion. GitHub nombra el
+  # EL NOMBRE NO ES DECORACION: es la senal que consume el guardian de la certificacion. GitHub nombra el
   # check-run de un workflow reutilizable `<job del llamador> / <nombre del job llamado>`, asi que con
   # la unidad dentro del `name:` cada artefacto obtiene una comprobacion propia y localizable por su
   # subruta. Antes solo existia una comprobacion agregada, y preguntar por ella era preguntar por el
@@ -561,7 +561,7 @@ jobs:
             case "$resultado" in
               no_procede) echo "No se evaluo aqui. La medicion vive en la comprobacion del pull request; la publicacion la recupera de aquel commit sin volver a llamar al modelo." ;;
               sin_suites) echo "Sin suites. El artefacto se publicara como **Conforme**: no se distribuye hasta certificarse." ;;
-              superada)   echo "Suites superadas. Cada unidad emitio su propia comprobacion y puede promocionarse a **Certificado** por separado." ;;
+              superada)   echo "Suites superadas. Cada unidad emitio su propia comprobacion y puede certificarse por separado." ;;
               *)          echo "Alguna unidad esta en rojo. Solo esa deja de certificarse: las demas conservan su comprobacion en verde." ;;
             esac
           } >> "$GITHUB_STEP_SUMMARY"
