@@ -99,7 +99,7 @@ def _agente_sin_description(raiz: Path) -> None:
         f'---\nname: demo.sdlc.a\ndescription: ""\nmetadata:\n{_ENVELOPE}\n---\n', encoding="utf-8")
 
 
-def _hooks_no_declarados(raiz: Path) -> None:
+def _hooks_sin_aprobacion(raiz: Path) -> None:
     _escribir_skill(raiz)
     _escribir_manifiesto(raiz)
     (raiz / "GOVERNANCE.json").write_text(json.dumps({
@@ -109,9 +109,13 @@ def _hooks_no_declarados(raiz: Path) -> None:
         "artifacts": {"skills": 1}}), encoding="utf-8")
     directorio = raiz / "hooks"
     directorio.mkdir(parents=True)
+    # LA ESTRUCTURA REAL: el `type` y el tope van en la ACCION, dentro del `hooks[]` del grupo. El
+    # fixture los tenia en el grupo -- la forma que el gate exigia y el cliente ignora --.
     (directorio / "hooks.json").write_text(json.dumps({
         "version": 1,
-        "hooks": {"sessionStart": [{"type": "command", "bash": "echo x", "timeoutSec": 5}]}}),
+        "hooks": {"SessionStart": [{"hooks": [
+            {"type": "command", "timeout": 5,
+             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/x.sh"}]}]}}),
         encoding="utf-8")
 
 
@@ -206,8 +210,8 @@ _CABLES = (
      "`skillsReference` no es un campo estandar"),
     ("_revisar_agentes", _agente_sin_description,
      "falta `description`: es lo que decide si el modelo le delega"),
-    ("_revisar_hooks", _hooks_no_declarados,
-     "no declara `hooks`"),
+    ("_revisar_hooks", _hooks_sin_aprobacion,
+     "no declara `hooks.approval`"),
     ("_revisar_recursos", _recurso_inexistente,
      "y ese archivo NO existe"),
     ("_revisar_higiene", _secreto_literal,
