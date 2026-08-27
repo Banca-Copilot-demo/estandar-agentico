@@ -4,7 +4,7 @@ Tres pruebas de punta a punta contra la organización real. Comprueban lo que BC
 Conforme no se distribuye masivamente, y uno Certificado sí** — y que la frontera entre ambos la decide
 únicamente si sus evaluaciones pasan.
 
-Ejecutadas por última vez el **2026-08-26**. Los resultados de esa ejecución están en
+Ejecutadas por última vez el **2026-08-27**. Los resultados de esa ejecución están en
 [Línea base medida](#línea-base-medida); una reejecución que se desvíe de ahí es una señal, no un ruido.
 
 > **Esta carpeta tiene dos mitades.** Este documento cubre el camino de **publicación**: cómo un cambio
@@ -41,8 +41,21 @@ atestaciones — pero significa que cada prueba deja rastro permanente.
 
 | Prueba | Artefacto | Por qué ese |
 |---|---|---|
-| Caso 1 y 3 | `plugins/migracion` | el 1 lo deja sin evaluaciones; el 3 se las añade |
-| Caso 2 | `skills/revisar-jql` | ya trae una suite verde |
+| Caso 1 y 3 | una unidad **sin suites** | el 1 la deja así; el 3 se las añade |
+| Caso 2 | una unidad **con suite verde** | mide el camino hasta `certified` sin escribir nada nuevo |
+
+**Qué unidad toca cada vez cambia, y por eso la tabla no las nombra.** Cuando el caso 3 le añade
+evaluaciones a una unidad, ésa deja de servir para el caso 1 en la siguiente ejecución: ya no está sin
+suites. En la ejecución del 2026-08-27 se usó `plugins/contratos` para los casos 1 y 3 y
+`skills/revisar-jql` para el 2, porque `plugins/migracion` había recibido su suite en la anterior.
+Antes de empezar, mira qué unidades tienen suites:
+
+```bash
+cd /c/PROYECTO_TRACK_AGENTICO_BCP/demo-bcp-copilot/agentes-sdlc
+for d in plugins/*/ skills/*/; do
+  echo "$d $(grep -h '\"version\"' $d.claude-plugin/plugin.json) suites=$(find $d -name promptfooconfig.yaml | wc -l)"
+done
+```
 
 **Los merges necesitan `--admin`.** La política de rama exige revisión de *code owner* y nadie aprueba
 su propio PR:
@@ -151,8 +164,22 @@ Igual que el caso 1, sobre `skills/revisar-jql` — que ya trae su suite — sub
 | 9 | Instalación en Claude Code | ídem, bajo `~/.claude/plugins/cache/agentico/<nombre>/<version>/` |
 
 ```bash
+# LOS TRES PASOS, y los tres hacen falta si el artefacto ya estaba instalado. Con `install` a secas el
+# cliente responde «is already installed» y deja la version VIEJA en cache, sin error ni aviso.
+claude plugin uninstall demo.sdlc.revisar-jql@agentico
+claude plugin marketplace update agentico
 claude plugin install demo.sdlc.revisar-jql@agentico
-grep -c "<frase nueva>" /c/Users/hvidalsi/.claude/plugins/cache/agentico/demo-sdlc-revisar-jql/<version>/SKILL.md
+
+# La cache guarda una carpeta por version: comprueba en la NUEVA, y que la vieja siga sin el contenido.
+find /c/Users/hvidalsi/.claude/plugins/cache/agentico/demo-sdlc-revisar-jql -name SKILL.md \
+  -exec sh -c 'echo "$(basename $(dirname "$1")): $(grep -c "<frase nueva>" "$1")"' _ {} \;
+```
+
+En Copilot, borra antes el directorio de la instalación anterior o falla con `Access is denied`:
+
+```bash
+rm -rf /c/Users/hvidalsi/.copilot/installed-plugins/agentico/demo.sdlc.revisar-jql
+copilot plugin install demo.sdlc.revisar-jql@agentico
 ```
 
 > **Si el catálogo no recoge la versión promocionada**, regenera el índice a mano y vuelve a mirar:
@@ -198,30 +225,36 @@ versión anterior sería emitir un veredicto sobre unos bytes distintos de los q
 
 ## Línea base medida
 
-Ejecución del **2026-08-26** contra `Banca-Copilot-demo`.
+Ejecución del **2026-08-27** contra `Banca-Copilot-demo`, ya con una sola evaluación por artefacto.
 
 | Etapa | Duración | Referencia |
 |---|---|---|
-| `conformidad / validar` | 12–21 s | no consume modelo |
-| `comportamiento` sin suites | ~11 s | run [33014813826](https://github.com/Banca-Copilot-demo/agentes-sdlc/actions/runs/33014813826) |
-| `comportamiento` con suite de 3 casos y juez | ~1 m 40 s | run [33015692150](https://github.com/Banca-Copilot-demo/agentes-sdlc/actions/runs/33015692150) |
-| `publicar` (sellar, atestar, ficha) | ~25 s | run [33016070654](https://github.com/Banca-Copilot-demo/agentes-sdlc/actions/runs/33016070654) |
-| `promocionar` | ~5 s | mismo run |
-| `Etiquetar` | ~20 s | |
+| `conformidad / validar` | 11–16 s | no consume modelo |
+| `comportamiento` sin suites | ~11 s | run [33041435193](https://github.com/Banca-Copilot-demo/agentes-sdlc/actions/runs/33041435193) |
+| `comportamiento` con suite de 3 casos y juez | 1 m 29 s – 1 m 34 s | runs [33041718421](https://github.com/Banca-Copilot-demo/agentes-sdlc/actions/runs/33041718421) y [33042368836](https://github.com/Banca-Copilot-demo/agentes-sdlc/actions/runs/33042368836) |
+| `publicar` (sellar, atestar, ficha) | 16–28 s | run [33042515392](https://github.com/Banca-Copilot-demo/agentes-sdlc/actions/runs/33042515392) |
+| `certificable` (el guardián) | 9 s sin suites · **2 m 34 s – 2 m 54 s** con ellas | mismo run |
+| `promocionar` | 13–18 s | mismo run |
 
-> **Medido cuando la suite se ejecutaba DOS veces por artefacto.** Al publicar había un trabajo
-> `certificar` que volvía a evaluar sobre el commit etiquetado; hoy no existe, y en su lugar hay un
-> guardián que sólo pregunta. Así que una reejecución debe salir **~1 m 40 s más rápida** en el total
-> de la publicación, y eso es la mejora esperada, no una regresión ni una medición mal hecha.
+> **El guardián tarda minutos aunque no evalúe nada, y no es un defecto.** Espera a que la comprobación
+> de comportamiento del commit etiquetado termine — la publicación arranca casi a la vez que ella —,
+> así que su duración es la de la evaluación que está esperando, no trabajo suyo. Sin suites resuelve
+> en 9 s.
 
 Resultados finales de la ejecución:
 
 | | Caso 1 | Caso 2 | Caso 3 |
 |---|---|---|---|
-| Artefacto | `demo.sdlc.migracion` 0.1.2 | `demo.sdlc.revisar-jql` 0.1.2 | `demo.sdlc.migracion` 0.1.3 |
+| Artefacto | `demo.sdlc.contratos` 0.2.1 | `demo.sdlc.revisar-jql` 0.2.1 | `demo.sdlc.contratos` 0.2.2 |
 | Release | Pre-release | promocionado | promocionado |
 | Ficha | `conformant` / `False` | `certified` / `True` | `certified` / `True` |
-| Instalación | llegó la 0.1.1 | llegó la 0.1.2 | llegó la 0.1.3 |
+| Marketplace | se quedó en 0.1.2 | subió a 0.2.1 | subió a 0.2.2 |
+| Instalación en Copilot | llegó la **0.1.2**, sin el cuerpo nuevo | llegó la 0.2.1 con él | llegó la 0.2.2 con él |
+| Instalación en Claude Code | — | llegó la 0.2.1 con él | llegó la 0.2.2 con él |
+
+El caso 1 y el caso 3 son el **mismo artefacto y el mismo contenido**: la frase `Paginacion declarada`
+se contó **0 veces** cuando estaba en Conforme y **1 vez** tras certificarse. Mismo comando de
+instalación, resultado opuesto, decidido únicamente por si sus evaluaciones pasaron.
 
 **Una desviación de tiempo importa.** Si la evaluación tarda mucho menos de lo esperado y además falla,
 sospecha del agotamiento de la cuota de inferencia antes que del artefacto: no se manifiesta como un
@@ -243,6 +276,18 @@ había detectado antes.
 | 4 | Se evaluaban suites ajenas al repositorio | un repositorio de dominio se ponía rojo por una **plantilla** del estándar, que por construcción no puede pasar |
 | 5 | Se colocaban artefactos ajenos en el cliente | mientras se medía un artefacto, el cliente tenía cargados los del asistente de autoría y una plantilla: **contaminaba el entorno de medición** |
 | 6 | `promocionar` no avisaba al índice | artefacto **certificado y no instalable** hasta la pasada programada del índice, que es diaria |
+| 7 | una suite roja **en una unidad** impedía promocionar **todas las demás** | `revisar-jql` y `referencia`, con 3/3 cada una, se quedaron en Conforme porque la suite de `migracion` estaba roja. Abierto como [estandar-agentico#28](https://github.com/Banca-Copilot-demo/estandar-agentico/issues/28) |
+
+**El defecto 7 se midió en esta ejecución y sigue abierto.** El guardián de la promoción pregunta si la
+comprobación `Evaluacion de comportamiento` del commit está en verde, y esa comprobación es **una sola
+para todo el repositorio**: el trabajo recorre todas las suites y emite una conclusión. Es el mismo
+defecto que el acotado por `subruta` cerró para la pregunta «¿esta unidad trae suites?» pero no para
+«¿su suite pasó?». Tiene tres arreglos posibles con costes distintos, y elegir entre ellos es decisión
+de BCP: están en el issue.
+
+En la ejecución del 2026-08-27 no bloqueó, pero **por casualidad**: la suite de `migracion` pasó esa
+vez. Es decir que hoy la promoción de una unidad depende de que las suites de las demás tengan un buen
+día.
 
 ### El veredicto de certificación no es reproducible
 
@@ -299,6 +344,33 @@ generó ninguna ejecución. Se fuerza cerrando y reabriendo el PR. Ocurrió dos 
 Con un check requerido deja el PR bloqueado sin diagnóstico; **con el push de una etiqueta significaría
 no publicar sin que nadie se entere.**
 
+**Certificar una versión nueva NO llega a quien ya tenía instalada una anterior.** Medido en el caso 2:
+con `demo.sdlc.revisar-jql 0.2.1` ya certificada y en el catálogo, el comando de instalación respondió
+
+```
+✔ Plugin "demo.sdlc.revisar-jql@agentico" is already installed (scope: user)
+```
+
+y la caché del cliente seguía teniendo **sólo la 0.1.2**. No hubo error, no hubo aviso: el cliente
+consideró la petición satisfecha. Para que llegara la versión certificada hicieron falta tres pasos:
+
+```bash
+claude plugin uninstall demo.sdlc.revisar-jql@agentico
+claude plugin marketplace update agentico     # sin esto, reinstalar vuelve a traer la vieja
+claude plugin install demo.sdlc.revisar-jql@agentico
+```
+
+En Copilot el síntoma es distinto y más honesto: reinstalar sobre una instalación previa falla con
+`Access is denied (os error 5)` —hay que borrar el directorio a mano—, así que al menos no se queda
+callado.
+
+**La consecuencia de gobierno es la que importa, y no es del código.** El estado dice «Certificado y
+distribuido», el catálogo ofrece la versión nueva, y sin embargo **el parque instalado se queda donde
+estaba**. Distribuir no es adoptar. Cualquier cosa que dependa de que una corrección llegue de verdad
+—retirar una versión con un defecto, cerrar una capacidad externa— necesita un mecanismo de
+actualización que hoy no existe en el marco: los estados gobiernan lo que el catálogo **ofrece**, no lo
+que las máquinas **tienen**.
+
 ---
 
 ## Pendientes conocidos
@@ -311,3 +383,10 @@ del ciclo de vida en cuanto se implementen.
 no la referencia: viaja en el paquete y no se usa`. Es aviso y no error, así que no bloquea. Tiene una
 consecuencia buscada —añadir evaluaciones cambia el digesto, y por eso exige versión nueva— y otra no
 buscada: el consumidor se descarga unas pruebas que no va a ejecutar.
+
+**Hay una ficha rezagada en Port, de antes de que la ficha fuera por artefacto.** `demo.sdlc.catalogo-datos`
+declara `ref: demo.sdlc.catalogo-datos--v0.1.0` y `en_marketplace: True`, mientras el artefacto real de
+esa unidad —`demo.sdlc.catalogo-datos.mcp`— va por `--v0.3.0`. No es una regresión de estas pruebas: es
+una entidad de nivel de plugin que dejó de escribirse cuando la unidad de la ficha pasó a ser la
+capacidad. Conviene decidir si se borra o se rellena, porque hoy el catálogo de metadata tiene dos
+fichas de la misma unidad contando versiones distintas.
