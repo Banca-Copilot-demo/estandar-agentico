@@ -18,6 +18,9 @@ entre los dos archivos que ya existen:
 El tercero es el que de verdad protege: si el blueprint admitiera un `status` que el envelope no,
 Port aceptaria un estado que ningun artefacto puede declarar -- y al contrario, rechazaria uno
 legitimo, que es peor porque bloquea la publicacion de algo conforme.
+
+Y HAY UN TERCER SITIO, que faltaba aqui: los `Enum` del dominio (`Estado`, `Clasificacion`), contra
+los que el gate valida ANTES de que exista ninguna ficha. Los tres se comparan al final del archivo.
 """
 from __future__ import annotations
 
@@ -25,6 +28,8 @@ import json
 from pathlib import Path
 
 import pytest
+
+from validador_agentico.dominio.especificacion import Clasificacion, Estado
 
 _RAIZ = Path(__file__).resolve().parent.parent.parent
 _BLUEPRINT = _RAIZ / "port" / "blueprint-artefacto-agentico.json"
@@ -88,3 +93,45 @@ def test_los_campos_compartidos_admiten_los_mismos_valores(campo):
         f"`{campo}` divergio: Port admite {de_port} y el envelope {del_envelope}. "
         f"Un valor que solo admite uno de los dos bloquea la publicacion de algo conforme, o deja "
         f"pasar a Port algo que ningun artefacto puede declarar")
+
+
+# ── el TERCER sitio: los enums de Python ────────────────────────────────────────────────────
+# Los mismos conjuntos viven ademas como `Enum` en el dominio, porque el gate valida contra ellos
+# ANTES de que exista ninguna ficha. Ese archivo no se compara con nadie: el blueprint no se
+# importa desde Python -- es un artefacto que se APLICA a Port -- asi que generarlo desde el enum
+# obligaria a meter un paso de generacion en el despliegue del blueprint para cerrar una divergencia
+# que una lectura del JSON ya detecta. Se comprueba, no se genera.
+_ENUM_DEL_DOMINIO = {
+    "status": Estado,
+    "data_classification": Clasificacion,
+}
+
+
+@pytest.mark.parametrize("campo", sorted(_ENUM_DEL_DOMINIO))
+def test_el_enum_del_dominio_no_divergio_del_contrato_publicado(campo):
+    """EL DEFECTO QUE FIJA: el dominio acepta un estado que Port rechaza al escribir la ficha.
+
+    MEDIDO: `suspended` estaba en el ciclo de vida y no estaba en NINGUNO de los tres sitios; al
+    anadirlo se vio que nada comprobaba que coincidieran. La divergencia no falla al validar el
+    artefacto -- el gate lo da por bueno -- sino despues, cuando `.github/actions/publicar/fichas.py`
+    valida la ficha contra el `schema` del propio blueprint y la rechaza. O sea en la publicacion,
+    que es el peor momento posible para enterarse.
+
+    Se compara la LISTA y no el conjunto: el orden del enum es el del ciclo de vida y es lo que Port
+    muestra en el desplegable de la ficha.
+    """
+    del_dominio = [valor.value for valor in _ENUM_DEL_DOMINIO[campo]]
+
+    assert del_dominio == _blueprint()[campo]["enum"] == _envelope()[campo]["enum"], (
+        f"`{campo}` divergio: el dominio dice {del_dominio}, el blueprint "
+        f"{_blueprint()[campo]['enum']} y el envelope {_envelope()[campo]['enum']}")
+
+
+def test_cada_estado_de_port_tiene_color_o_la_ficha_sale_sin_leer():
+    """Un valor sin entrada en `enumColors` se pinta igual que los demas, y el estado deja de leerse
+    de un vistazo -- que es justo para lo que sirve la ficha cuando alguien la consulta con prisa."""
+    estados = _blueprint()["status"]["enum"]
+    colores = _blueprint()["status"]["enumColors"]
+
+    sin_color = [estado for estado in estados if estado not in colores]
+    assert not sin_color, f"estados del blueprint sin color asignado: {sin_color}"

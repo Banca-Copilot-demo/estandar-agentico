@@ -59,11 +59,22 @@ CAMPOS_ENVELOPE = frozenset({
 
 
 class Estado(str, Enum):
-    """Estados del ciclo de vida. Los DERIVAN los gates; no se declaran a mano."""
+    """Estados del ciclo de vida. Los DERIVAN los gates; no se declaran a mano.
+
+    EL ORDEN ES EL DEL CICLO DE VIDA, no alfabetico, y se replica igual en
+    `schemas/envelope.schema.json` y en `port/blueprint-artefacto-agentico.json`.
+    `tests/test_contrato_de_port.py` falla si los tres dejan de coincidir.
+
+    `SUSPENDED` es la unica salida REVERSIBLE: el artefacto deja de distribuirse -- el release
+    vuelve a prelanzamiento -- sin que nadie declare todavia que se retira. Por eso NO exige el
+    bloque `deprecation`, que `DEPRECATED` y `RETIRED` si exigen: suspender no anuncia un plazo,
+    solo detiene la distribucion mientras se decide.
+    """
 
     DRAFT = "draft"
     CONFORMANT = "conformant"
     CERTIFIED = "certified"
+    SUSPENDED = "suspended"
     DEPRECATED = "deprecated"
     RETIRED = "retired"
 

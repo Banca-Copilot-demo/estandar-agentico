@@ -52,11 +52,12 @@
         "draft",
         "conformant",
         "certified",
+        "suspended",
         "deprecated",
         "retired"
       ],
       "x-read-from": "frontmatter.metadata",
-      "description": "Cinco valores. `conformant` lo escribe el ultimo step de la publicacion; `certified` esta RESERVADO y hoy es inalcanzable porque no existe workflow de evals. `retired` NO SE DECLARA normalmente: lo DERIVA el indice cuando `deprecation.sunset_date` ya paso, porque cuando llega la fecha nadie edita el artefacto -- un estado que depende del paso del tiempo no puede vivir en un archivo que hay que tocar a mano. Declararlo es la via de RETIRO DE EMERGENCIA, y entonces el motivo es obligatorio."
+      "description": "Seis valores, EN ORDEN DE CICLO DE VIDA. `conformant` lo escribe el ultimo step de la publicacion; `certified` esta RESERVADO y hoy es inalcanzable porque no existe workflow de evals. `retired` NO SE DECLARA normalmente: lo DERIVA el indice cuando `deprecation.sunset_date` ya paso, porque cuando llega la fecha nadie edita el artefacto -- un estado que depende del paso del tiempo no puede vivir en un archivo que hay que tocar a mano. Declararlo es la via de RETIRO DE EMERGENCIA, y entonces el motivo es obligatorio. `suspended` es la unica salida REVERSIBLE del ciclo: el artefacto deja de distribuirse -- el release vuelve a prelanzamiento -- mientras se investiga una deriva de superficie, caduca una aprobacion o se atiende un incidente, y puede REACTIVARSE sin pasar por la deprecacion. Por eso NO exige el bloque `deprecation`: suspender no anuncia un plazo de retiro, solo detiene la distribucion."
     },
     "description": {
       "type": "string",
