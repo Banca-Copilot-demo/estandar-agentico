@@ -322,3 +322,84 @@ def test_el_guardian_busca_la_comprobacion_por_el_nombre_que_le_da_quien_la_emit
         f"publicar.yml busca {buscados} y `evaluar.yml` emite {emitido!r}. Si no coinciden, la "
         "busqueda no encuentra la comprobacion, se lee como «no existe» y ningun artefacto se "
         "certifica jamas -- sin un solo error en rojo")
+
+
+# --- D2: el veredicto del juez se conserva, y sobre todo cuando la suite falla ------------------
+#
+# EL DEFECTO QUE ESTAS PRUEBAS FIJAN: `promptfoo eval` sin `-o` deja los resultados en el
+# `~/.promptfoo` del runner, que muere con el. Del log solo sobrevive la tabla -- respuestas truncadas
+# a ~5 lineas y un `[PASS]`/`[FAIL]` pelado --, o sea que EL MOTIVO QUE DIO LA RUBRICA se pierde.
+#
+# LO QUE COSTO, medido: una suite dio 3/3, luego 2/3 y luego verde sobre EL MISMO CONTENIDO, y se
+# lleva toda la sesion llamando a eso «azar del modelo» sin que nadie pueda mirar por que. Esta medido
+# ademas que el caso que falla CUMPLE su ancla determinista (`icontains: bloqueante`), asi que lo que
+# falla es la rubrica. Hay una decision de politica pendiente -- repetir N veces y votar por mayoria,
+# con coste x3 o x5 de inferencia -- que no se puede tomar informadamente a ciegas.
+#
+# ES UNA PRUEBA DE FORMA SOBRE EL YAML y no puede ser otra cosa: comprobarlo de verdad exigiria una
+# corrida de CI con cuota de inferencia. Lo que se vigila es que el cableado no se deshaga.
+
+def _paso_llamado(ruta: Path, fragmento: str) -> dict:
+    coincidencias = [paso for _, paso in _pasos_de(yaml.safe_load(ruta.read_text(encoding="utf-8")))
+                     if fragmento in str(paso.get("name", ""))]
+    assert len(coincidencias) == 1, (
+        f"se esperaba exactamente un paso cuyo nombre contenga {fragmento!r} en {_identificador(ruta)}, "
+        f"y hay {len(coincidencias)}: la prueba dejaria de vigilar lo que cree vigilar")
+    return coincidencias[0]
+
+
+def test_la_evaluacion_escribe_el_informe_del_juez_con_o_y_no_lo_deja_morir_en_el_runner():
+    """Sin `-o`, el motivo de la rubrica no existe en ninguna parte una vez apagado el runner."""
+    paso = _paso_llamado(_EVALUAR, "Ejecutar las suites")
+    guion = str(paso.get("run", "")).replace("\\\n", " ")
+
+    assert re.search(r"\beval\b.*\s-o\s", guion), (
+        "`promptfoo eval` corre sin `-o`: los resultados quedan en el `~/.promptfoo` del runner y "
+        "mueren con el, y con ellos el motivo que dio la rubrica")
+
+
+def test_el_informe_de_cada_suite_lleva_un_nombre_derivado_de_SU_RUTA_y_no_del_archivo():
+    """EL DEFECTO QUE EVITA: todas las suites del estandar se llaman igual -- `evals/suite.yaml` dentro
+    de cada artefacto --, asi que un informe nombrado por el archivo haria que la segunda suite pisara
+    a la primera EN SILENCIO. Se conservaria un solo informe y seria el de otro artefacto: peor que no
+    conservar ninguno, porque parece completo."""
+    guion = str(_paso_llamado(_EVALUAR, "Ejecutar las suites").get("run", ""))
+
+    definicion = [linea for linea in guion.splitlines() if re.match(r"\s*informe=", linea)]
+
+    assert definicion, "no se ve donde se compone la ruta del informe"
+    assert "suite" in definicion[0], (
+        f"la ruta del informe no se deriva de la ruta de la suite: {definicion[0].strip()!r}. "
+        "Con un nombre fijo, la ultima suite pisa a las anteriores sin decirlo")
+
+
+def test_el_informe_se_sube_TAMBIEN_cuando_las_suites_fallan():
+    """LA MITAD DEL ARREGLO, y la que se olvida: el paso que corre las suites sale con 1 cuando alguna
+    no pasa, asi que un `upload-artifact` sin `always()` sube el informe SOLO en las corridas verdes --
+    aquellas en las que a nadie le hace falta -- y lo pierde en la unica que interesa. Subirlo solo
+    cuando pasa es no subirlo."""
+    paso = _paso_llamado(_EVALUAR, "Conservar el informe del juez")
+
+    assert "upload-artifact" in str(paso.get("uses", "")), "el informe no se sube a ninguna parte"
+    assert "always()" in str(paso.get("if", "")), (
+        "el informe solo se sube si la corrida va bien; la corrida que hay que diagnosticar es "
+        "justamente la que falla")
+
+
+def test_la_ruta_que_escribe_el_informe_y_la_que_lo_sube_son_LA_MISMA_expresion():
+    """Y5 en su forma mas cara: `upload-artifact` es una accion y no hereda el directorio de trabajo
+    del `run` que escribio los archivos. Con dos expresiones distintas -- o con una relativa -- el
+    directorio existe, esta vacio, y el artefacto se sube sin nada dentro SIN UN SOLO ERROR."""
+    documento = yaml.safe_load(_EVALUAR.read_text(encoding="utf-8"))
+    variable = "DIRECTORIO_DE_INFORMES"
+
+    declarada = (documento.get("env") or {}).get(variable, "")
+    escritura = str(_paso_llamado(_EVALUAR, "Ejecutar las suites").get("run", ""))
+    subida = str((_paso_llamado(_EVALUAR, "Conservar el informe del juez").get("with") or {}).get("path", ""))
+
+    assert declarada.startswith("${{ github.workspace }}"), (
+        f"{variable} no es absoluta ({declarada!r}): un relativo significa cosas distintas en cada paso")
+    assert variable in escritura, "el paso que corre las suites no escribe en la variable declarada"
+    assert variable in subida, (
+        f"el paso que sube el informe usa {subida!r} en vez de la variable: dos expresiones que hoy "
+        "coinciden y manana divergen sin que nada lo detecte")
