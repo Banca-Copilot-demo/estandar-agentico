@@ -20,11 +20,12 @@
       "status": {
         "type": "string",
         "title": "Estado",
-        "description": "Derivado de los gates y de los evals. Vive aqui, no en el repositorio.",
+        "description": "Derivado de los gates y de los evals. Vive aqui, no en el repositorio. `suspended` es la salida REVERSIBLE: el artefacto se retira de la distribucion volviendo a marcar el release como prelanzamiento, y esta ficha es el UNICO sitio donde queda constancia -- sin este valor la ficha seguiria diciendo `certified` de algo que ya no se puede instalar, que es peor que no tener ficha.",
         "enum": [
           "draft",
           "conformant",
           "certified",
+          "suspended",
           "deprecated",
           "retired"
         ],
@@ -32,6 +33,7 @@
           "draft": "lightGray",
           "conformant": "green",
           "certified": "blue",
+          "suspended": "yellow",
           "deprecated": "orange",
           "retired": "red"
         }
