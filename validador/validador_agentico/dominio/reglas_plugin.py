@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import re
 
-from validador_agentico.dominio import inventario_declarado
+from validador_agentico.dominio import forma_mcp, inventario_declarado
 from validador_agentico.dominio.especificacion import (
     CAMPOS_PLUGIN_OBLIGATORIOS,
     CAMPOS_PLUGIN_PERMITIDOS,
@@ -35,7 +35,14 @@ def revisar_manifiesto(ruta_relativa: str, manifiesto: dict) -> list[Hallazgo]:
         error(ruta_relativa, f"falta el campo obligatorio `{campo}`")
         for campo in CAMPOS_PLUGIN_OBLIGATORIOS if campo not in manifiesto
     ]
-    sobrantes = sorted(set(manifiesto) - CAMPOS_PLUGIN_PERMITIDOS)
+    # `mcpServers` SE EXCLUYE de los sobrantes, y no es una excepcion por comodidad. La especificacion
+    # no lo lista, pero es una clave que el CLIENTE define y lee, y rechazarla como «campo inventado»
+    # empujaba a borrarla -- o a ignorar el error --, cuando lo que hace falta es GOBERNARLA: sin
+    # `.mcp.json`, un `mcpServers` inline se llevaba cero reglas del `mcp` y el gate salia en verde.
+    # Su aviso de portabilidad lo da `_revisar_mcp_inline_en_el_manifiesto`, junto al gobierno que
+    # ahora si se le aplica; decirlo aqui tambien seria dos hallazgos por lo mismo.
+    sobrantes = sorted(set(manifiesto) - CAMPOS_PLUGIN_PERMITIDOS
+                       - {forma_mcp.CLAVE_INLINE_EN_EL_MANIFIESTO})
     if sobrantes:
         hallazgos.append(error(ruta_relativa,
                                f"campos de primer nivel no permitidos por la especificacion: "

@@ -69,6 +69,7 @@ from validador_agentico.dominio.hallazgo import (
     Hallazgo,
     Inventario,
     Veredicto,
+    aviso,
     error,
 )
 
@@ -381,7 +382,7 @@ def _revisar_mcp(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     ellos si llevan hermano en su carpeta.
     """
     if contenido.mcp is None:
-        return []
+        return _revisar_mcp_inline_en_el_manifiesto(contenido)
     if not contenido.mcp.es_legible:
         return _hallazgo_de_formato(contenido.mcp)
 
@@ -426,6 +427,56 @@ def _revisar_mcp(contenido: ContenidoRepositorio) -> list[Hallazgo]:
     # `Authorization` deja de pasar en verde.
     return [*hallazgos, *reglas_credenciales.revisar_credenciales_declaradas(
         RUTA_GOBIERNO, gobierno, forma_mcp.servidores_de(contenido.mcp.contenido) or {})]
+
+
+def _revisar_mcp_inline_en_el_manifiesto(contenido: ContenidoRepositorio) -> list[Hallazgo]:
+    """Los servidores declarados DENTRO del `plugin.json`, que es la alternativa que el formato admite.
+
+    EL HUECO QUE CIERRA. `mcpServers` inline es una forma legitima y equivalente al archivo, y el
+    validador asumia el archivo: sin `.mcp.json`, `contenido.mcp` era `None` y esta funcion entera no
+    se ejecutaba. O sea que un repositorio que lo declarara inline se llevaba CERO reglas del `mcp` --
+    ni fijado de version, ni cotejo contra el gobierno, ni aprobacion, ni credenciales -- y el gate
+    salia en verde. No es que se rechazara mal: es que no se miraba.
+
+    SE GOBIERNA IGUAL, con las mismas reglas y contra el mismo bloque del `GOVERNANCE.json`. Lo unico
+    que cambia es DONDE se leen los servidores, y eso es un detalle de la configuracion del cliente,
+    no del gobierno.
+
+    Y SE AVISA DE LA PORTABILIDAD, porque no es gratis: `mcpServers` inline NO forma parte de Agent
+    Plugins 1.0 -- que admite diez campos de primer nivel y este no esta --, asi que es una extension
+    de cliente. Funciona donde funciona, y un `.mcp.json` funciona en todos.
+    """
+    if contenido.manifiesto is None or not contenido.manifiesto.es_legible:
+        return []
+    servidores = forma_mcp.inline_en_el_manifiesto(contenido.manifiesto.contenido)
+    if servidores is None:
+        return []
+
+    donde = contenido.manifiesto.ruta_relativa
+    hallazgos = [aviso(donde,
+                       f"declara `{forma_mcp.CLAVE_INLINE_EN_EL_MANIFIESTO}` INLINE en vez de un "
+                       f"`.mcp.json`. Es una forma valida y se gobierna igual, pero NO forma parte de "
+                       f"Agent Plugins 1.0 -- que admite diez campos de primer nivel y este no esta --, "
+                       f"asi que es una extension de cliente: porta a menos sitios que el archivo")]
+    hallazgos += reglas_mcp.revisar_servidores(donde, servidores)
+
+    bloque = _gobierno_del_mcp(contenido)
+    if bloque is None:
+        return [*hallazgos, error(RUTA_GOBIERNO,
+                                 f"el manifiesto declara servidores MCP inline y el gobierno no "
+                                 f"declara `mcp`: se ejecutarian sin aprobacion, sin dueno de la "
+                                 f"credencial y sin `tools_digest` con el que detectar deriva. Es el "
+                                 f"mismo requisito que con un `.mcp.json` -- que los servidores esten "
+                                 f"en el manifiesto no los saca del gobierno")]
+
+    gobierno = gobierno_mcp.leer(bloque)
+    hallazgos += reglas_mcp.revisar_forma_del_bloque(gobierno)
+    hallazgos += reglas_mcp.revisar_aprobacion_por_servidor(donde, servidores, gobierno)
+    if gobierno.credenciales_del_bloque is not None:
+        hallazgos += reglas_credenciales.revisar_credenciales(
+            RUTA_GOBIERNO, gobierno.credenciales_del_bloque)
+    return [*hallazgos, *reglas_credenciales.revisar_credenciales_declaradas(
+        RUTA_GOBIERNO, gobierno, forma_mcp.servidores_de(servidores) or {})]
 
 
 def _gobierno_del_mcp(contenido: ContenidoRepositorio) -> dict | None:
