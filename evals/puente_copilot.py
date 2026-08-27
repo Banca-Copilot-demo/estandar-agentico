@@ -31,6 +31,7 @@ import logging
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -160,7 +161,37 @@ def construir_orden(raiz_del_proyecto: Path, cli: str, agente: str | None = None
     ]
 
 
-def responder(consulta: str, raiz_del_proyecto: Path, *, ejecutar=subprocess.run) -> str:
+@dataclass(frozen=True)
+class RespuestaDelCliente:
+    """Lo que el CLI devolvio, con el fallo de la HERRAMIENTA separado de la respuesta del ARTEFACTO.
+
+    POR QUE UN TIPO Y NO UN `str` (P7, OO1): estas dos cosas se parecen -- ambas son texto -- y son
+    exactamente lo contrario la una de la otra. `salida` es material sobre el que el motor puede opinar;
+    `fallo` significa que NO HAY material y que cualquier veredicto sobre el artefacto seria inventado.
+    Devolviendolas por el mismo canal (un `str`) la distincion se pierde en la firma, y perdida en la
+    firma se pierde en el llamador: era exactamente el defecto D1.
+
+    `fallo` es `None` cuando el CLI salio con 0. No se usa `salida` vacia como senal de fallo: una
+    respuesta legitimamente vacia existe y significa otra cosa.
+    """
+
+    salida: str
+    fallo: str | None = None
+
+
+def _describir_el_fallo(returncode: int, stderr: str) -> str:
+    """El motivo, con el codigo de salida y lo que el CLI dijera, acotado.
+
+    EL CODIGO VA SIEMPRE, aunque `stderr` venga vacio -- que es el caso frecuente cuando el CLI muere por
+    cuota o por politica --: sin el, el informe diria «el proveedor fallo» y no habria por donde empezar.
+    Se acota `stderr` porque un volcado del CLI puede traer miles de caracteres y este texto acaba dentro
+    de cada fila del informe.
+    """
+    motivo = stderr.strip()[:_MAX_STDERR_REGISTRADO]
+    return f"el CLI de Copilot salio con codigo {returncode}: {motivo or '(sin stderr)'}"
+
+
+def responder(consulta: str, raiz_del_proyecto: Path, *, ejecutar=subprocess.run) -> RespuestaDelCliente:
     """Lo que Copilot responde a `consulta`, con los artefactos del proyecto disponibles.
 
     `ejecutar` es inyectable con un default sobreescribible (T4): las pruebas sustituyen el lanzador en
@@ -171,14 +202,15 @@ def responder(consulta: str, raiz_del_proyecto: Path, *, ejecutar=subprocess.run
                      capture_output=True, text=True, encoding="utf-8", errors="replace",
                      timeout=_TIEMPO_LIMITE_S)
     if hecho.returncode != 0:
-        # Se REGISTRA y NO se lanza: el motor lee stdout como la respuesta, asi que abortar aqui le
-        # quitaria la oportunidad de reportar el caso como fallido con su propio formato y su propio
-        # codigo de salida. Un fallo del CLI tiene que llegar al informe, no matar la corrida.
+        # NO SE LANZA -- el motor perderia la corrida entera por un caso -- y tampoco se devuelve el
+        # stdout: se devuelve un FALLO, que es cosa distinta y el llamador tiene que poder verlo.
         #
         # ERROR y no WARNING (L3): aborta ESTA operacion -- el caso no va a tener respuesta -- aunque no
         # tumbe el proceso.
-        log.error("el CLI salio con %s: %s", hecho.returncode, hecho.stderr[:_MAX_STDERR_REGISTRADO])
-    return hecho.stdout
+        motivo = _describir_el_fallo(hecho.returncode, hecho.stderr)
+        log.error("%s", motivo)
+        return RespuestaDelCliente(salida="", fallo=motivo)
+    return RespuestaDelCliente(salida=hecho.stdout)
 
 
 def raiz_del_proyecto() -> Path:
@@ -187,7 +219,8 @@ def raiz_del_proyecto() -> Path:
     return Path(declarada) if declarada else Path.cwd()
 
 
-def call_api(prompt: str, options: dict | None = None, context: dict | None = None) -> dict:
+def call_api(prompt: str, options: dict | None = None, context: dict | None = None,
+             *, ejecutar=subprocess.run) -> dict:
     """El contrato de PROVEEDOR de promptfoo. El nombre es suyo, no nuestro: lo busca por reflexion.
 
     POR QUE EXISTE ADEMAS DEL `main()`, y es la pieza que responde a «¿puede el juez correr sobre la
@@ -196,11 +229,33 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
     prompt lleva la rubrica mas la salida entera del artefacto. Con la forma `file://...py` promptfoo
     llama a esta funcion y el prompt entra como PARAMETRO: sin shell, sin limite y sin truncados.
 
-    Devuelve `{"output": ...}` siempre, incluso en fallo, porque es lo que el motor espera para poder
-    reportar el caso con su propio formato en vez de reventar la corrida.
+    UN FALLO DE LA HERRAMIENTA SE DEVUELVE COMO `error`, NUNCA COMO `output`, y esta es la linea que
+    separa «el artefacto no cumple» de «no hemos podido preguntar».
+
+    EL CONTRATO, comprobado sobre la version fijada en `VERSION_PROMPTFOO` y no de memoria: el proveedor
+    de Python exige un dict con `output` O con `error` -- si no trae ninguno de los dos, revienta con «must
+    return a dict with an `output` string/object or `error` string» --, y el motor, al ver `error`, marca
+    el resultado con `failureReason = ERROR` en vez de `ASSERT`, no lo cachea y no lo cuenta como fallo de
+    asercion. O sea: el informe distingue *el proveedor reviento* de *el artefacto no cumple*.
+
+    EL DEFECTO QUE ARREGLA, y estaba LATENTE -- medido: cero salidas no-cero en 12 corridas de CI --:
+    antes se devolvia `{"output": hecho.stdout}` pasara lo que pasara, y con un codigo de salida distinto
+    de cero ese stdout viene vacio o a medias. El motor lo evaluaba como si fuera la respuesta del modelo
+    y el caso fallaba ACUSANDO AL ARTEFACTO de una caida de la herramienta. Es el mismo patron que ya
+    mordio tres veces en 24 horas -- un `head` comiendose un codigo de salida, un `tail` igual, un 403
+    leido como «no hay comprobacion» --: un fallo de INFRAESTRUCTURA disfrazado de veredicto sobre el
+    ARTEFACTO. El dia que se agote la cuota, esto es lo que evita que el informe diga «el artefacto
+    empeoro», que es la conclusion mas cara que se puede sacar de este sistema.
+
+    `ejecutar` es SOLO-PALABRA-CLAVE y con default (T4): promptfoo llama posicionalmente con tres
+    argumentos, asi que anadirlo no toca su contrato, y a cambio la traduccion fallo->`error` -- que es
+    justo la linea que se arreglo -- se puede comprobar sin lanzar el CLI ni tocar disco (T1).
     """
     del options, context  # Parte del contrato de promptfoo; este proveedor no los necesita.
-    return {"output": responder(prompt, raiz_del_proyecto())}
+    respuesta = responder(prompt, raiz_del_proyecto(), ejecutar=ejecutar)
+    if respuesta.fallo is not None:
+        return {"error": respuesta.fallo}
+    return {"output": respuesta.salida}
 
 
 def _configurar_registro() -> None:
@@ -221,8 +276,15 @@ def main() -> int:
         return 2
     consulta = sys.argv[1]
     log.debug("consulta de %d caracteres contra el proyecto %s", len(consulta), raiz_del_proyecto())
+    respuesta = responder(consulta, raiz_del_proyecto())
+    if respuesta.fallo is not None:
+        # NO SE IMPRIME NADA POR STDOUT: quien invoque este entry point lee stdout como la respuesta, y
+        # una salida vacia con codigo 0 seria el mismo engaño que arregla `call_api` -- la herramienta se
+        # cae y el consumidor lo lee como que el artefacto no dijo nada --. El codigo de salida es el
+        # canal por el que un fallo del CLI se propaga aqui.
+        return 1
     # El UNICO `print` del modulo, y es la salida estructurada que el motor consume (L8).
-    print(responder(consulta, raiz_del_proyecto()))
+    print(respuesta.salida)
     return 0
 
 

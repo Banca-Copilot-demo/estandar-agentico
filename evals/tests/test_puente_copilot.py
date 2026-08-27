@@ -24,6 +24,7 @@ from puente_copilot import (
     agente_declarado,
     construir_orden,
     raiz_del_proyecto,
+    call_api,
     responder,
     ruta_del_cli,
 )
@@ -193,24 +194,101 @@ def test_sin_proyecto_declarado_se_usa_el_directorio_actual(monkeypatch):
 def test_devuelve_la_respuesta_tal_cual():
     lanzador = _LanzadorFalso(_Ejecucion(stdout="HOLA-BCP-OK-7Q4\n"))
 
-    assert responder("x", _RAIZ, ejecutar=lanzador) == "HOLA-BCP-OK-7Q4\n"
+    respuesta = responder("x", _RAIZ, ejecutar=lanzador)
+
+    assert respuesta.salida == "HOLA-BCP-OK-7Q4\n"
+    assert respuesta.fallo is None, "salir con 0 no es un fallo, ni siquiera uno vacio"
 
 
 def test_un_fallo_del_CLI_no_mata_la_corrida(caplog):
     """EL DEFECTO QUE ESTA PRUEBA FIJA: si el puente lanzara al fallar el CLI, el motor perderia la
-    oportunidad de reportar el caso como fallido con su propio formato y su propio codigo de salida --
-    y una corrida de veinte casos moriria por el primero que tuviera un problema de red.
+    oportunidad de reportar el caso con su propio formato y su propio codigo de salida -- y una corrida
+    de veinte casos moriria por el primero que tuviera un problema de red.
 
     El fallo tiene que llegar al informe, no llevarse por delante la ejecucion.
     """
     lanzador = _LanzadorFalso(_Ejecucion(returncode=1, stdout="", stderr="no autenticado"))
 
     with caplog.at_level(logging.ERROR):
-        devuelto = responder("x", _RAIZ, ejecutar=lanzador)
+        respuesta = responder("x", _RAIZ, ejecutar=lanzador)
 
-    assert devuelto == "", "una respuesta vacia deja que el motor falle el caso por asercion"
+    assert respuesta.fallo is not None, "el fallo tiene que viajar, no perderse"
     # `caplog` y no `capsys`: el motivo va por el sistema de registro (L1), no por un print a stderr.
     assert "no autenticado" in caplog.text, "el motivo real tiene que quedar en el log"
+
+
+# ── D1: un fallo de la HERRAMIENTA no puede leerse como veredicto sobre el ARTEFACTO ────────
+def test_un_codigo_de_salida_no_cero_se_reporta_como_error_del_proveedor_y_NO_como_respuesta():
+    """REGRESION DE D1, el defecto mas caro que quedaba LATENTE en esta cadena.
+
+    ESTABA ASI: con `returncode != 0` el puente solo registraba el motivo y devolvia `hecho.stdout`
+    igualmente -- vacio o a medias --, y `call_api` se lo entregaba a promptfoo como `{"output": ...}`,
+    o sea como si fuera la respuesta del modelo. El motor lo evaluaba contra la rubrica y el caso fallaba
+    ACUSANDO AL ARTEFACTO de una caida de la herramienta.
+
+    MEDIDO que hoy no se dispara -- cero salidas no-cero en 12 corridas de CI --, y esa es exactamente la
+    razon de fijarlo con una prueba: el dia que se agote la cuota de inferencia el informe diria «el
+    artefacto empeoro», que es la conclusion mas cara que se puede sacar de este sistema. Es el mismo
+    patron que ya mordio tres veces en 24 horas (un `head` comiendose un codigo de salida, un `tail`
+    igual, un 403 leido como «no hay comprobacion»).
+
+    EL CONTRATO QUE SE APOYA, comprobado sobre la version fijada en `VERSION_PROMPTFOO` (0.118.16) y no
+    de memoria: el proveedor de Python acepta un dict con `output` O con `error`, y con `error` el motor
+    marca `failureReason = ERROR` -- Error, no Failure --, o sea que el caso NO cuenta como que el
+    artefacto incumplio.
+    """
+    lanzador = _LanzadorFalso(_Ejecucion(returncode=7, stdout="respuesta a medi", stderr="quota exceeded"))
+
+    devuelto = call_api("da igual el prompt", ejecutar=lanzador)
+
+    assert "output" not in devuelto, (
+        "un stdout truncado por una caida del CLI NO es la respuesta del modelo: entregarlo como "
+        "`output` hace que la rubrica juzgue al artefacto por un fallo de la herramienta"
+    )
+    assert "error" in devuelto, "con `error` el motor lo cuenta como Error del proveedor, no como fallo del artefacto"
+
+
+def test_el_error_del_proveedor_NOMBRA_el_codigo_de_salida_y_lo_que_dijo_el_CLI():
+    """Un `error` que solo dijera «el proveedor fallo» deja al que lee el informe sin por donde empezar,
+    que es la mitad del daño del defecto original. El codigo de salida y el stderr son lo unico que
+    distingue una cuota agotada de un token sin permisos o de un CLI sin instalar."""
+    lanzador = _LanzadorFalso(_Ejecucion(returncode=7, stderr="Access denied by policy settings"))
+
+    motivo = call_api("x", ejecutar=lanzador)["error"]
+
+    assert "7" in motivo, "sin el codigo de salida no se sabe con que murio"
+    assert "Access denied by policy settings" in motivo, "el motivo del CLI es la pista real"
+
+
+def test_el_stderr_del_error_se_ACOTA_para_no_inundar_cada_fila_del_informe():
+    """Un volcado del CLI puede traer miles de caracteres y este texto acaba dentro de cada fila del
+    informe JSON que ahora se conserva; sin tope, el artefacto util queda sepultado."""
+    lanzador = _LanzadorFalso(_Ejecucion(returncode=1, stderr="x" * 10_000))
+
+    assert len(call_api("x", ejecutar=lanzador)["error"]) < 1_000
+
+
+def test_un_stderr_VACIO_sigue_produciendo_un_error_con_el_codigo():
+    """El caso frecuente cuando el CLI muere por politica o por cuota es salir sin decir nada por stderr.
+    Si eso produjera un `error` vacio, promptfoo lo trataria como ausencia de error -- comprobado en el
+    proveedor de Python de la version fijada: cachea y no marca ERROR salvo que `error` sea no vacio --
+    y volveriamos al defecto por la puerta de atras."""
+    lanzador = _LanzadorFalso(_Ejecucion(returncode=1, stderr=""))
+
+    motivo = call_api("x", ejecutar=lanzador)["error"]
+
+    assert motivo, "un error vacio equivale a no haberlo reportado"
+    assert "1" in motivo
+
+
+def test_una_respuesta_correcta_sigue_llegando_como_output():
+    """La contraparte: arreglar D1 no puede convertir las corridas sanas en errores. Sin esta, un
+    `call_api` que devolviera `error` siempre pasaria la prueba de arriba y romperia todo lo demas."""
+    lanzador = _LanzadorFalso(_Ejecucion(returncode=0, stdout="el veredicto del artefacto"))
+
+    devuelto = call_api("x", ejecutar=lanzador)
+
+    assert devuelto == {"output": "el veredicto del artefacto"}
 
 
 def test_la_orden_llega_completa_al_lanzador():
