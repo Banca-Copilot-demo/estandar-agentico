@@ -163,7 +163,7 @@ Igual que el caso 1, sobre `skills/revisar-jql` — que ya trae su suite — sub
 | 1 | Evaluación en el PR | **`Successes: 3, Failures: 0`**, y el log dice `unidades tocadas por el cambio: skills/revisar-jql` |
 | 2 | Acotado por unidad | **no corre** la suite de `plugins/referencia` |
 | 3 | Descubrimiento del artefacto | el log dice `skill disponible: revisar-jql` — sin esto se estaría midiendo el modelo base, no el artefacto |
-| 4 | Guardián de la promoción | **no vuelve a evaluar**: comprueba que la unidad trae suites y que la comprobación de comportamiento del commit quedó en verde |
+| 4 | Guardián de la certificación | **no vuelve a evaluar**: comprueba que la unidad trae suites y que la comprobación de comportamiento del commit quedó en verde |
 | 5 | Promoción | se encadena sola y el release queda **sin marca de prelanzamiento** |
 | 6 | Ficha | `FICHA_STATUS="certified"`, `FICHA_MARKETPLACE="True"` |
 | 7 | Marketplace | muestra la versión **nueva** |
@@ -189,7 +189,7 @@ rm -rf /c/Users/hvidalsi/.copilot/installed-plugins/agentico/demo.sdlc.revisar-j
 copilot plugin install demo.sdlc.revisar-jql@agentico
 ```
 
-> **Si el marketplace no recoge la versión promocionada**, regenera el índice a mano y vuelve a mirar:
+> **Si el marketplace no recoge la versión certificada**, regenera el índice a mano y vuelve a mirar:
 > `gh workflow run regenerar-indice.yml --repo Banca-Copilot-demo/marketplace`. Que haga falta es el
 > defecto 6; si ya está corregido, no debería hacer falta.
 
@@ -215,7 +215,7 @@ que el artefacto.
 |---|---|---|
 | 1 | Gate sin subir versión | **falla**, y el cambio está **solo dentro de `evals/`** |
 | 2 | Evaluación de la suite nueva | pasa, y corre **solo** la de esa unidad |
-| 3 | Ficha antes de promocionar | `conformant` / `False`, con la etiqueta nueva |
+| 3 | Ficha antes de certificar | `conformant` / `False`, con la etiqueta nueva |
 | 4 | Ficha después | **`certified`** / **`True`**, y `install_hint` pasa a `copilot plugin install …@agentico` |
 | 5 | Marketplace | muestra la versión nueva |
 | 6 | Instalación | llega la versión nueva **con** el cuerpo que en el caso 1 era inalcanzable |
@@ -267,7 +267,7 @@ Resultados finales de la ejecución:
 | | Caso 1 | Caso 2 | Caso 3 |
 |---|---|---|---|
 | Artefacto | `demo.sdlc.contratos` 0.2.1 | `demo.sdlc.revisar-jql` 0.2.1 | `demo.sdlc.contratos` 0.2.2 |
-| Release | Pre-release | promocionado | promocionado |
+| Release | Pre-release | certificado | certificado |
 | Ficha | `conformant` / `False` | `certified` / `True` | `certified` / `True` |
 | Marketplace | se quedó en 0.1.2 | subió a 0.2.1 | subió a 0.2.2 |
 | Instalación en Copilot | llegó la **0.1.2**, sin el cuerpo nuevo | llegó la 0.2.1 con él | llegó la 0.2.2 con él |
@@ -297,10 +297,10 @@ había detectado antes.
 | 4 | Se evaluaban suites ajenas al repositorio | un repositorio de dominio se ponía rojo por una **plantilla** del estándar, que por construcción no puede pasar |
 | 5 | Se colocaban artefactos ajenos en el cliente | mientras se medía un artefacto, el cliente tenía cargados los del asistente de autoría y una plantilla: **contaminaba el entorno de medición** |
 | 6 | `promocionar` no avisaba al índice | artefacto **certificado y no instalable** hasta la pasada programada del índice, que es diaria |
-| 7 | una suite roja **en una unidad** impedía promocionar **todas las demás** | `revisar-jql` y `referencia`, con 3/3 cada una, se quedaron en Conforme porque la suite de `migracion` estaba roja. Abierto como [estandar-agentico#28](https://github.com/Banca-Copilot-demo/estandar-agentico/issues/28) |
+| 7 | una suite roja **en una unidad** impedía certificar **todas las demás** | `revisar-jql` y `referencia`, con 3/3 cada una, se quedaron en Conforme porque la suite de `migracion` estaba roja. Abierto como [estandar-agentico#28](https://github.com/Banca-Copilot-demo/estandar-agentico/issues/28) |
 | 8 | el puente dejó de poder **importarse**, y con él todas las evaluaciones | los tres casos de una suite en rojo con `Error running Python script`, sobre un artefacto intacto. Un `@dataclass` no sobrevive a la carga por ruta que hace el motor. **Lo cazó el informe del juez en su primera ejecución real** |
 
-**El defecto 7 se midió en esta ejecución y sigue abierto.** El guardián de la promoción pregunta si la
+**El defecto 7 se midió en esta ejecución y sigue abierto.** El guardián de la certificación pregunta si la
 comprobación `Evaluacion de comportamiento` del commit está en verde, y esa comprobación es **una sola
 para todo el repositorio**: el trabajo recorre todas las suites y emite una conclusión. Es el mismo
 defecto que el acotado por `subruta` cerró para la pregunta «¿esta unidad trae suites?» pero no para
@@ -380,7 +380,7 @@ La misma suite, sobre el mismo contenido, sin cambiar el motor:
 | En la certificación, ~10 min después | **2/3** | 39 s |
 | Reejecutando la certificación | **pasa** | |
 
-El sistema reaccionó correctamente las tres veces — evaluación en rojo, no promociona — pero el estado
+El sistema reaccionó correctamente las tres veces — evaluación en rojo, no certifica — pero el estado
 final de un artefacto dependió de la tirada.
 
 **Esta medición provocó un cambio de diseño, y por eso la tabla ya no se puede reproducir.** La suite

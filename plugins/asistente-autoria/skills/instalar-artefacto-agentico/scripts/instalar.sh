@@ -66,10 +66,10 @@ if [ -n "$nombre_en_marketplace" ]; then
   elif [ -z "$commit_en_marketplace" ]; then
     # EL MARKETPLACE SE LEYO Y NO LISTA EL ARTEFACTO, que no es lo mismo que no poder leerlo. Un
     # artefacto ausente del marketplace no esta distribuido: esta en Conforme -- publicado pero no
-    # promocionado -- o Suspendido. En los dos casos instalarlo se salta la decision del gobierno.
+    # certificado -- o Suspendido. En los dos casos instalarlo se salta la decision del gobierno.
     echo "El marketplace NO lista '$nombre_en_marketplace'." >&2
     echo "Puede seguir estando PUBLICADO y ser verificable: publicar y distribuir son dos cosas" >&2
-    echo "distintas. Si el estandar promociona al certificar, un artefacto Conforme queda fuera del" >&2
+    echo "distintas. Si el estandar entra al marketplace al certificar, un artefacto Conforme queda fuera del" >&2
     echo "marketplace a proposito hasta que supere su evaluacion." >&2
     echo "Un artefacto ausente del marketplace no esta distribuido: o no ha sido certificado, o fue" >&2
     echo "suspendido. Consulta su ficha de Port antes de instalarlo." >&2

@@ -232,9 +232,9 @@ jobs:
           # rato escrita.
           #
           # SE ESPERA UN POCO IGUAL, y no cero, por la consistencia eventual de la API y por el caso
-          # en que alguien reejecute la comprobacion a mano. Al agotarse NO se promociona y se dice que
+          # en que alguien reejecute la comprobacion a mano. Al agotarse NO se certifica y se dice que
           # fue por eso -- «en curso» jamas se registra como «en rojo» --, asi que el artefacto se
-          # queda en Conforme con la razon escrita y se puede promocionar a mano con `promocionar.yml`,
+          # queda en Conforme con la razon escrita y se puede certificar a mano con `promocionar.yml`,
           # que acepta `workflow_dispatch`.
           ESPERA_MAXIMA_SEGUNDOS: "180"
           INTERVALO_DE_SONDEO_SEGUNDOS: "20"
@@ -275,7 +275,7 @@ jobs:
                               ".check_runs[] | select(.name | endswith(\"${NOMBRE_DE_LA_COMPROBACION}\")) \
                                | \"\(.status) \(.conclusion // \"\")\"" | tail -1)"; then
                 # SE DISTINGUE «NO PUEDO PREGUNTAR» DE «NO ESTA EN VERDE». Confundirlos dejaria a un
-                # repositorio sin promocionar nada para siempre por un permiso que falta, con el mismo
+                # repositorio sin certificar nada para siempre por un permiso que falta, con el mismo
                 # aviso que un artefacto que de verdad fallo su suite. Se anota y se sigue con el
                 # otro candidato: que un sha no se pueda consultar no dice nada del otro.
                 fallo_la_consulta=1
@@ -311,7 +311,7 @@ jobs:
           # `skipped` NO CUENTA COMO VERDE, y es la razon de ser de este job: solo `success` certifica.
           if [ "$conclusion" = "success" ]; then
             echo "promociona=true" >> "$GITHUB_OUTPUT"
-            echo "la comprobacion de comportamiento de esta unidad esta en verde sobre $evaluado: se promociona"
+            echo "la comprobacion de comportamiento de esta unidad esta en verde sobre $evaluado: se certifica"
             exit 0
           fi
           # SE DICE POR QUE NO. Sin esto, un artefacto que merece certificarse se queda en Conforme y
@@ -325,7 +325,7 @@ jobs:
           esac
           # LA AUSENCIA NUNCA ES VERDE, Y SU MOTIVO SE ESCRIBE. Es la unica salvaguarda contra el
           # fallo que recorre toda esta cadena: leer «no se sabe» como «paso».
-          echo "::warning::el artefacto trae suites pero no se promociona: $razon. Se queda en Conforme; se puede promocionar a mano cuando la comprobacion este en verde."
+          echo "::warning::el artefacto trae suites pero no se certifica: $razon. Se queda en Conforme; se puede certificar a mano con \`promocionar.yml\` cuando la comprobacion este en verde."
 
       - name: Avisar de que no hay comportamiento medido
         if: steps.suites.outputs.hay-suites != 'true'
