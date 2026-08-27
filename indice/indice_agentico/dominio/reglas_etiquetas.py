@@ -35,7 +35,7 @@ def es_etiqueta_por_plugin(etiqueta: str) -> bool:
     return _SEPARADOR_DE_ETIQUETA_POR_PLUGIN in etiqueta
 
 
-def plugin_de_la_etiqueta(etiqueta: str) -> str:
+def _plugin_de_la_etiqueta(etiqueta: str) -> str:
     """Que plugin nombra la etiqueta. Cadena vacia = el plugin de la RAIZ del repositorio.
 
     Es el nombre que el equipo puso en la etiqueta, no el del manifiesto: sirve para AGRUPAR
@@ -61,7 +61,7 @@ def etiquetas_vigentes(etiquetas_de_mas_nueva_a_mas_vieja: tuple[str, ...]) -> t
     vigentes: list[str] = []
     vistos: set[str] = set()
     for etiqueta in etiquetas_de_mas_nueva_a_mas_vieja:
-        plugin = plugin_de_la_etiqueta(etiqueta)
+        plugin = _plugin_de_la_etiqueta(etiqueta)
         if plugin in vistos:
             continue
         vistos.add(plugin)

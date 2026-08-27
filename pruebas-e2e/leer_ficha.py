@@ -21,6 +21,15 @@ API_POR_DEFECTO = "https://api.port.io"
 BLUEPRINT = "artefacto_agentico"
 _TIEMPO_LIMITE_S = 30
 
+# Cuantos `/` hay que saltarse en la pista de instalacion de un prompt para llegar a la ruta del
+# artefacto. Son los de `curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/<sha>/<ruta>`:
+# `https:`, el vacio de `//`, el host, el owner, el repo y el sha.
+#
+# ES UN ACOPLE CON `dominio/ficha.py`, y por eso lleva nombre en vez de ir suelto en la expresion
+# (P11): quien cambie ahi la forma de la URL tiene que cambiar este numero, y con un `6` incrustado
+# a mitad de un `split` no hay forma de que se entere -- esto no falla, devuelve otra ruta --.
+_SEGMENTOS_ANTES_DE_LA_RUTA = 6
+
 
 def _token(api: str) -> str:
     peticion = urllib.request.Request(
@@ -37,7 +46,7 @@ def _ruta_del_prompt(pista: str) -> str:
     un prompt, que es el unico tipo cuyo canal la necesita."""
     if " -o " not in pista:
         return ""
-    return pista.split("/", 6)[-1].split(" -o ")[0]
+    return pista.split("/", _SEGMENTOS_ANTES_DE_LA_RUTA)[-1].split(" -o ")[0]
 
 
 def _configurar_logging(verboso: bool) -> None:

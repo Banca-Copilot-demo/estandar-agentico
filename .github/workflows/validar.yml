@@ -72,6 +72,20 @@ jobs:
           private-key: ${{ secrets.app-key }}
           owner: ${{ github.repository_owner }}
 
+      # EL FALLO DEL PASO ANTERIOR TIENE QUE DEJAR RASTRO (Y6). Con `continue-on-error` y sin esto,
+      # no acuñar el token se veia igual que no haberlo pedido: el paso queda en amarillo, la salida
+      # `token` sale vacia y el gate degrada a aviso la comprobacion del equipo dueño. Es decir, la
+      # comprobacion que estos secretos existen para hacer posible deja de hacerse Y NADIE LO DICE.
+      # Un aviso explicito distingue «esta organizacion no configuro la App» de «la App esta y hoy
+      # no respondio», que son dos problemas distintos con dos dueños distintos.
+      - name: Registrar que el token de la App no se pudo acuñar
+        if: steps.token.outcome == 'failure'
+        shell: bash
+        env:
+          RESULTADO: ${{ steps.token.outcome }}
+        run: |
+          echo "::warning::no se pudo acuñar el token de la App (${RESULTADO}): la comprobacion del equipo dueño degradara a aviso y un \`owner_team\` inexistente NO bloqueara este cambio"
+
       - name: Ejecutar los gates
         uses: Banca-Copilot-demo/estandar-agentico/.github/actions/validar@main
         with:
