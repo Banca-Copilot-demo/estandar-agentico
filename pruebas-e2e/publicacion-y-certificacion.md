@@ -143,7 +143,7 @@ Igual que el caso 1, sobre `skills/revisar-jql` — que ya trae su suite — sub
 | 1 | Evaluación en el PR | **`Successes: 3, Failures: 0`**, y el log dice `unidades tocadas por el cambio: skills/revisar-jql` |
 | 2 | Acotado por unidad | **no corre** la suite de `plugins/referencia` |
 | 3 | Descubrimiento del artefacto | el log dice `skill disponible: revisar-jql` — sin esto se estaría midiendo el modelo base, no el artefacto |
-| 4 | Certificación | corre sobre el **commit etiquetado**, no sobre la rama |
+| 4 | Guardián de la promoción | **no vuelve a evaluar**: comprueba que la unidad trae suites y que la comprobación de comportamiento del commit quedó en verde |
 | 5 | Promoción | se encadena sola y el release queda **sin marca de prelanzamiento** |
 | 6 | Ficha | `FICHA_STATUS="certified"`, `FICHA_MARKETPLACE="True"` |
 | 7 | Catálogo instalable | muestra la versión **nueva** |
@@ -209,6 +209,11 @@ Ejecución del **2026-08-26** contra `Banca-Copilot-demo`.
 | `promocionar` | ~5 s | mismo run |
 | `Etiquetar` | ~20 s | |
 
+> **Medido cuando la suite se ejecutaba DOS veces por artefacto.** Al publicar había un trabajo
+> `certificar` que volvía a evaluar sobre el commit etiquetado; hoy no existe, y en su lugar hay un
+> guardián que sólo pregunta. Así que una reejecución debe salir **~1 m 40 s más rápida** en el total
+> de la publicación, y eso es la mejora esperada, no una regresión ni una medición mal hecha.
+
 Resultados finales de la ejecución:
 
 | | Caso 1 | Caso 2 | Caso 3 |
@@ -253,6 +258,18 @@ La misma suite, sobre el mismo contenido, sin cambiar el motor:
 
 El sistema reaccionó correctamente las tres veces — evaluación en rojo, no promociona — pero el estado
 final de un artefacto dependió de la tirada.
+
+**Esta medición provocó un cambio de diseño, y por eso la tabla ya no se puede reproducir.** La suite
+se ejecutaba dos veces por artefacto: una en el pull request y otra al publicar, sobre el commit
+etiquetado. Evaluar dos veces el mismo contenido no daba más garantía — **duplicaba las ocasiones de
+que el azar dijera cosas distintas del mismo artefacto**, y gastaba el doble del único token de
+inferencia de la organización. La segunda pasada se retiró: hoy **la suite corre una sola vez, en el
+pull request**, y la promoción se limita a comprobar que la unidad trae suites y que su veredicto fue
+verde. Al reejecutar estas pruebas se verá una sola corrida, no dos.
+
+Lo que el cambio **no** arregla es la causa: una única ejecución tampoco es reproducible. Si cae en un
+mal día, el artefacto se queda en Conforme. La diferencia es que ahora el problema está en un solo
+sitio, y cualquier remedio se aplica una vez.
 
 **El riesgo no es que un artefacto bueno falle una vez.** Es lo que la gente hará al descubrirlo:
 reintentar hasta que salga verde. Y en cuanto reintentar sea la práctica normal, «Certificado» deja de
