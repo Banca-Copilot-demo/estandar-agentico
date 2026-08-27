@@ -148,24 +148,37 @@ def test_una_clave_retirada_del_inventario_avisa_y_no_bloquea():
 
 
 # ── hooks ──────────────────────────────────────────────────────────────────────────────────
-def _hooks(evento: str, **entrada) -> dict:
-    return {"version": 1, "hooks": {evento: [{"type": "command", "bash": "s.sh", **entrada}]}}
+# LA ESTRUCTURA REAL, que este helper no tenia: `hooks` -> EVENTO -> grupos, y cada grupo con su
+# `matcher` y su lista `hooks[]` de ACCIONES. El helper anterior ponia `type` y el tope en el nivel del
+# GRUPO -- que es exactamente la forma que el gate exigia y el cliente ignora --, asi que las pruebas
+# confirmaban el defecto en vez de detectarlo.
+_APROBADO = {"approval": {"approved_by": "squad-seguridad", "date": "2026-08-23",
+                          "review_by": "2027-02-23", "security_review": True}}
 
 
-def test_hook_no_declarado_en_el_inventario_es_error():
-    errores = _errores(revisar_hooks("hooks.json", _hooks("sessionStart", timeoutSec=5), {}))
+def _hooks(evento: str, *, grupo=None, **accion) -> dict:
+    predeterminada = {"type": "command",
+                      "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/s.sh"}
+    return {"version": 1,
+            "hooks": {evento: [{**(grupo or {}), "hooks": [{**predeterminada, **accion}]}]}}
+
+
+def test_hook_sin_aprobacion_en_el_gobierno_es_error():
+    errores = _errores(revisar_hooks("hooks.json", _hooks("SessionStart", timeout=5), {}))
     assert "EJECUTA CODIGO" in _mensajes(errores)
 
 
-def test_hook_sin_timeout_es_error():
-    errores = _errores(revisar_hooks("hooks.json", _hooks("sessionStart"), {"hooks": 1}))
-    assert "timeoutSec" in _mensajes(errores)
+def test_una_accion_sin_ningun_tope_declarado_es_error():
+    # Ni `timeout` ni `timeoutSec`: no hay intencion de tope en ninguna parte, asi que el hook correra
+    # con el default de su tipo -- 600 s para `command` -- y eso si bloquea.
+    errores = _errores(revisar_hooks("hooks.json", _hooks("SessionStart"), _APROBADO))
+    assert "600" in _mensajes(errores)
 
 
 def test_timeout_por_encima_del_techo_es_error():
     excesivo = TECHO_TIMEOUT_HOOK_S + 1
     errores = _errores(revisar_hooks("hooks.json",
-                                     _hooks("sessionStart", timeoutSec=excesivo), {"hooks": 1}))
+                                     _hooks("SessionStart", timeout=excesivo), _APROBADO))
     assert "techo" in _mensajes(errores)
 
 
@@ -175,7 +188,7 @@ def test_evento_sensible_avisa_de_que_ve_todo_lo_que_se_escribe(evento):
     `userPromptSubmitted` y Claude Code `UserPromptSubmit`: la constante tenia solo la primera, asi que
     el aviso NO disparaba en la forma que usan los plugins de Claude -- la del catalogo oficial, con dos
     apariciones medidas, y la de nuestros propios plugins --."""
-    hallazgos = revisar_hooks("hooks.json", _hooks(evento, timeoutSec=5), {"hooks": 1})
+    hallazgos = revisar_hooks("hooks.json", _hooks(evento, timeout=5), _APROBADO)
 
     avisos = [h for h in hallazgos if h.severidad is Severidad.AVISO]
     assert any("canal de salida de datos" in h.mensaje for h in avisos), evento
@@ -184,8 +197,8 @@ def test_evento_sensible_avisa_de_que_ve_todo_lo_que_se_escribe(evento):
 def test_interruptor_de_seguridad_apagado_es_aviso():
     # Sale del ejemplo real de la industria: `BLOCK_ON_THREAT: false` en un archivo que nadie abre.
     hallazgos = revisar_hooks("hooks.json",
-                              _hooks("sessionStart", timeoutSec=5,
-                                     env={"BLOCK_ON_THREAT": "false"}), {"hooks": 1})
+                              _hooks("SessionStart", timeout=5,
+                                     grupo={"env": {"BLOCK_ON_THREAT": "false"}}), _APROBADO)
     assert any("desactivado" in h.mensaje for h in hallazgos)
 
 

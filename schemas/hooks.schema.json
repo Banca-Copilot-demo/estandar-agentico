@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ejemplo.dev/track-agentico/schemas/2.0/hooks.schema.json",
+  "title": "Hooks — el unico artefacto que EJECUTA CODIGO PROPIO automaticamente",
+  "description": "Contrato de `hooks.json`. NO EXISTIA, y esa ausencia es la razon por la que un campo inventado sobrevivio meses: de los cuatro archivos que gobiernan una unidad publicable, este era el unico que ningun esquema miraba, asi que lo que el gate exigia y lo que el cliente lee podian divergir sin que nada lo dijera. Y divergieron.\n\nEL DEFECTO QUE ESTE ESQUEMA CORRIGE. El gate exigia `timeoutSec` A NIVEL DE GRUPO. Ese campo NO EXISTE en el formato: el real es `timeout`, en SEGUNDOS y a nivel de la ACCION. Verificado contra la documentacion oficial y contra plugins reales -- los de AWS instalados en Copilot usan `\"timeout\": 30` dentro de la accion --. La consecuencia no era cosmetica: el gate obligaba a escribir un campo que el cliente IGNORA, asi que el hook corria con el timeout POR DEFECTO -- 600 s para `command`, 30 s para `prompt` -- y el control no protegia de nada. Un control que parece un control y no lo es es peor que no tenerlo.\n\nSE SIGUE ACEPTANDO `timeoutSec`, CON AVISO. No es cortesia: hay 908 repositorios publicos que arrastran el mismo error, asi que alguien lo va a traer de fuera; y el gate es comprobacion REQUERIDA, de modo que rechazarlo de golpe bloquearia a la vez todos los repositorios de dominio e impediria mergear hasta el pull request que viene a corregirlo. Se endurecera a error cuando ningun `hooks.json` de un repositorio de dominio lo declare.\n\nESTRUCTURA: `hooks` -> EVENTO -> lista de GRUPOS; cada grupo con un `matcher` opcional y una lista `hooks[]` de ACCIONES. El nivel del grupo decide CUANDO corre; el de la accion, QUE corre y con que tope.\n\nQUE NO SE GOBIERNA AQUI, y es deliberado: los EVENTOS no se declaran en `GOVERNANCE.json`. Son las claves de este archivo, asi que el gate los LEE de aqui; una lista paralela se queda rancia porque nada la obliga a coincidir. Lo unico que este archivo no dice de si mismo es QUIEN lo aprobo, y eso si vive en `GOVERNANCE.json`.\n\nAlineado a: la documentacion oficial de hooks (eventos, tipos de accion, `if`, `timeout`, `statusMessage`).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "hooks"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "description": "Version del formato, cuando el archivo la declara. Se acepta como numero o como cadena porque las dos formas aparecen en los archivos reales, y rechazar una habria descartado archivos correctos."
+    },
+    "description": {
+      "type": "string"
+    },
+    "hooks": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Un mapa EVENTO -> grupos. Un archivo sin ningun evento no le sirve a nadie: si la intencion es no tener hooks, se borra el archivo en vez de dejarlo vacio -- mismo criterio que para un `.mcp.json` con cero servidores.",
+      "propertyNames": {
+        "$ref": "#/$defs/evento"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "$ref": "#/$defs/grupo"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "evento": {
+      "description": "Los 31 eventos del formato, en su grafia oficial. LA LISTA CERRADA ES EL CONTROL: un evento mal escrito -- `PostToolUSe`, `postToolUse` -- no falla al instalar ni al ejecutar, simplemente NO DISPARA NUNCA, y el autor cree que su hook esta activo. Es un fallo silencioso, que es la peor clase, y solo se puede atrapar aqui. Nota sobre las dos grafias del ecosistema: Copilot nombra `userPromptSubmitted` lo que Claude Code llama `UserPromptSubmit`; este esquema fija la oficial de Claude Code, que es la del formato que estos archivos declaran.",
+      "type": "string",
+      "enum": [
+        "SessionStart",
+        "Setup",
+        "UserPromptSubmit",
+        "UserPromptExpansion",
+        "PreToolUse",
+        "PermissionRequest",
+        "PermissionDenied",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "PostToolBatch",
+        "Notification",
+        "MessageDisplay",
+        "SubagentStart",
+        "SubagentStop",
+        "TaskCreated",
+        "TaskCompleted",
+        "Stop",
+        "StopFailure",
+        "TeammateIdle",
+        "InstructionsLoaded",
+        "ConfigChange",
+        "CwdChanged",
+        "DirectoryAdded",
+        "FileChanged",
+        "WorktreeCreate",
+        "WorktreeRemove",
+        "PreCompact",
+        "PostCompact",
+        "Elicitation",
+        "ElicitationResult",
+        "SessionEnd"
+      ]
+    },
+    "grupo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hooks"
+      ],
+      "description": "Un grupo de acciones que comparten CUANDO se disparan. El `matcher` es lo unico que el grupo decide; todo lo demas -- que se ejecuta, con que tope, con que mensaje -- vive en cada accion.",
+      "properties": {
+        "matcher": {
+          "type": "string",
+          "description": "Que herramienta o patron activa el grupo, en eventos de herramienta. Ausente significa «todas»."
+        },
+        "hooks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/accion"
+          }
+        },
+        "timeoutSec": {
+          "deprecated": true,
+          "type": "integer",
+          "description": "NO EXISTE EN EL FORMATO — no lo declares. Se acepta con AVISO durante la transicion y se IGNORA. El campo real es `timeout`, en segundos y en la ACCION, no en el grupo. Verificado contra la documentacion oficial y contra los plugins de AWS instalados en Copilot, que usan `\"timeout\": 30` dentro de la accion. Escribirlo aqui no acota nada: el hook corre con el timeout por defecto -- 600 s para `command`, 30 s para `prompt` -- y quien lo escribio cree que puso un tope. Se conserva en el esquema porque hay 908 repositorios publicos que lo arrastran, y porque el gate es comprobacion requerida: rechazarlo de golpe impediria mergear hasta el PR que viene a corregirlo."
+        }
+      }
+    },
+    "accion": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "description": "Una accion del hook. Los cinco tipos del formato son `command`, `http`, `mcp_tool`, `prompt` y `agent`. `command` es el DOMINANTE con diferencia -- medido en GitHub: 27008 de 33472 archivos, ~81 %, tres veces el siguiente --, y es por eso el unico con reglas de gobierno propias, que aplica el gate y no este esquema: el comando tiene que apuntar DENTRO de la unidad y no puede descargar nada en ejecucion.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "command",
+            "http",
+            "mcp_tool",
+            "prompt",
+            "agent"
+          ]
+        },
+        "if": {
+          "type": "string",
+          "description": "Filtro adicional con la sintaxis de las reglas de permiso. SOLO en eventos de herramienta -- `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` --; en los demas no lo evalua nadie, asi que un `if` ahi es una condicion que el autor cree activa y no lo esta."
+        },
+        "timeout": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Tope de ejecucion EN SEGUNDOS. Es el campo real del formato, y va aqui -- en la accion -- y no en el grupo. Sin el, el hook corre con el default de su tipo: 600 s para `command`, `http` y `mcp_tool`; 30 s para `prompt`; 60 s para `agent`. Diez minutos de bloqueo por defecto es exactamente el motivo por el que el estandar exige declararlo."
+        },
+        "statusMessage": {
+          "type": "string",
+          "description": "Mensaje que el cliente muestra mientras el hook corre. Aplica a los cinco tipos."
+        },
+        "command": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "headers": {
+          "type": "object"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": "object"
+        },
+        "env": {
+          "type": "object",
+          "description": "Variables de entorno para la accion. El gate avisa si alguna que parece un control de seguridad -- `block`, `deny`, `enforce`, `strict`, `secure` -- viene en `false`: es un interruptor apagado por defecto en un archivo que nadie abre."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "command"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "command"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "http"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "url"
+            ],
+            "description": "Un hook `http` manda el evento a un servicio EXTERNO con cabeceras propias. NO se le anade campo de gobierno a proposito: no encontramos ni un uso real -- muestra pequena --, y un campo para un caso que nadie tiene es sobre-ingenieria. Lo que el gate hace en su lugar es AVISAR cuando aparece uno, para que se revise cuando ocurra y se decida entonces con un caso delante."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "prompt"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "prompt"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "agent"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "agent"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "mcp_tool"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "server",
+              "tool"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

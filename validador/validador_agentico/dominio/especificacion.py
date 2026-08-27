@@ -81,9 +81,60 @@ class Clasificacion(str, Enum):
 
 
 # ── Hooks ──────────────────────────────────────────────────────────────────────────────────
+CAMPO_TIMEOUT_HOOK = "timeout"
+"""El campo REAL del tope de ejecucion de un hook: `timeout`, en SEGUNDOS y en la ACCION.
+
+Verificado contra la documentacion oficial y contra plugins reales -- los de AWS instalados en
+Copilot usan `"timeout": 30` dentro de la accion --."""
+
+CAMPO_TIMEOUT_HOOK_RETIRADO = "timeoutSec"
+"""El campo que el gate EXIGIA y que NO EXISTE en el formato.
+
+EL DEFECTO, y no era cosmetico. El gate pedia `timeoutSec` a nivel de GRUPO. El cliente ignora ese
+campo por completo, asi que el hook corria con el timeout POR DEFECTO de su tipo -- 600 s para
+`command`, 30 s para `prompt` -- mientras quien lo escribio creia haber puesto un tope de 5 segundos.
+Un control que parece un control y no lo es es peor que no tener ninguno: el que no existe no engana
+a nadie.
+
+SE SIGUE ACEPTANDO CON AVISO. Hay 908 repositorios publicos que arrastran el mismo error, asi que
+alguien lo traera de fuera; y el gate es comprobacion REQUERIDA, de modo que convertirlo en error de
+golpe bloquearia todos los repositorios de dominio a la vez e impediria mergear hasta el pull request
+que viene a corregirlo. Se endurece cuando ningun `hooks.json` de un repositorio de dominio lo lleve.
+"""
+
 TECHO_TIMEOUT_HOOK_S = 10
-"""Techo del `timeoutSec` de un hook. Sin tope, un hook lento vuelve el cliente inusable; el
+"""Techo del `timeout` de un hook, en segundos. Sin tope, un hook lento vuelve el cliente inusable; el
 ejemplo de referencia de la industria usa 5 y 10 segundos."""
+
+TIMEOUT_HOOK_POR_DEFECTO_S = {
+    "command": 600, "http": 600, "mcp_tool": 600, "prompt": 30, "agent": 60,
+}
+"""Lo que el cliente aplica cuando la accion no declara `timeout`, por tipo.
+
+Esta aqui para que el mensaje del gate pueda decir CUANTO se va a esperar de verdad. «Falta el
+timeout» invita a ignorarlo; «se bloqueara hasta 600 s» no."""
+
+TIPO_HOOK_DOMINANTE = "command"
+"""El tipo con reglas de gobierno propias. Medido en GitHub: 27008 de 33472 archivos, ~81 %, tres
+veces el siguiente. Es donde se concentra el riesgo, y por eso es el unico con reglas propias."""
+
+TIPO_HOOK_A_REVISAR = "http"
+"""Un hook `http` manda el evento a un servicio EXTERNO con cabeceras propias.
+
+NO SE LE ANADE CAMPO DE GOBIERNO a proposito: no se encontro ni un uso real -- muestra pequena -- y un
+campo de gobierno para un caso que nadie tiene es sobre-ingenieria, que ademas envejece sin que nadie
+lo ejercite. Lo que se hace en su lugar es AVISAR cuando aparezca uno, para decidir con un caso
+delante en vez de con una hipotesis."""
+
+PATRON_DESCARGA_EN_EJECUCION = (
+    r"(?i)\b(curl|wget|iwr|invoke-webrequest)\b[^\n|]*\|[^\n]*\b(bash|sh|zsh|python\d?|node)\b"
+)
+"""Un comando que DESCARGA Y EJECUTA en tiempo de ejecucion.
+
+POR QUE ES LO MAS GRAVE que puede llevar un hook, junto con el script de fuera del artefacto: se salta
+el sello POR COMPLETO. El `hooks.json` iria firmado y su digesto seria perfecto, y lo que se ejecuta
+se baja de internet en el momento -- no existia cuando se firmo, no lo reviso nadie y puede ser
+distinto en cada maquina. La firma diria muchisimo menos de lo que aparenta."""
 
 EVENTOS_HOOK_SENSIBLES = frozenset({"userPromptSubmitted", "UserPromptSubmit"})
 """Los eventos que ven TODO lo que el desarrollador escribe: son un canal de salida de datos por

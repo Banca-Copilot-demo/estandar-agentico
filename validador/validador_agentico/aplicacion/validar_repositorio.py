@@ -253,8 +253,12 @@ def _revisar_hooks(contenido: ContenidoRepositorio, raiz_unidad: Path) -> list[H
         return []
     if not contenido.hooks.es_legible:
         return _hallazgo_de_formato(contenido.hooks)
-    declarado = ((contenido.gobierno.contenido if contenido.gobierno
-                  and contenido.gobierno.es_legible else {}).get("artifacts") or {})
+    # LA APROBACION, no el inventario. Los hooks salieron de `artifacts` porque no tienen identidad
+    # individual -- se distinguen por evento y `matcher`, no llevan `id` --, asi que enumerarlos no
+    # enumeraba nada. Lo que el `hooks.json` no dice de si mismo es QUIEN lo aprobo, y eso sigue en el
+    # gobierno, en su clave `hooks` de primer nivel.
+    aprobacion = ((contenido.gobierno.contenido if contenido.gobierno
+                   and contenido.gobierno.es_legible else {}).get("hooks") or {})
     # QUE SCRIPTS EXISTEN se resuelve aqui, no en la regla: la regla es de dominio y comprueba que lo
     # referenciado este presente, pero mirar el disco es I/O y le toca a esta capa. Se comprueba
     # justo lo referenciado en vez de listar el arbol entero: un `scripts/` con veinte archivos de los
@@ -268,7 +272,7 @@ def _revisar_hooks(contenido: ContenidoRepositorio, raiz_unidad: Path) -> list[H
         ruta for ruta in scripts_de_hooks.referencias_propias(contenido.hooks.contenido)
         if (raiz_unidad / ruta).is_file())
     return hallazgos + reglas_hooks.revisar_hooks(
-        contenido.hooks.ruta_relativa, contenido.hooks.contenido, declarado,
+        contenido.hooks.ruta_relativa, contenido.hooks.contenido, aprobacion,
         scripts_presentes=presentes)
 
 
@@ -459,6 +463,12 @@ _ESQUEMA_POR_COLECCION = (
 # referencia, que es el motivo por el que no aparecia en ninguna llamada.
 _ESQUEMA_POR_DOCUMENTO = (
     ("gobierno", "plugin-governance.schema.json"),
+    # `hooks` ENTRA AQUI POR PRIMERA VEZ, y su ausencia era el hueco: de los cuatro archivos que
+    # gobiernan una unidad publicable, el `hooks.json` era el UNICO que ningun esquema miraba. Por eso
+    # lo que el gate exigia -- `timeoutSec` -- y lo que el cliente lee -- `timeout` -- pudieron
+    # divergir durante meses sin que nada lo dijera. Un esquema que nadie ejecuta no es un contrato;
+    # uno que se ejecuta obliga a que las dos mitades digan lo mismo.
+    ("hooks", "hooks.schema.json"),
 )
 
 # Las suites no van en `_ESQUEMA_POR_DOCUMENTO` porque son VARIAS por unidad, no una: ese recorrido
