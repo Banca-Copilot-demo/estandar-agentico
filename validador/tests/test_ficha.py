@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from validador_agentico.dominio import ficha
+from validador_agentico.dominio import ficha, reglas_layout
 from validador_agentico.dominio.politica import (ESTADO_AL_PUBLICAR, ESTADO_CERTIFICADO, Promocion)
 
 _UNIDADES = [
@@ -131,3 +131,47 @@ def test_la_unidad_ANIDADA_gana_sobre_la_que_la_contiene():
 
     assert ficha.es_de_la_unidad(ruta, "plugins/uno/interno", anidadas)
     assert not ficha.es_de_la_unidad(ruta, "plugins/uno", anidadas)
+
+
+# ── una sola definicion de pertenencia ──────────────────────────────────────────────────────
+def test_un_nombre_de_unidad_que_es_prefijo_de_otro_no_se_lleva_sus_artefactos():
+    """CLAVA EL COMPORTAMIENTO al unificar la pertenencia en una sola regla (G2/P9).
+
+    NO es la regresion de un defecto vivo, y conviene decirlo: la copia que `ficha` tenia resolvia
+    por `startswith` y la unica regla resuelve por SEGMENTOS de ruta, pero aquella comparaba contra
+    `<subruta>/` -- con la barra --, asi que ya daba la respuesta correcta aqui. Se comprobo antes de
+    sustituirla. Lo que esta prueba fija es que la respuesta sigue siendo esa despues del cambio, que
+    es lo unico que se puede afirmar de una unificacion sin cambio de comportamiento.
+    """
+    vecinas = [
+        {"nombre": "demo.referencia", "subruta": "plugins/referencia"},
+        {"nombre": "demo.referencia-vieja", "subruta": "plugins/referencia-vieja"},
+    ]
+    ruta = "plugins/referencia-vieja/skills/x/SKILL.md"
+
+    assert ficha.es_de_la_unidad(ruta, "plugins/referencia-vieja", vecinas)
+    assert not ficha.es_de_la_unidad(ruta, "plugins/referencia", vecinas)
+    assert ficha.plugin_que_contiene(ruta, vecinas) == "demo.referencia-vieja"
+
+
+def test_la_ficha_y_el_gate_atribuyen_cada_artefacto_a_LA_MISMA_unidad():
+    """La pertenencia tiene un solo dueño: `reglas_layout.unidad_de`. Si `ficha` volviera a tener
+    su propia copia, el gate exigiria subir la version de una unidad y la ficha sellaria otra.
+    """
+    unidades = [
+        {"nombre": "demo.fuera", "subruta": "plugins/uno"},
+        {"nombre": "demo.dentro", "subruta": "plugins/uno/interno"},
+        {"nombre": "demo.suelto", "subruta": "skills/revisar-jql"},
+        {"nombre": "demo.raiz", "subruta": "."},
+    ]
+    subrutas = [u["subruta"] for u in unidades]
+    rutas = (
+        "plugins/uno/skills/x/SKILL.md",
+        "plugins/uno/interno/skills/x/SKILL.md",
+        "skills/revisar-jql/SKILL.md",
+        "docs/notas/SKILL.md",
+    )
+
+    for ruta in rutas:
+        segun_el_gate = reglas_layout.unidad_de(ruta, subrutas)
+        assert ficha.es_de_la_unidad(ruta, segun_el_gate, unidades), ruta
