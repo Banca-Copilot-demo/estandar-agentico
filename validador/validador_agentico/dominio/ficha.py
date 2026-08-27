@@ -19,6 +19,7 @@ necesaria.
 from __future__ import annotations
 
 from validador_agentico.dominio.politica import Promocion, entra_al_catalogo
+from validador_agentico.dominio.reglas_layout import RAIZ_DEL_REPOSITORIO, unidad_de
 
 # `name` del catalogo del marketplace: el que resuelve `<plugin>@<catalogo>`.
 CATALOGO = "agentico"
@@ -53,7 +54,11 @@ TIPO_PROMPT = "prompt"
 
 # La subruta de la unidad que ocupa el repositorio entero, o -- en un repositorio mixto -- del
 # conjunto de artefactos sueltos que no pertenece a ningun plugin.
-SUBRUTA_RAIZ = "."
+#
+# NO SE REDECLARA EL VALOR: es el mismo `.` que emite `listar_plugins` y con el que `reglas_layout`
+# nombra esa unidad. Escribirlo dos veces es tener dos sitios donde cambiarlo y uno donde olvidarlo
+# (G2). El alias se conserva porque este modulo lo exporta y hay quien lo importa por este nombre.
+SUBRUTA_RAIZ = RAIZ_DEL_REPOSITORIO
 
 # Un skill vive en su propia carpeta -- `.../<nombre>/SKILL.md` --, y su nombre ES esa carpeta. Con
 # menos separadores la ruta no puede nombrar un skill.
@@ -63,20 +68,23 @@ _PROFUNDIDAD_MINIMA_DE_SKILL = 2
 def _unidad_que_contiene(ruta_del_artefacto: str, unidades: list[dict]) -> dict | None:
     """La unidad publicable dentro de la que vive el artefacto, o `None` si ninguna lo contiene.
 
-    Se resuelve por PREFIJO DE RUTA porque es el unico dato que relaciona a los dos: el artefacto
-    lleva su `ruta` relativa al repositorio y la unidad su `subruta`. Se toma la coincidencia MAS
-    LARGA, para que una unidad anidada dentro de otra gane sobre la que la contiene.
+    QUIEN DECIDE LA PERTENENCIA ES `reglas_layout.unidad_de`, Y ESTE MODULO NO LA REIMPLEMENTA.
+    Tenia su propia copia -- misma regla, mismo desempate por la coincidencia mas larga, misma
+    excepcion para `.` -- escrita contra `startswith` en vez de contra segmentos de ruta. Dos
+    definiciones de «a que unidad pertenece este archivo» son dos cosas que divergen en el primer
+    arreglo que alguien haga con prisa: el gate exigiria subir la version de una unidad y la ficha
+    sellaria otra (G2/P9).
+
+    LO UNICO QUE APORTA ESTA FUNCION es traducir entre los dos portadores del mismo dato: aqui la
+    unidad viaja como `dict` del veredicto -- con `subruta` y `nombre` --, y la regla pura habla de
+    subrutas. Resuelve la subruta con la regla y devuelve el registro que la lleva.
+
+    LA COMPARACION POR SEGMENTOS ES ADEMAS MAS ESTRICTA que el `startswith` que sustituye:
+    `plugins/referencia-vieja/...` no cuelga de `plugins/referencia`.
     """
-    candidatas = [
-        u for u in unidades
-        if u.get("subruta") and u["subruta"] != SUBRUTA_RAIZ
-        and ruta_del_artefacto.startswith(f"{u['subruta']}/")
-    ]
-    if candidatas:
-        return max(candidatas, key=lambda u: len(u["subruta"]))
-    # `.` es la unidad que ocupa el repositorio entero: solo aplica si no hay ninguna anidada.
-    raiz = [u for u in unidades if u.get("subruta") == SUBRUTA_RAIZ]
-    return raiz[0] if raiz else None
+    por_subruta = {u["subruta"]: u for u in unidades if u.get("subruta")}
+    elegida = unidad_de(ruta_del_artefacto, list(por_subruta))
+    return por_subruta.get(elegida) if elegida is not None else None
 
 
 def plugin_que_contiene(ruta_del_artefacto: str, plugins: list[dict]) -> str:
