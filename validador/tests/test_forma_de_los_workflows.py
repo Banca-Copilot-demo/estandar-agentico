@@ -408,6 +408,33 @@ def test_la_matriz_esta_guardada_contra_el_caso_vacio():
         "`fromJSON('[]')` tumba la corrida entera al arrancar y no se reporta ninguna comprobacion")
 
 
+def test_el_tope_de_paralelismo_de_la_matriz_coincide_con_su_constante_nombrada():
+    """MEDIDO en el run 33067070476 de `agentes-sdlc`, y el modo de fallo es de los peores que hemos
+    visto: `strategy` NO admite expresiones en `max-parallel`. Con
+    `max-parallel: ${{ needs.<job>.outputs.<x> }}` el job de matriz NO LLEGA A EXISTIR -- no aparece
+    en la lista de trabajos y no emite ninguna comprobacion -- y sin embargo su `result` vale
+    `failure`. El agregador entonces anuncia «alguna unidad esta en rojo» cuando no se evaluo
+    ninguna, y en el portal no hay ningun job que abrir para descubrirlo.
+
+    Asi que el numero tiene que ser literal. Esta prueba es lo que impide que eso se convierta en un
+    segundo sitio donde vive el mismo umbral (P11): la constante `UNIDADES_EN_PARALELO` sigue siendo
+    donde esta escrito QUE controla y por que, y aqui se exige que el literal la siga.
+    """
+    documento = yaml.safe_load(_EVALUAR.read_text(encoding="utf-8"))
+    constante = str((documento.get("env") or {}).get("UNIDADES_EN_PARALELO", ""))
+    tope = (documento["jobs"]["evaluar"].get("strategy") or {}).get("max-parallel")
+
+    assert constante, ("`evaluar.yml` ya no declara la constante `UNIDADES_EN_PARALELO`: el tope de "
+                       "la matriz quedaria como un numero magico sin nada que explique que controla")
+    assert "${{" not in str(tope), (
+        f"`max-parallel` es una expresion ({tope!r}): `strategy` no la expande, el job de matriz no "
+        "llega a existir y su `result` sale `failure` sin haber evaluado nada")
+    assert str(tope) == constante, (
+        f"`max-parallel: {tope}` no coincide con `UNIDADES_EN_PARALELO: {constante}`. El motor "
+        "obliga a repetir el numero; que no divergan es lo unico que mantiene una sola fuente de "
+        "verdad para el umbral")
+
+
 def _agregador_de(jobs: dict) -> tuple[str, dict]:
     salida = str((yaml.safe_load(_EVALUAR.read_text(encoding="utf-8")).get("on")
                   or yaml.safe_load(_EVALUAR.read_text(encoding="utf-8")).get(True))

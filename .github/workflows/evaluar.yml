@@ -194,12 +194,6 @@ jobs:
     outputs:
       lista: ${{ steps.detectar.outputs.unidades-con-suites }}
       hay-suites: ${{ steps.detectar.outputs.hay-suites }}
-      # EL TOPE DE PARALELISMO VIAJA POR AQUI, y la vuelta tiene una razon concreta: `strategy` NO
-      # expande el contexto `env`, asi que `max-parallel: ${{ env.UNIDADES_EN_PARALELO }}` no se
-      # resuelve -- pero `needs` SI se expande ahi --. La alternativa era teclear el numero como
-      # literal en la matriz, y entonces habria dos sitios donde vive el mismo umbral y solo uno
-      # documentado (P11). Aqui sigue habiendo una sola constante nombrada.
-      en-paralelo: ${{ steps.tope.outputs.unidades }}
     steps:
       - name: Descargar el repositorio que se evalua
         uses: actions/checkout@v4
@@ -235,11 +229,6 @@ jobs:
           # evaluado: la accion tiene que saltarselo o volveria a evaluar sus plantillas.
           directorio-a-podar: ${{ env.DIRECTORIO_DEL_ESTANDAR }}
 
-      - name: Publicar el tope de unidades en paralelo
-        id: tope
-        shell: bash
-        run: echo "unidades=${UNIDADES_EN_PARALELO}" >> "$GITHUB_OUTPUT"
-
       - name: Avisar de que no hay nada que evaluar
         if: steps.detectar.outputs.hay-suites != 'true'
         shell: bash
@@ -267,7 +256,18 @@ jobs:
       # arregla: con `fail-fast` por defecto, la primera suite que fallara dejaria a las otras en
       # `cancelled` y volveriamos a no tener veredicto propio de cada artefacto -- por otra puerta --.
       fail-fast: false
-      max-parallel: ${{ needs.unidades.outputs.en-paralelo }}
+      # EL LITERAL NO ES UN DESCUIDO: `strategy` NO ADMITE EXPRESIONES AQUI. MEDIDO en el run
+      # 33067070476 de `agentes-sdlc`, y el modo de fallo es de los peores: con
+      # `max-parallel: ${{ needs.unidades.outputs.en-paralelo }}` el job de matriz NO LLEGA A EXISTIR
+      # -- no aparece en la lista de trabajos, no emite ninguna comprobacion -- y aun asi su `result`
+      # vale `failure`. O sea que el agregador dice «alguna unidad esta en rojo» cuando en realidad
+      # no se evaluo ninguna, y en el portal no hay nada que abrir para descubrirlo.
+      #
+      # EL VALOR SIGUE TENIENDO UN SOLO SITIO DONDE VIVE (P11): la constante `UNIDADES_EN_PARALELO`
+      # de arriba, que es donde esta escrito QUE controla y por que vale 2. Que este numero y aquella
+      # constante coincidan lo vigila una prueba de forma -- es la unica manera de tener las dos
+      # cosas cuando el motor no deja interpolar --.
+      max-parallel: 2
       matrix:
         unidad: ${{ fromJSON(needs.unidades.outputs.lista) }}
     steps:
