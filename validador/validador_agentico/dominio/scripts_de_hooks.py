@@ -34,7 +34,6 @@ import re
 # eso se nombran aqui tal cual: no son convencion nuestra.
 VARIABLE_RAIZ_DEL_ARTEFACTO = "${CLAUDE_PLUGIN_ROOT}"
 VARIABLE_RAIZ_DEL_CONSUMIDOR = "${CLAUDE_PROJECT_DIR}"
-VARIABLE_DATOS_DEL_ARTEFACTO = "${CLAUDE_PLUGIN_DATA}"
 
 # `command` es el ejecutable o la linea de shell; `args` sus argumentos cuando se invoca en forma exec.
 _CLAVE_COMANDO = "command"

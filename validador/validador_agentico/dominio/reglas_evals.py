@@ -23,13 +23,6 @@ from validador_agentico.dominio.hallazgo import Hallazgo, error
 CLAVE_ARTEFACTO = "artifact"
 CLAVE_CASOS = "cases"
 CLAVE_ID = "id"
-CLAVE_TIPO = "eval_type"
-
-# El tipo de evaluacion que NO consume modelo: comprueba el contrato de una configuracion MCP contra el
-# servidor real -- que conecta, que aparecen las herramientas de la lista y ninguna de fuera, y que el
-# texto de sus descripciones no cambio desde la aprobacion --. Es el unico que no hay razon para
-# diferir, y el unico que sirve de linea base de DERIVA.
-TIPO_CONTRATO_MCP = "mcp_contract"
 
 
 def revisar_suite(ruta_relativa: str, suite: dict,

@@ -118,7 +118,6 @@ runs:
           fi
         fi
         echo "subruta=$subruta" >> "$GITHUB_OUTPUT"
-        echo "etiquetado=${buscado:-$GITHUB_REPOSITORY}" >> "$GITHUB_OUTPUT"
         echo "plugin '$buscado' -> subruta '$subruta'"
 
     - name: Empaquetar de forma determinista
