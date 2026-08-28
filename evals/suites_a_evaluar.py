@@ -49,6 +49,7 @@ import logging
 import re
 import sys
 from collections.abc import Callable
+from enum import Enum
 from pathlib import Path
 
 # LA PERTENENCIA DE UN ARCHIVO A UNA UNIDAD NO SE DEFINE AQUI. Vivio en este modulo mientras fue su
@@ -60,6 +61,7 @@ from pathlib import Path
 # La suite de una unidad vive DENTRO de ella, a cualquier profundidad: la de un skill en
 # `<unidad>/evals/`, la de un agente en `<unidad>/agents/evals/`. Por eso basta con comparar prefijos.
 from validador_agentico.dominio.reglas_layout import unidad_de as _unidad_de
+from validador_agentico.dominio.reglas_layout import unidades_tocadas as _unidades_tocadas
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +72,20 @@ log = logging.getLogger(__name__)
 # rellenar, en cambio, esta en el archivo por definicion mientras siga siendo una plantilla, y
 # desaparece solo cuando alguien la convierte en una suite de verdad.
 _MARCADOR_SIN_RELLENAR = re.compile(r"<<[^<>\n]+>>")
+
+
+class Salida(str, Enum):
+    """Que proyeccion de la misma seleccion imprime este modulo.
+
+    LAS TRES SALEN DE LOS MISMOS FILTROS, y por eso son una opcion y no tres scripts: quien ejecuta
+    necesita las rutas de suite, quien abre un canal de CI por unidad necesita las unidades tocadas, y
+    quien decide si una unidad puede certificarse necesita saber cuales traen suites. Derivar una de
+    otra a mano en el YAML seria una segunda definicion de la misma pregunta.
+    """
+
+    SUITES = "suites"
+    UNIDADES_CON_SUITES = "unidades-con-suites"
+    UNIDADES_TOCADAS = "unidades-tocadas"
 
 
 def es_plantilla(contenido: str) -> bool:
@@ -123,7 +139,7 @@ def suites_a_evaluar(suites: list[str], unidades: list[str],
         log.info("sin lista de archivos cambiados: se evaluan las %d suite(s)", len(suites))
         return suites
 
-    tocadas = {u for u in (_unidad_de(c, unidades) for c in cambiados) if u}
+    tocadas = set(_unidades_tocadas(cambiados, unidades))
     log.info("unidades tocadas por el cambio: %s", ", ".join(sorted(tocadas)) or "ninguna")
 
     elegidas = [s for s in suites if _unidad_de(s, unidades) in tocadas]
@@ -159,16 +175,26 @@ def unidades_a_evaluar(suites: list[str], unidades: list[str],
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--suites", required=True, type=argparse.FileType(encoding="utf-8"),
+    # SIN SUITES SIGUE HABIENDO UNA PREGUNTA QUE CONTESTAR: `unidades-tocadas` no depende de ellas, y
+    # exigir el archivo obligaria al llamador a fabricar uno vacio para preguntar por las unidades de
+    # un repositorio que aun no tiene ninguna evaluacion escrita.
+    parser.add_argument("--suites", type=argparse.FileType(encoding="utf-8"),
                         help="archivo con una ruta de suite por linea")
     parser.add_argument("--unidades", required=True, type=argparse.FileType(encoding="utf-8"),
                         help="archivo con una subruta de unidad por linea, de `listar_plugins`")
     parser.add_argument("--cambiados", type=argparse.FileType(encoding="utf-8"),
                         help="archivo con los archivos cambiados. Sin el, se evaluan todas")
-    parser.add_argument("--agrupado-por-unidad", action="store_true",
-                        help="Imprime un ARRAY JSON con las unidades que tienen alguna suite que "
-                             "ejecutar, en vez de una ruta de suite por linea. Es lo que alimenta "
-                             "la matriz de la evaluacion, que abre un trabajo por unidad.")
+    # UNA OPCION FINITA Y EXCLUYENTE, NO UN RAMILLETE DE BANDERAS (P6). Con un `--agrupado-por-unidad`
+    # y un `--solo-tocadas` sueltos habria combinaciones sin significado que alguien tendria que
+    # recordar no escribir, y el default de cada una decidiria en silencio que se imprime.
+    parser.add_argument("--salida", choices=[s.value for s in Salida],
+                        default=Salida.SUITES.value,
+                        help="QUE se imprime. `suites`: una ruta de suite por linea, para ejecutarlas. "
+                             "`unidades-con-suites`: ARRAY JSON de las unidades que tienen alguna "
+                             "suite que ejecutar. `unidades-tocadas`: ARRAY JSON de las unidades "
+                             "publicables que el cambio toca, TENGAN O NO suites -- es lo que abre un "
+                             "canal de CI por unidad, porque una unidad tocada hay que validarla "
+                             "aunque no haya nada que evaluar en ella --.")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Activa logging DEBUG (detalles internos de ejecucion).")
     argumentos = parser.parse_args()
@@ -189,10 +215,16 @@ def main() -> int:
     unidades = _lineas(argumentos.unidades)
     cambiados = _lineas(argumentos.cambiados)
 
-    # UN ARRAY JSON Y NO UNA LISTA DE LINEAS cuando se agrupa: lo consume `fromJSON` de Actions para
-    # construir la matriz, y ese es el unico formato que entiende. `json.dumps` ademas escapa lo que
-    # haga falta, que es lo que una concatenacion a mano se dejaria.
-    if argumentos.agrupado_por_unidad:
+    # UN ARRAY JSON Y NO UNA LISTA DE LINEAS para las dos proyecciones por unidad: las consume
+    # `fromJSON` de Actions para construir la matriz, y ese es el unico formato que entiende.
+    # `json.dumps` ademas escapa lo que haga falta, que es lo que una concatenacion a mano se dejaria.
+    salida = Salida(argumentos.salida)
+    if salida is Salida.UNIDADES_TOCADAS:
+        tocadas = _unidades_tocadas(cambiados, unidades)
+        log.info("unidades tocadas por el cambio: %s", ", ".join(tocadas) or "ninguna")
+        print(json.dumps(list(tocadas)))
+        return 0
+    if salida is Salida.UNIDADES_CON_SUITES:
         print(json.dumps(unidades_a_evaluar(ejecutables, unidades, cambiados)))
         return 0
 

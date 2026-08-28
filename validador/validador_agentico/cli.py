@@ -22,6 +22,7 @@ from validador_agentico.adaptadores import (
 )
 from validador_agentico import listar_plugins
 from validador_agentico.aplicacion.ejecutar_gate import ejecutar
+from validador_agentico.aplicacion.validar_repositorio import Alcance
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +60,21 @@ def _parsear_argumentos(argv: list[str] | None) -> argparse.Namespace:
                              "cada artefacto. Sin este flag esa comprobacion no se ejecuta, y el "
                              "informe lo dice: un gate que no comprueba y calla es indistinguible de "
                              "uno que comprobo y aprobo.")
+    # LAS DOS MITADES DEL REPARTO, y son excluyentes: pedirlas a la vez no significa nada, asi que lo
+    # impide `argparse` en vez de dejarlo a que el llamador lo recuerde. Sin ninguna de las dos, el
+    # recorrido es el completo de siempre -- que es el que corre en local y en la publicacion --.
+    reparto = parser.add_mutually_exclusive_group()
+    reparto.add_argument("--unidad", metavar="SUBRUTA",
+                         help="valida SOLO la unidad publicable de SUBRUTA (la misma que nombra la "
+                              "matriz de CI, p.ej. `skills/revisar-jql`), y omite las reglas de "
+                              "repositorio. Sin este flag, cada celda de la matriz validaria el "
+                              "repositorio completo y todas saldrian en rojo por el defecto de una "
+                              "sola: el bloqueo de siempre, repetido N veces")
+    reparto.add_argument("--solo-repositorio", action="store_true",
+                         help="valida SOLO lo que se juzga sobre el arbol entero -- higiene, mezcla "
+                              "de aprobadores, huerfanos y subida de version -- y omite las reglas "
+                              "de cada unidad, que corren acotadas con --unidad. Es la otra mitad "
+                              "del reparto: las dos juntas cubren exactamente el recorrido completo")
     parser.add_argument("--sin-comprobacion-oficial", action="store_true",
                         help="no invoca `gh skill publish --dry-run`. La comprobacion se declara "
                              "`no aplica` con su motivo: nunca se da por buena en silencio")
@@ -102,7 +118,10 @@ def main(argv: list[str] | None = None) -> int:
                          con_comprobacion_oficial=not argumentos.sin_comprobacion_oficial,
                          equipos_conocidos=equipos, archivos_cambiados=cambios,
                          versiones_en_base=versiones,
-                         directorio_de_esquemas=argumentos.esquemas)
+                         directorio_de_esquemas=argumentos.esquemas,
+                         alcance=(Alcance.REPOSITORIO if argumentos.solo_repositorio
+                                  else Alcance.TODO),
+                         solo_la_unidad=argumentos.unidad)
     if argumentos.anotaciones:
         # Antes del informe: los comandos de workflow los recoge el runner de stdout, y asi quedan
         # arriba en el registro, no sepultados bajo el detalle.

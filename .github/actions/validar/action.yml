@@ -13,6 +13,21 @@ inputs:
       declarado exista.
     required: false
     default: ""
+  alcance:
+    description: >
+      `todo` (por defecto) revisa el repositorio entero, que es lo correcto en local y en un push a
+      `main`. `repositorio` revisa SOLO lo que se juzga sobre el arbol completo -- higiene, mezcla de
+      aprobadores, huerfanos y subida de version --, porque las reglas de cada unidad corren acotadas
+      en su propio canal de CI. Las dos mitades juntas cubren exactamente el recorrido completo.
+    required: false
+    default: todo
+  unidad:
+    description: >
+      Subruta de UNA unidad publicable. Acota la revision a esa unidad y omite las reglas de
+      repositorio: es lo que corre dentro del canal de esa unidad, antes de evaluar su comportamiento.
+      Nombrarla ya dice el alcance, asi que no hay que tocar `alcance` ademas.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -66,8 +81,19 @@ runs:
     - name: Gate de conformidad · G1 G3 G4 + especificacion oficial
       shell: bash
       run: |
-        base=""
-        if [ -n "${GITHUB_BASE_REF:-}" ]; then
+        # P10: EL COMANDO SE ARMA COMO LISTA y no concatenando texto. Con `$base` sin comillas el
+        # shell partia el flag por espacios «de casualidad», y anadir aqui una subruta de unidad
+        # -- que puede llevarlos -- convertiria ese descuido en un argumento perdido.
+        acotado=()
+        [ -n "$UNIDAD" ] && acotado+=(--unidad "$UNIDAD")
+        [ "$ALCANCE" = repositorio ] && acotado+=(--solo-repositorio)
+
+        # LA RAMA BASE NO SE RESUELVE CUANDO SE ACOTA A UNA UNIDAD, y no es una micro-optimizacion:
+        # las UNICAS reglas que la consumen -- la mezcla de aprobadores y la subida de version -- son
+        # de REPOSITORIO, asi que en una revision por unidad se pagaria un `--unshallow` del historial
+        # completo, en cada canal y en paralelo, para alimentar reglas que ese canal ni siquiera
+        # ejecuta.
+        if [ -z "$UNIDAD" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
           # `--unshallow` Y NO `--depth=1`, y esto NO es una precaucion: con `--depth=1` la regla que
           # depende de la base NO SE EJECUTABA NUNCA, y el gate salia en verde igual. MEDIDO en el
           # registro de una solicitud real:
@@ -82,12 +108,20 @@ runs:
           git fetch --quiet --no-tags --unshallow origin 2>/dev/null \
             || git fetch --quiet --no-tags origin
           git fetch --quiet --no-tags origin "${GITHUB_BASE_REF}"
-          base="--rama-base origin/${GITHUB_BASE_REF}"
+          acotado+=(--rama-base "origin/${GITHUB_BASE_REF}")
         fi
         # `--esquemas` apunta a los esquemas DEL ESTANDAR, no del repositorio validado: el contrato
         # lo publica la plataforma, y dejar que cada dominio traiga los suyos permitiria relajarlos.
-        python -m validador_agentico.cli .           --organizacion "${GITHUB_REPOSITORY_OWNER}"           --esquemas "${{ github.action_path }}/../../../schemas"           $base           --anotaciones           --escribir-resumen "$GITHUB_STEP_SUMMARY"           --verbose
+        python -m validador_agentico.cli . \
+          --organizacion "${GITHUB_REPOSITORY_OWNER}" \
+          --esquemas "${{ github.action_path }}/../../../schemas" \
+          "${acotado[@]}" \
+          --anotaciones \
+          --escribir-resumen "$GITHUB_STEP_SUMMARY" \
+          --verbose
       env:
+        ALCANCE: ${{ inputs.alcance }}
+        UNIDAD: ${{ inputs.unidad }}
         # EL DE LA APP SI LO HAY, y si no el del repositorio. La diferencia es UNA comprobacion, pero es
         # la que decide si G4 bloquea o solo avisa: el `GITHUB_TOKEN` esta acotado al repositorio y
         # `gh api orgs/<org>/teams` le responde «Resource not accessible by integration (HTTP 403)»

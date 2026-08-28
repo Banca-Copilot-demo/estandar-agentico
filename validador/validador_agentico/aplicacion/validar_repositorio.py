@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
+from enum import Enum
 from pathlib import Path
 
 from validador_agentico.adaptadores import esquema
@@ -75,6 +76,25 @@ from validador_agentico.dominio.hallazgo import (
 
 log = logging.getLogger(__name__)
 
+
+class Alcance(str, Enum):
+    """Que parte del repositorio revisa una ejecucion del gate.
+
+    LAS DOS CLASES DE REGLA SON DISTINTAS Y NO SE PUEDEN REPARTIR IGUAL. Las de UNIDAD juzgan un
+    artefacto o un plugin y se pueden mirar por separado; las de REPOSITORIO -- higiene, mezcla de
+    aprobadores, huerfanos y subida de version -- se juzgan sobre el arbol entero. Un huerfano es el
+    ejemplo que lo cierra: por definicion no pertenece a ninguna unidad, asi que ningun recorrido por
+    unidades lo encuentra nunca.
+
+    Existe como enum y no como un par de banderas porque son tres opciones finitas y excluyentes: con
+    booleanos habria combinaciones sin significado -- «solo esta unidad y ademas solo el repositorio»
+    -- que alguien tendria que recordar no escribir (P6).
+    """
+
+    TODO = "todo"
+    REPOSITORIO = "repositorio"
+    UNIDAD = "unidad"
+
 # Donde viven los artefactos dentro de una unidad. Se nombran aqui, en el composition root del caso de
 # uso, y se pasan como dato a las reglas de dominio: `reglas_layout` y `reglas_huerfanos` deciden
 # COSAS sobre artefactos sin tener que saber como se llaman sus directorios en disco (G5).
@@ -87,18 +107,63 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
             equipos_conocidos: frozenset[str] | None = None,
             archivos_cambiados: tuple[str, ...] | None = None,
             versiones_en_base: dict[str, str | None] | None = None,
-            directorio_de_esquemas: Path | None = None) -> Veredicto:
+            directorio_de_esquemas: Path | None = None,
+            alcance: Alcance = Alcance.TODO,
+            solo_la_unidad: str | None = None) -> Veredicto:
     """`equipos_conocidos`, `archivos_cambiados` y `versiones_en_base` llegan como DATOS y no como
     adaptadores: son contexto que el composition root resuelve una sola vez. Los tres admiten
-    `None`, que significa «no se pudo averiguar» y produce un aviso -- nunca un pase silencioso."""
-    raices = reglas_layout.unidades_publicables(
+    `None`, que significa «no se pudo averiguar» y produce un aviso -- nunca un pase silencioso.
+
+    `alcance` reparte el trabajo entre los trabajos de CI (ver `Alcance`). `TODO` -- el defecto -- es
+    el recorrido completo de siempre, que es el que corre en local y en la publicacion. `UNIDAD`
+    acota a la unidad de `solo_la_unidad` para que cada celda de la matriz valide lo suyo y nada
+    mas: sin acotar, las N celdas ejecutarian el recorrido completo, todas darian el MISMO veredicto
+    y todas saldrian en rojo por el defecto de una sola -- el «uno bloquea a todos» que la matriz
+    existe para eliminar, pero repetido N veces y pagando N recorridos --. `REPOSITORIO` corre solo
+    lo que se juzga sobre el arbol entero, una vez, en su propio trabajo.
+
+    LAS DOS MITADES SUMAN EL RECORRIDO COMPLETO: `UNIDAD` sobre cada unidad mas `REPOSITORIO` cubre
+    exactamente lo mismo que `TODO`. Ninguna regla se queda sin ejecutar al repartirlas, que es la
+    propiedad que hace legitimo el reparto.
+    """
+    todas = reglas_layout.unidades_publicables(
         raiz, RUTAS_MANIFIESTO,
         directorios_de_artefactos=_DIRECTORIOS_DE_ARTEFACTOS,
         archivos_de_artefactos=_ARCHIVOS_DE_ARTEFACTOS)
-    varios = reglas_layout.es_multiunidad(raices, raiz)
+    # `varios` SE CALCULA SOBRE TODAS LAS UNIDADES Y NO SOBRE LAS ACOTADAS, y la diferencia es un
+    # defecto ya medido en este archivo por otra via (ver `_prefijo_de`): ese booleano decide si los
+    # hallazgos llevan delante la subruta de su unidad. Calculado sobre el subconjunto, una celda
+    # acotada se veria como un repositorio de una sola unidad y PERDERIA el prefijo, de modo que el
+    # mismo archivo tendria dos rutas canonicas segun como se invocara el gate.
+    varios = reglas_layout.es_multiunidad(todas, raiz)
+    # NOMBRAR LA UNIDAD YA DICE EL ALCANCE, y se deriva aqui en vez de exigir que el llamador pase
+    # los dos datos de acuerdo entre si: pedir `Alcance.UNIDAD` y olvidar el nombre -- o al reves --
+    # son dos formas de escribir lo mismo mal, y la segunda pasaria callando.
+    if alcance is Alcance.UNIDAD and solo_la_unidad is None:
+        raise ValueError("Alcance.UNIDAD exige el nombre de la unidad en `solo_la_unidad`")
+    alcance = Alcance.UNIDAD if solo_la_unidad is not None else alcance
+    if alcance is Alcance.REPOSITORIO:
+        raices = ()
+    elif alcance is Alcance.TODO:
+        raices = todas
+    else:
+        raices = tuple(u for u in todas if _nombre_de_unidad(u, raiz) == solo_la_unidad)
+        if not raices:
+            # UNA CELDA QUE NO VALIDA NADA NO PUEDE SALIR EN VERDE. Pedir una unidad inexistente
+            # significa que quien construyo la matriz y quien la recorre discrepan sobre que unidades
+            # hay, y el sintoma seria el peor posible: la celda pasa, el agregado pasa, y el artefacto
+            # se publica SIN HABERSE VALIDADO. Es el modo de fallo que este proyecto persigue -- un
+            # control en verde que no protege nada --, asi que se convierte en error explicito.
+            return Veredicto(hallazgos=(error(
+                solo_la_unidad,
+                f"no hay ninguna unidad publicable en `{solo_la_unidad}`: no se valido nada. "
+                f"Unidades presentes: "
+                f"{', '.join(_nombre_de_unidad(u, raiz) for u in todas) or '(ninguna)'}"),),
+                inventario=Inventario(), artefactos=(), plugins=(), credencial_ownership={})
+        log.info("validacion acotada a la unidad %s", solo_la_unidad)
     if varios:
-        log.info("el repositorio publica %d unidad(es): %s", len(raices),
-                 ", ".join(r.name if r != raiz else "(conjunto suelto)" for r in raices))
+        log.info("el repositorio publica %d unidad(es): %s", len(todas),
+                 ", ".join(r.name if r != raiz else "(conjunto suelto)" for r in todas))
 
     # UN veredicto para todo el repositorio, aunque se revise plugin a plugin: la regla de un solo
     # gate y un solo veredicto no cambia porque el layout tenga niveles.
@@ -137,15 +202,22 @@ def validar(raiz: Path, *, lector=adaptador_frontmatter,
             plugins.append(publicado)
         custodia = {**custodia, **proyeccion.custodia_declarada(contenido)}
 
-    # Estas TRES son del REPOSITORIO, no de cada plugin: la higiene se revisa sobre el arbol completo
-    # -- un secreto no deja de serlo por estar fuera de un plugin --, la mezcla de firmantes se juzga
-    # sobre el pull request entero, y los HUERFANOS solo se ven desde arriba: son artefactos que no
-    # caen dentro de ninguna raiz de plugin, asi que por construccion ningun recorrido por plugin los
-    # encuentra.
-    del_repositorio = repositorio.leer(raiz, lector)
-    hallazgos += [*_revisar_higiene(del_repositorio), *_revisar_mezcla(archivos_cambiados),
-                  *_revisar_sin_unidad(raiz, del_repositorio),
-                  *_revisar_subida_de_version(raiz, raices, archivos_cambiados, versiones_en_base)]
+    # Estas CUATRO son del REPOSITORIO, no de cada plugin: la higiene se revisa sobre el arbol
+    # completo -- un secreto no deja de serlo por estar fuera de un plugin --, la mezcla de firmantes
+    # se juzga sobre el pull request entero, y los HUERFANOS solo se ven desde arriba: son artefactos
+    # que no caen dentro de ninguna raiz de plugin, asi que por construccion ningun recorrido por
+    # plugin los encuentra.
+    #
+    # SE OMITEN AL ACOTAR, y por eso el recorrido sin acotar sigue siendo obligatorio: ninguna de las
+    # cuatro se puede repartir en celdas sin repetir el mismo hallazgo N veces o, peor, sin dejar de
+    # verse -- los huerfanos, por definicion, no pertenecen a ninguna unidad, asi que NINGUNA celda
+    # los encontraria nunca --.
+    if alcance is not Alcance.UNIDAD:
+        del_repositorio = repositorio.leer(raiz, lector)
+        hallazgos += [*_revisar_higiene(del_repositorio), *_revisar_mezcla(archivos_cambiados),
+                      *_revisar_sin_unidad(raiz, del_repositorio),
+                      *_revisar_subida_de_version(raiz, todas, archivos_cambiados,
+                                                  versiones_en_base)]
 
     log.info("%d hallazgo(s) en %s", len(hallazgos), raiz.name)
     return Veredicto(hallazgos=tuple(hallazgos), inventario=inventario,

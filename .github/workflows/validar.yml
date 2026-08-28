@@ -26,6 +26,29 @@ name: Validar artefactos agenticos
 
 on:
   workflow_call:
+    inputs:
+      # QUE MITAD DEL RECORRIDO CORRE AQUI, Y POR QUE HAY MITADES.
+      #
+      # Las reglas de UNIDAD juzgan un artefacto o un plugin y se pueden mirar por separado; las de
+      # REPOSITORIO -- higiene, mezcla de aprobadores, huerfanos y subida de version -- se juzgan
+      # sobre el arbol entero. Un huerfano lo cierra: por definicion no pertenece a ninguna unidad,
+      # asi que ningun recorrido por unidades lo encuentra nunca.
+      #
+      # En una solicitud de cambio, el llamador pide `repositorio` porque las reglas de cada unidad
+      # corren en SU canal, junto a su evaluacion: una unidad en rojo deja de bloquear a sus hermanas.
+      # En un push a `main` no hay canales -- la evaluacion no corre fuera de un pull request -- asi
+      # que ahi se pide `todo` y este trabajo sigue siendo el recorrido completo de siempre.
+      #
+      # EL DEFECTO POR DEFECTO ES `todo`: un llamador que no diga nada obtiene el comportamiento
+      # anterior entero, no una revision recortada en silencio. Recortar el alcance tiene que ser una
+      # decision escrita.
+      alcance:
+        description: >
+          `todo` (por defecto) revisa el repositorio entero. `repositorio` revisa SOLO lo que se juzga
+          sobre el arbol completo, porque las reglas de cada unidad corren acotadas en su canal.
+        required: false
+        type: string
+        default: todo
     secrets:
       app-id:
         description: App ID de la App del ciclo de vida. Sin el, el dueno no se resuelve y se avisa.
@@ -92,3 +115,4 @@ jobs:
           # El de la App si se pudo acuñar; si no, cadena vacia y la accion cae al token del
           # repositorio -- que sirve para todo menos para leer los equipos --.
           token-organizacion: ${{ steps.token.outputs.token }}
+          alcance: ${{ inputs.alcance }}
