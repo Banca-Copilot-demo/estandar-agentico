@@ -684,6 +684,76 @@ jobs:
     outputs:
       resultado: ${{ steps.veredicto.outputs.resultado }}
     steps:
+      # CUALES ESTAN EN ROJO NO LO DICE `needs`, Y ESE ES EL DEFECTO QUE ESTE PASO ARREGLA.
+      #
+      # MEDIDO en el run 33137328688 de `agentes-sdlc` (commit `a147647`): `plugins/referencia` cayo
+      # al validar y `skills/revisar-jql` paso con 3 de 3, y el veredicto abria con «algun canal por
+      # unidad termino en «failure» sobre ["plugins/referencia", "skills/revisar-jql"]». Nombraba las
+      # unidades TOCADAS, no la que fallo. Es la PRIMERA linea que lee quien abre el pull request --
+      # por delante del resumen, que si lo matiza -- y se lee como si las dos estuvieran en rojo. O
+      # sea: el mensaje contradice justo la propiedad que la matriz existe para dar, que cada unidad
+      # tenga su propio veredicto.
+      #
+      # POR QUE HAY QUE PREGUNTARLO FUERA. `needs.evaluar.result` de una matriz es AGREGADO: colapsa
+      # las N celdas en un solo valor y GitHub no expone en `needs` el resultado celda a celda. La
+      # unica lista que el agregador tiene a mano es la de unidades TOCADAS, que es exactamente la
+      # que no hay que nombrar.
+      #
+      # SE CONSULTAN LOS CHECK-RUNS DEL COMMIT, y no se anade una marca por celda, porque la senal YA
+      # EXISTE: cada celda emite su comprobacion `Evaluacion de comportamiento — <unidad>`. Recogerla
+      # no cuesta un paso mas en cada canal ni un artefacto que subir y bajar.
+      #
+      # NO SE PIDE `checks: read`, Y ESO SE MIDIO ANTES DE OMITIRLO. Pedir un permiso que el llamador
+      # no pueda conceder mata la llamada entera en `startup_failure` -- es lo que ya paso con
+      # `copilot-requests: write`, documentado arriba en este mismo archivo --. Y no hace falta:
+      # `publicar.yml` consulta ESTE MISMO endpoint con un bloque de permisos que no menciona
+      # `checks`, y en el run 33077308385 de `agentes-sdlc` respondio «esta en verde ... se
+      # promociona». Leer check-runs va con el acceso de lectura al repositorio.
+      #
+      # Y SI AUN ASI NO SE PUEDE PREGUNTAR, NO SE ADIVINA. La consulta puede fallar por un 403 o
+      # devolver vacio por la consistencia eventual de la API. En ese caso la salida queda vacia y el
+      # veredicto usa una redaccion que NO nombra a nadie y remite a las comprobaciones por unidad:
+      # peor diagnostico, pero nunca una unidad sana senalada como culpable.
+      - name: Nombrar las unidades cuyo canal quedo en rojo
+        id: rojas
+        if: needs.evaluar.result == 'failure' || needs.evaluar.result == 'cancelled'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # EL COMMIT DE LA RAMA, NO `github.sha`. En un `pull_request`, `github.sha` es el commit de
+          # mezcla efimero; las comprobaciones que se ven en la solicitud de cambio cuelgan de la
+          # cabeza de la rama -- COMPROBADO sobre `a147647`, que es donde estaban las seis del run
+          # 33137328688 --. Preguntar por el de mezcla no devolveria ninguna.
+          COMMIT_MEDIDO: ${{ github.event.pull_request.head.sha }}
+          # LA MITAD DEL NOMBRE QUE EL ESTANDAR CONTROLA, igual que en `publicar.yml`: GitHub nombra
+          # el check-run `<job del llamador> / <nombre del job llamado>` y el prefijo lo elige cada
+          # repositorio de dominio. Lo que sigue al separador « — » es la subruta de la unidad. Hay
+          # una prueba de forma que falla si este texto y el `name:` de la matriz dejan de coincidir.
+          SEPARADOR_DE_LA_UNIDAD: 'Evaluacion de comportamiento — '
+        run: |
+          # `pipefail` NO ES HIGIENE: la consulta es una tuberia y sin esto el codigo de salida seria
+          # el de `sort`, siempre 0. Un `gh` que falla se leeria como «ninguna unidad en rojo», que
+          # es justo el silencio que este paso existe para evitar.
+          set -o pipefail
+
+          # SOLO LAS CONCLUSIONES QUE SON ROJO DE VERDAD. `skipped` y `neutral` no lo son, y
+          # `timed_out` si: una celda que no termina tampoco certifica su unidad.
+          filtro='.check_runs[]
+                  | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out")
+                  | .name
+                  | select(contains("'"$SEPARADOR_DE_LA_UNIDAD"'"))
+                  | split("'"$SEPARADOR_DE_LA_UNIDAD"'")[-1]'
+
+          # `sort -u` porque una reejecucion deja mas de un check-run con el mismo nombre, y nombrar
+          # dos veces la misma unidad se leeria como dos unidades rotas.
+          if ! unidades="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${COMMIT_MEDIDO}/check-runs" \
+                             --paginate --jq "$filtro" | sort -u | paste -sd ', ' -)"; then
+            unidades=""
+            echo "::warning::no se pudo consultar las comprobaciones por unidad de ${COMMIT_MEDIDO}: el veredicto dira que hay un canal en rojo sin nombrar cual"
+          fi
+          echo "unidades=$unidades" >> "$GITHUB_OUTPUT"
+          echo "unidades en rojo segun sus comprobaciones: ${unidades:-<no se pudo determinar>}"
+
       - name: Combinar el resultado de cada unidad
         id: veredicto
         shell: bash
@@ -696,6 +766,9 @@ jobs:
           # unidad no valida que si su suite no pasa, porque las dos ocurren dentro del mismo job.
           CANALES: ${{ needs.evaluar.result }}
           TOCADAS: ${{ needs.unidades.outputs.tocadas }}
+          # LAS QUE ESTAN EN ROJO DE VERDAD, o vacio si no se pudieron consultar. Es una variable
+          # DISTINTA de `TOCADAS` a proposito: confundirlas es el defecto que se arregla.
+          EN_ROJO: ${{ steps.rojas.outputs.unidades }}
           UNIDADES: ${{ needs.unidades.outputs.lista }}
         run: |
           # EL ORDEN DE LAS PREGUNTAS ES EL ARREGLO, no un detalle de estilo.
@@ -727,7 +800,14 @@ jobs:
             detalle="la deteccion de unidades termino en «${DETECCION}»: no se sabe que habia que revisar"
           elif [ "$CANALES" = "failure" ] || [ "$CANALES" = "cancelled" ]; then
             resultado=fallida
-            detalle="algun canal por unidad termino en «${CANALES}» sobre ${TOCADAS}: o la unidad no valida, o sus suites no pasan"
+            # SE NOMBRA A LA CULPABLE, NO A LAS TOCADAS. Y cuando no se pudo averiguar cual es, no se
+            # nombra a NINGUNA: se remite a las comprobaciones por unidad, que si lo dicen. Callar
+            # cual fallo empeora el diagnostico; nombrar a una unidad sana lo falsea.
+            if [ -n "$EN_ROJO" ]; then
+              detalle="el canal de ${EN_ROJO} termino en «${CANALES}»: o la unidad no valida, o sus suites no pasan. El cambio tocaba ${TOCADAS}; las que no aparecen ahi conservan su comprobacion en verde"
+            else
+              detalle="algun canal por unidad termino en «${CANALES}» y no se pudo determinar cual: abre las comprobaciones «Evaluacion de comportamiento — <unidad>» para ver cual esta en rojo. NO estan en rojo todas las tocadas (${TOCADAS}): cada una tiene su propio veredicto"
+            fi
           elif [ "$HAY_SUITES" != "true" ]; then
             resultado=sin_suites
             detalle="ninguna unidad tocada por este cambio trae suites; las tocadas (${TOCADAS}) si se validaron"
