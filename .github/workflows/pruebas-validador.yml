@@ -85,6 +85,15 @@ jobs:
         shell: bash
         run: python -m pytest tests -q
 
+      # SE RECOGEN AQUI AUNQUE SE SALTEN. Estas pruebas solo tienen algo que comprobar cuando las
+      # invoca un repositorio de dominio -- sin `CALLER_WORKFLOWS` el modulo se salta entero --, pero
+      # recogerlas en el CI del estandar detecta que el archivo no importa, no parsea o perdio una
+      # dependencia. Sin este paso, un fallo asi esperaria a la siguiente solicitud de cambio de OTRO
+      # repositorio para aparecer, y alli se leeria como un problema de aquel.
+      - name: Pruebas del cableado del llamador (se saltan sin llamador)
+        shell: bash
+        run: python -m pytest .github/tests -q
+
   empaquetado:
     runs-on: ubuntu-latest
     steps:

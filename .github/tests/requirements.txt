@@ -1,0 +1,5 @@
+# Lo unico que estas pruebas necesitan: leer YAML y ejecutarse. Las versiones viven AQUI y no en cada
+# repositorio de dominio (Y2): antes estaban escritas en el `validar.yml` de cada llamador, asi que
+# subirlas obligaba a tocar todos los repositorios y bastaba con olvidar uno para que divergiera.
+pytest==8.3.4
+pyyaml==6.0.2

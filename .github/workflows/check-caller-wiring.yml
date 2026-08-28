@@ -1,0 +1,58 @@
+name: Comprobar el cableado del llamador
+
+# QUE COMPRUEBA: que un repositorio de dominio invoca los gates como el ruleset espera -- los ids de
+# job de los que se componen las comprobaciones requeridas, el `if: always()` que evita el atasco, el
+# `needs:` que conserva el orden por coste, y los secretos sin los que una regla degrada en silencio.
+#
+# EL CABLEADO TAMBIEN ES CODIGO QUE DECIDE SI ALGO SE PUBLICA (T6), y por eso tiene pruebas. Sus
+# defectos no se ven: un `if: always()` borrado por parecer redundante no rompe nada hasta el dia que
+# la conformidad falla, y entonces la solicitud no se rechaza, se ATASCA.
+#
+# VIVE EN EL ESTANDAR (Y1) porque lo que fija es identico en todos los repositorios de dominio. Antes
+# eran 143 lineas de prueba mas un job de cuatro pasos EN CADA repositorio, y con ellos tres versiones
+# fijadas a mano que ya vivian aqui (Y2).
+#
+# LA DIRECCION ESTA INVERTIDA respecto a un reutilizable normal: el codigo que se comprueba esta en el
+# LLAMADOR. Por eso se descargan los dos repositorios y se le pasa a la prueba donde estan los
+# workflows del llamador. No lo simplifiques a un solo checkout.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check-caller-wiring:
+    name: Forma del cableado de los gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repositorio que llama (es su cableado el que se comprueba)
+        uses: actions/checkout@v4
+
+      - name: Descargar el estandar (trae las pruebas y las versiones)
+        uses: actions/checkout@v4
+        with:
+          repository: Banca-Copilot-demo/estandar-agentico
+          path: .estandar
+
+      # LA VERSION SALE DE `.python-version` DEL ESTANDAR, igual que en las demas acciones y por el
+      # mismo motivo: una sola fuente de verdad. Escrita aqui como literal, subirla obligaria a tocar
+      # este archivo y todos los repositorios que ya la fijaban por su cuenta.
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .estandar/.python-version
+
+      - name: Instalar lo que las pruebas necesitan para leer el YAML
+        shell: bash
+        run: pip install --quiet --requirement .estandar/.github/tests/requirements.txt
+
+      - name: Comprobar el cableado de los gates de este repositorio
+        shell: bash
+        env:
+          # DONDE ESTAN LOS WORKFLOWS DEL LLAMADOR. Sin esta variable el modulo de pruebas se salta
+          # entero, de modo que el propio estandar puede recogerlo en su CI -- y detectar que no
+          # importa o no parsea -- sin necesitar un llamador de verdad.
+          CALLER_WORKFLOWS: ${{ github.workspace }}/.github/workflows
+        run: python -m pytest .estandar/.github/tests -q
