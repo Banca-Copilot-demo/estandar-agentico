@@ -848,3 +848,102 @@ def test_el_agregador_sigue_emitiendo_la_comprobacion_veredicto_de_comportamient
         f"el agregador se llama {veredicto.get('name')!r} y no «Veredicto de comportamiento»: el "
         "ruleset exige ese contexto por coincidencia exacta, y sin el las solicitudes de cambio "
         "quedan bloqueadas esperando un estado que ya nadie envia")
+
+
+# --- El veredicto nombra la unidad QUE FALLO, no las que el cambio TOCO -------------------------
+#
+# EL DEFECTO QUE FIJA ESTE BLOQUE, medido en el run 33137328688 de `agentes-sdlc` (commit
+# `a147647`): `plugins/referencia` cayo al validar y `skills/revisar-jql` paso con 3 de 3, y la
+# PRIMERA linea del veredicto decia «algun canal por unidad termino en «failure» sobre
+# ["plugins/referencia", "skills/revisar-jql"]». Nombraba las TOCADAS. Se lee como si las dos
+# estuvieran en rojo cuando una estaba en verde, y contradice la propiedad que la matriz existe para
+# dar: que cada unidad tenga su propio veredicto.
+#
+# LA CAUSA es que `needs.evaluar.result` de una matriz es AGREGADO -- GitHub no expone el resultado
+# celda a celda en `needs` --, asi que la unica lista que el agregador tenia a mano era la de
+# unidades tocadas, que es exactamente la que no habia que nombrar.
+
+def _paso_del_agregador(identificador: str) -> dict:
+    _, agregador = _agregador_de(_jobs_de(_EVALUAR))
+    pasos = [p for p in (agregador.get("steps") or []) if p.get("id") == identificador]
+    assert pasos, (
+        f"el agregador de `evaluar.yml` ya no declara el paso con `id: {identificador}`: sin el no "
+        "hay de donde sacar que unidad esta en rojo, y el veredicto volveria a nombrar las tocadas")
+    return pasos[0]
+
+
+def _guion_del_veredicto() -> str:
+    return str(_paso_del_agregador("veredicto").get("run", ""))
+
+
+def test_el_veredicto_nombra_la_unidad_en_rojo_y_no_la_lista_de_unidades_tocadas():
+    """Medido en el run 33137328688 de `agentes-sdlc`: el mensaje interpolaba `TOCADAS` como sujeto
+    del fallo, asi que una unidad en verde quedaba señalada. La rama que anuncia el rojo tiene que
+    hablar de la senal POR UNIDAD, no de la deteccion."""
+    guion = _guion_del_veredicto()
+    rama = guion.split('elif [ "$CANALES" = "failure" ]', 1)
+    assert len(rama) == 2, "el veredicto ya no tiene una rama propia para el rojo de los canales"
+
+    anuncio = rama[1].split("elif", 1)[0]
+    assert "$EN_ROJO" in anuncio, (
+        "la rama que anuncia el canal en rojo no usa la senal por unidad: si solo tiene `TOCADAS`, "
+        "vuelve a nombrar unidades sanas como si hubieran fallado")
+
+
+def test_la_unidad_en_rojo_se_averigua_fuera_de_needs_porque_el_result_de_una_matriz_es_agregado():
+    """`needs.evaluar.result` colapsa las N celdas en un valor. Si el agregador dejara de consultar
+    una senal por celda, la unica lista disponible volveria a ser la de tocadas -- el defecto medido
+    en el run 33137328688 --."""
+    paso = _paso_del_agregador("rojas")
+
+    assert "check-runs" in str(paso.get("run", "")), (
+        "el paso que averigua las unidades en rojo ya no consulta los check-runs del commit: sin "
+        "una senal por celda, `needs.evaluar.result` solo dice que ALGUNA fallo, nunca cual")
+
+
+def test_el_agregador_busca_la_comprobacion_con_el_mismo_nombre_que_emite_la_matriz():
+    """Son dos sitios del MISMO archivo y pueden divergir sin hacer ruido: la consulta no encontraria
+    nada, se leeria como «no se pudo determinar» y el veredicto caeria para siempre en la redaccion
+    generica -- el defecto medido, disfrazado de degradacion --.
+
+    Vigila ademas el `name:` de la matriz, que es la comprobacion que `publicar.yml` consulta por
+    sufijo: cambiarlo rompe las dos cosas a la vez.
+    """
+    emitido = _plantilla_del_nombre(_jobs_de(_EVALUAR)["evaluar"]["name"])
+    separador = str((_paso_del_agregador("rojas").get("env") or {})
+                    .get("SEPARADOR_DE_LA_UNIDAD", ""))
+
+    assert separador, ("el paso que averigua las unidades en rojo no declara el nombre que busca en "
+                       "un `env` nombrado, asi que esta prueba no puede vigilar que coincida")
+    assert f"{separador}<unidad>" == emitido, (
+        f"el agregador parte el nombre por {separador!r} y la matriz emite {emitido!r}: la consulta "
+        "no reconoceria ninguna comprobacion y ninguna unidad se nombraria jamas")
+
+
+def test_si_no_se_puede_averiguar_cual_esta_en_rojo_no_se_nombra_a_ninguna():
+    """La consulta puede fallar por un 403 o devolver vacio por la consistencia eventual de la API.
+    Que el diagnostico empeore es aceptable; que vuelva a acusar a una unidad sana, no. El respaldo
+    tiene que existir Y no puede presentar `TOCADAS` como las que fallaron."""
+    guion = _guion_del_veredicto()
+    respaldo = guion.split('if [ -n "$EN_ROJO" ]', 1)
+    assert len(respaldo) == 2, (
+        "el veredicto no distingue «se sabe cual fallo» de «no se pudo averiguar»: con la salida "
+        "vacia el mensaje quedaria sin sujeto o volveria a nombrar las tocadas")
+
+    alternativa = respaldo[1].split("else", 1)
+    assert len(alternativa) == 2, "la rama que anuncia el rojo no tiene respaldo cuando no se sabe cual"
+    assert "no se pudo determinar" in alternativa[1], (
+        "el respaldo no dice que no se pudo determinar cual unidad esta en rojo: sin decirlo, el "
+        "lector asume que fallaron todas las que se nombran")
+
+
+def test_el_agregador_no_pide_permisos_que_el_llamador_podria_no_conceder():
+    """MEDIDO dos veces. Pedir un permiso que el llamador no puede conceder mata la llamada entera en
+    `startup_failure` -- lo que ya paso con `copilot-requests: write`, y tumbo la publicacion --. Y
+    no hace falta: en el run 33077308385 de `agentes-sdlc`, `publicar.yml` consulto ESTE MISMO
+    endpoint de check-runs con un bloque de permisos que no menciona `checks` y obtuvo respuesta."""
+    permisos = yaml.safe_load(_EVALUAR.read_text(encoding="utf-8")).get("permissions") or {}
+
+    assert "checks" not in permisos, (
+        "`evaluar.yml` pide el permiso `checks`: todo repositorio de dominio que no lo conceda en su "
+        "job llamador veria la llamada morir en `startup_failure`, y leer check-runs no lo necesita")
