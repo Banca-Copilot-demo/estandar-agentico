@@ -1,0 +1,115 @@
+name: Comprobar el acceso a Port
+
+# QUE RESPONDE, y por que es una pregunta propia. Un repositorio de dominio puede tener las
+# credenciales de Port concedidas o no, y el sintoma de que no las tenga aparece TARDE -- al publicar,
+# cuando la ficha no se escribe --. Esto lo pregunta antes y por separado.
+#
+# LAS TRES PREGUNTAS, en orden de coste:
+#   1. ¿Llegan los secretos a ESTE repositorio? Un secreto de organizacion puede existir y no estar
+#      concedido a un repositorio concreto.
+#   2. ¿En que region esta el tenant? Port tiene dos, y autenticar contra la equivocada devuelve un
+#      401 que NO menciona la region -- manda a revisar las credenciales, que estan bien --.
+#   3. ¿Que hay ya en Port? Cuenta los blueprints, para saber si se habla con el tenant esperado.
+#
+# VIVE EN EL ESTANDAR Y NO EN CADA REPOSITORIO DE DOMINIO (Y1): la pregunta es identica en todos, y
+# copiarla garantizaba que divergiera. El llamador solo pone sus secretos.
+#
+# NO IMPRIME NINGUN SECRETO: solo si esta presente, cuanto mide y codigos de estado HTTP.
+
+on:
+  workflow_call:
+    secrets:
+      port-client-id:
+        description: Client ID de Port del repositorio que pregunta.
+        required: true
+      port-client-secret:
+        description: Client secret de Port.
+        required: true
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check-port-access:
+    name: Acceso a Port
+    runs-on: ubuntu-latest
+    env:
+      # SE LEEN AQUI Y NO EN CADA PASO. `secrets` no es un contexto valido en un `if:` de paso, y
+      # tenerlos en `env` del job permite ademas que un paso compruebe su presencia sin recibirlos.
+      PORT_CLIENT_ID: ${{ secrets.port-client-id }}
+      PORT_CLIENT_SECRET: ${{ secrets.port-client-secret }}
+    steps:
+      - name: ¿Llegan los secretos a este repositorio?
+        shell: bash
+        run: |
+          # SE MIDE LA LONGITUD DEL VALOR, no la del nombre de la variable. La version anterior hacia
+          # `${#nombre}` sobre un bucle de nombres, asi que imprimia la longitud del literal «ID» --
+          # siempre 2 -- y el dato util, que es el que delata un secreto TRUNCADO al pegarlo, no se
+          # veia nunca.
+          faltan=0
+          if [ -z "$PORT_CLIENT_ID" ]; then
+            echo "::error::el secreto port-client-id no llega a este repositorio"
+            faltan=1
+          else
+            echo "port-client-id: presente, ${#PORT_CLIENT_ID} caracteres"
+          fi
+          if [ -z "$PORT_CLIENT_SECRET" ]; then
+            echo "::error::el secreto port-client-secret no llega a este repositorio"
+            faltan=1
+          else
+            echo "port-client-secret: presente, ${#PORT_CLIENT_SECRET} caracteres"
+          fi
+          [ "$faltan" -eq 0 ] || exit 1
+
+      # SE PRUEBAN LAS DOS REGIONES porque el tenant esta en una sola y el fallo por region se
+      # manifiesta como un 401 que no la menciona.
+      - name: ¿En que region responde el tenant?
+        id: region
+        shell: bash
+        run: |
+          encontrada=""
+          for base in https://api.port.io https://api.us.port.io; do
+            codigo="$(curl -sS -o respuesta.json -w '%{http_code}' \
+              -X POST "$base/v1/auth/access_token" \
+              -H 'Content-Type: application/json' \
+              --data "$(jq -nc --arg id "$PORT_CLIENT_ID" --arg secreto "$PORT_CLIENT_SECRET" \
+                        '{clientId: $id, clientSecret: $secreto}')")"
+            if [ "$codigo" = "200" ] && jq -e '.accessToken' respuesta.json > /dev/null; then
+              encontrada="$base"
+              echo "Autenticacion correcta en $base"
+              break
+            fi
+            echo "  $base -> HTTP $codigo (no es esta region)"
+          done
+          if [ -z "$encontrada" ]; then
+            echo "::error::las credenciales no autentican en ninguna region de Port"
+            # El cuerpo del error de Port no lleva secretos, pero se recorta por si acaso.
+            jq -r '.message // .error // "sin detalle"' respuesta.json | head -1
+            exit 1
+          fi
+          echo "region=$encontrada" >> "$GITHUB_OUTPUT"
+
+      # `jq` Y NO `python -c` INCRUSTADO. Un script de otro lenguaje dentro de un `run:` no lo
+      # comprueba ningun linter, y sus comillas se escapan contra las del shell y las del YAML a la vez.
+      - name: ¿Que hay ya en ese tenant?
+        shell: bash
+        env:
+          REGION: ${{ steps.region.outputs.region }}
+        run: |
+          token="$(curl -sS -X POST "$REGION/v1/auth/access_token" \
+            -H 'Content-Type: application/json' \
+            --data "$(jq -nc --arg id "$PORT_CLIENT_ID" --arg secreto "$PORT_CLIENT_SECRET" \
+                      '{clientId: $id, clientSecret: $secreto}')" | jq -r '.accessToken')"
+          blueprints="$(curl -sS "$REGION/v1/blueprints" \
+            -H "Authorization: Bearer $token" | jq '.blueprints | length')"
+          {
+            echo "## Acceso a Port"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Region | \`$REGION\` |"
+            echo "| Blueprints en el tenant | $blueprints |"
+            echo
+            echo "Los secretos llegan a este repositorio y autentican. No se comprueba aqui si tienen"
+            echo "permiso de ESCRITURA sobre el blueprint: eso lo dice la publicacion."
+          } >> "$GITHUB_STEP_SUMMARY"
