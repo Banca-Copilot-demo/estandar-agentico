@@ -634,3 +634,99 @@ def test_la_ruta_que_escribe_el_informe_y_la_que_lo_sube_son_LA_MISMA_expresion(
     assert variable in subida, (
         f"el paso que sube el informe usa {subida!r} en vez de la variable: dos expresiones que hoy "
         "coinciden y manana divergen sin que nada lo detecte")
+
+
+# --- El brazo de evaluacion ARRANCA y RECHAZA; nunca se salta dejando la comprobacion esperando ----
+#
+# MEDIDO en el commit `f6e00a1a` de `agentes-sdlc`: con `conformidad` en `failure`, el job
+# `comportamiento` del llamador se salto por su `needs:`, y al saltarse el LLAMADOR los jobs de
+# `evaluar.yml` NO SE MATERIALIZARON -- ni siquiera como `skipped`: no existieron --. El contexto
+# `comportamiento / Veredicto de comportamiento`, comprobacion REQUERIDA del ruleset, se quedo en
+# «Expected — waiting for status» esperando un estado que ya nadie iba a emitir.
+
+# CADA DESENLACE, CLASIFICADO A MANO Y EN UN SOLO SITIO. La clave es el veredicto; el valor dice si
+# DETIENE el cambio. Anadir uno nuevo obliga a decidir aqui de que lado cae, que es exactamente la
+# decision que no se puede tomar por descuido: `no_procede` es verde porque no evaluar fuera de un
+# pull request es legitimo, y reutilizarlo para «no se pudo evaluar» dejaria el control en verde
+# protegiendo nada.
+_DESENLACES_DEL_VEREDICTO = {
+    "superada": False,
+    "sin_suites": False,
+    "no_procede": False,
+    "fallida": True,
+    "no_evaluable": True,
+}
+
+
+def _desenlaces_emitidos() -> set[str]:
+    _, agregador = _agregador_de(_jobs_de(_EVALUAR))
+    guion = "\n".join(str(paso.get("run", "")) for paso in (agregador.get("steps") or []))
+    return set(re.findall(r"resultado=([a-z_]+)", guion))
+
+
+def _desenlaces_que_detienen() -> set[str]:
+    _, agregador = _agregador_de(_jobs_de(_EVALUAR))
+    condiciones = " ".join(str(paso.get("if", "")) for paso in (agregador.get("steps") or [])
+                           if "exit 1" in str(paso.get("run", "")))
+    return {clave for clave in _DESENLACES_DEL_VEREDICTO if clave in condiciones}
+
+
+def test_todo_desenlace_del_veredicto_esta_clasificado_como_bloqueante_o_no():
+    """UN DESENLACE SIN CLASIFICAR ES UN VERDE POR DESCUIDO. El paso que detiene el cambio pregunta
+    por veredictos concretos, asi que cualquier valor nuevo que nadie anada a esa condicion pasa el
+    gate en silencio. Esta prueba obliga a decidir de que lado cae antes de poder emitirlo."""
+    emitidos = _desenlaces_emitidos()
+
+    assert emitidos == set(_DESENLACES_DEL_VEREDICTO), (
+        f"`evaluar.yml` emite {sorted(emitidos)} y la tabla de esta prueba clasifica "
+        f"{sorted(_DESENLACES_DEL_VEREDICTO)}. Clasifica el desenlace nuevo -- ¿detiene el cambio o "
+        "no? -- en vez de dejar que el paso que bloquea decida por omision")
+
+
+def test_ningun_desenlace_que_no_llego_a_medir_deja_pasar_el_cambio():
+    """EL VEREDICTO NUNCA DEBE DECIR QUE SI SIN HABER MEDIDO. `fallida` y `no_evaluable` significan
+    las dos que no hay medicion que certifique -- una porque la suite salio mal, otra porque no se
+    llego a ejecutar --, y las dos tienen que salir con error. Si `no_evaluable` no detuviera, un
+    artefacto sin evaluar pasaria en cuanto alguien quitara la conformidad de las requeridas."""
+    detienen = _desenlaces_que_detienen()
+
+    for desenlace, bloquea in _DESENLACES_DEL_VEREDICTO.items():
+        assert (desenlace in detienen) is bloquea, (
+            f"el desenlace `{desenlace}` "
+            f"{'no detiene' if bloquea else 'detiene'} el cambio y deberia "
+            f"{'detenerlo' if bloquea else 'dejarlo pasar'}: pasos que salen con error "
+            f"condicionados a {sorted(detienen)}")
+
+
+def test_la_conformidad_rota_no_abre_ninguna_celda_de_matriz():
+    """CERO INFERENCIA SOBRE UN ARTEFACTO CUYO FORMATO YA SE SABE ROTO. Es el orden por COSTE
+    CRECIENTE que este workflow defiende: el gate determinista tarda segundos y no consume modelo;
+    una suite tarda minutos y gasta la unica cuota de inferencia de la organizacion. Si el
+    cortocircuito se cayera, el brazo arrancaria -- que es el arreglo -- pero pagando por descubrir
+    lo que el gate ya dijo."""
+    deteccion = next(iter(_jobs_de(_EVALUAR).values()))
+
+    assert "inputs.conformidad" in str(deteccion.get("if", "")), (
+        f"la deteccion de suites no mira el resultado del gate del llamador (if="
+        f"{deteccion.get('if')!r}): con la conformidad en rojo se abriria la matriz igualmente y se "
+        "gastaria inferencia en un artefacto que ya se sabe mal formado")
+
+
+def test_el_veredicto_no_confunde_no_haber_medido_con_no_proceder():
+    """LOS DOS DEJAN LA DETECCION EN `skipped`, Y SOLO UNO ES LEGITIMO. Con el cortocircuito, «no es
+    un pull request» y «la conformidad esta rota» son indistinguibles por `needs.unidades.result`: la
+    causa solo la conserva el input. Y el orden de las preguntas es parte del arreglo -- si
+    `no_procede` se preguntara primero, la conformidad rota saldria VERDE diciendo que no se evaluo --.
+    """
+    _, agregador = _agregador_de(_jobs_de(_EVALUAR))
+    guion = "\n".join(str(paso.get("run", "")) for paso in (agregador.get("steps") or []))
+    entorno = {c: str(v) for paso in (agregador.get("steps") or [])
+               for c, v in (paso.get("env") or {}).items()}
+
+    assert any("inputs.conformidad" in v for v in entorno.values()), (
+        f"el agregador no recibe el resultado del gate del llamador ({sorted(entorno)}): solo le "
+        "queda el `result` de una deteccion que el cortocircuito deja en `skipped`, el mismo valor "
+        "que fuera de un pull request")
+    assert guion.index("resultado=no_evaluable") < guion.index("resultado=no_procede"), (
+        "el veredicto decide `no_procede` antes de mirar la conformidad: la conformidad rota saldria "
+        "en VERDE -- «no se invoco desde una solicitud de cambio» -- en vez de en rojo")

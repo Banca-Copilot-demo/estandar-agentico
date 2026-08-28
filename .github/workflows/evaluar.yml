@@ -20,8 +20,18 @@ name: Evaluar el comportamiento
 #
 # QUIEN BLOQUEA ES EL AGREGADOR, NO LAS CELDAS. Con matriz hay N conclusiones y el llamador consume
 # UNA. El job `veredicto` las combina y conserva las respuestas distintas -- `superada`, `sin_suites`,
-# `fallida` y `no_procede` --, que es lo que no se puede colapsar: certificar exige `superada`, y
-# ninguna de las otras tres es verde aunque dos de ellas dejen mergear.
+# `fallida`, `no_procede` y `no_evaluable` --, que es lo que no se puede colapsar: certificar exige
+# `superada`, y ninguna de las otras cuatro es verde aunque dos de ellas dejen mergear.
+#
+# EL BRAZO ARRANCA SIEMPRE Y RECHAZA, EN VEZ DE SALTARSE. Es lo que anade `no_evaluable`, y viene de
+# un defecto MEDIDO en el commit `f6e00a1a` de `agentes-sdlc`: cuando el gate determinista fallaba, el
+# job del llamador se saltaba por su `needs:` y con el se saltaba la LLAMADA entera, asi que los jobs
+# de este archivo no llegaban a existir -- un job saltado al menos reporta algo; uno que no se
+# materializa no reporta NADA --. La comprobacion requerida `Veredicto de comportamiento` quedaba en
+# «Expected — waiting for status», esperando indefinidamente un estado que ya nadie iba a emitir.
+# Ahora el llamador entra con `if: always()` y pasa el resultado del gate como input: la deteccion se
+# cortocircuita -- cero inferencia sobre un artefacto cuyo formato ya se sabe roto -- y el veredicto
+# sale en rojo diciendo POR QUE no se midio.
 #
 # EL CASO VACIO SE DECIDE ANTES DE LA MATRIZ, con `if:` sobre un booleano, y no se descubre dentro.
 # Una matriz sin elementos NO se salta: tumba la corrida al arrancar («does not contain any values»),
@@ -79,13 +89,40 @@ on:
         required: false
         type: string
         default: ""
+      # EL RESULTADO DEL GATE DETERMINISTA, Y POR QUE ENTRA COMO INPUT EN VEZ DE DEDUCIRSE.
+      #
+      # Este workflow no ve los jobs del llamador: `needs` vive alla. Sin este dato solo caben dos
+      # comportamientos, y los dos son malos -- evaluar un artefacto cuyo formato ya se sabe roto
+      # (pagar inferencia por descubrir lo que el gate ya dijo, contra el orden por COSTE CRECIENTE
+      # que este archivo defiende), o no arrancar y dejar la comprobacion requerida sin emitir --.
+      #
+      # EL DEFECTO QUE CIERRA, MEDIDO en el commit `f6e00a1a` de `agentes-sdlc`: con `conformidad` en
+      # `failure`, el job `comportamiento` del llamador se saltaba por su `needs:`, y al saltarse el
+      # LLAMADOR los jobs de ESTE workflow no se materializan -- no emiten un check-run «skipped»:
+      # simplemente NO EXISTEN --. El contexto requerido `comportamiento / Veredicto de
+      # comportamiento` se quedaba en «Expected — waiting for status» para siempre.
+      #
+      # EL DEFECTO POR DEFECTO ES `success` Y NO AL REVES, a proposito: un llamador que no reporta su
+      # gate no tiene ningun gate roto que reportar, y exigirlo -- `required: true` -- dejaria a los
+      # llamadores existentes muriendo en `startup_failure`, incluido el pull request que anadiria la
+      # linea que falta. La seguridad la da el llamador pasando el dato, y este archivo no puede
+      # sustituirla por un default pesimista sin bloquearse a si mismo.
+      conformidad:
+        description: >
+          Resultado del gate determinista del llamador (`success`, `failure`, `cancelled`,
+          `skipped`). Si no es `success` no se abre ninguna celda de matriz -- cero inferencia -- y el
+          veredicto sale `no_evaluable`, en rojo.
+        required: false
+        type: string
+        default: success
     outputs:
       resultado:
         description: >
-          `superada`, `sin_suites`, `fallida` o `no_procede`. Es el veredicto que decide si el cambio
-          avanza. `no_procede` significa que no se invoco desde una solicitud de cambio y por tanto
-          no se evaluo nada: NO es verde, pero tampoco detiene nada -- lo que se evalua es la rama,
-          una sola vez --.
+          `superada`, `sin_suites`, `fallida`, `no_procede` o `no_evaluable`. Es el veredicto que
+          decide si el cambio avanza. `no_procede` significa que no se invoco desde una solicitud de
+          cambio y por tanto no se evaluo nada: NO es verde, pero tampoco detiene nada -- lo que se
+          evalua es la rama, una sola vez --. `no_evaluable` significa que el gate determinista del
+          llamador no paso: no se midio nada, y por eso detiene el cambio igual que `fallida`.
         value: ${{ jobs.veredicto.outputs.resultado }}
     secrets:
       copilot-token:
@@ -190,7 +227,13 @@ jobs:
     # deteccion se pagaria igual en cada push a main. La suite se ejecuta UNA vez, sobre la rama; el
     # commit de `main` que nace del squash tiene otro sha pero el MISMO contenido, y quien publica
     # resuelve de que commit colgaba la medicion en vez de repetirla.
-    if: github.event_name == 'pull_request'
+    #
+    # Y AQUI SE CIERRA TAMBIEN EL CORTOCIRCUITO POR CONFORMIDAD, en el MISMO sitio y por la misma
+    # razon: si el gate determinista del llamador no paso, no se abre NI UNA celda de matriz y no se
+    # gasta una sola llamada al modelo en un artefacto cuyo formato ya se sabe roto. El veredicto de
+    # abajo si corre -- `if: always()` --, y sale `no_evaluable`: el brazo entero ARRANCA y RECHAZA,
+    # en vez de saltarse y dejar la comprobacion requerida esperando un estado que no llegara nunca.
+    if: github.event_name == 'pull_request' && inputs.conformidad == 'success'
     outputs:
       lista: ${{ steps.detectar.outputs.unidades-con-suites }}
       hay-suites: ${{ steps.detectar.outputs.hay-suites }}
@@ -511,6 +554,11 @@ jobs:
         id: veredicto
         shell: bash
         env:
+          # SE PREGUNTA POR EL INPUT Y NO POR EL `result` DE LA DETECCION, porque ese `result` ya no
+          # distingue: con el cortocircuito, «no es un pull request» y «la conformidad esta rota»
+          # dejan los dos la deteccion en `skipped`, y uno deja mergear mientras el otro debe
+          # detener. La causa solo la conserva el dato que entro por la puerta.
+          CONFORMIDAD: ${{ inputs.conformidad }}
           DETECCION: ${{ needs.unidades.result }}
           HAY_SUITES: ${{ needs.unidades.outputs.hay-suites }}
           # DE UNA MATRIZ, `result` COLAPSA LAS N CELDAS EN UN SOLO VALOR: `success` si todas pasaron,
@@ -535,7 +583,19 @@ jobs:
           # 3) SOLO `success` DE LA MATRIZ ES `superada`. `cancelled` y `skipped` con suites
           #    presentes son `fallida`: significan que algo impidio medir, y lo que no se midio no se
           #    certifica.
-          if [ "$DETECCION" = "skipped" ]; then
+          #
+          # LA CONFORMIDAD SE PREGUNTA LA PRIMERA, ANTES QUE NADA, y ese orden es parte del arreglo:
+          # con el cortocircuito la deteccion queda `skipped` igual que fuera de un pull request, asi
+          # que preguntar por `$DETECCION` antes daria `no_procede` -- que es VERDE y significa «no se
+          # invoco desde una solicitud de cambio», una situacion legitima --. Seria un veredicto en
+          # verde diciendo que no se pudo evaluar: un control que termina en verde protegiendo nada.
+          # Por eso `no_evaluable` es un desenlace PROPIO y en ROJO, y no una reutilizacion del otro:
+          # hoy la conformidad ya esta en rojo al lado, pero el dia que alguien la quite de las
+          # comprobaciones requeridas, un artefacto sin medir pasaria con dos verdes.
+          if [ "$CONFORMIDAD" != "success" ]; then
+            resultado=no_evaluable
+            detalle="el gate determinista del llamador termino en «${CONFORMIDAD}»: no se evaluo nada, porque evaluar un artefacto cuyo formato ya se sabe roto es pagar inferencia por descubrir lo que el gate ya dijo"
+          elif [ "$DETECCION" = "skipped" ]; then
             resultado=no_procede
             detalle="no se invoco desde una solicitud de cambio: la suite se ejecuta UNA sola vez, sobre la rama, y no se repite en el push a main"
           elif [ "$DETECCION" != "success" ]; then
@@ -559,6 +619,7 @@ jobs:
             echo "$detalle"
             echo
             case "$resultado" in
+              no_evaluable) echo "**No se pudo evaluar.** El gate determinista esta en rojo, asi que no se abrio ninguna celda de matriz ni se gasto inferencia. Corrige la conformidad y el brazo de evaluacion volvera a medir. Este veredicto NO es verde: lo que no se ha medido no se certifica." ;;
               no_procede) echo "No se evaluo aqui. La medicion vive en la comprobacion del pull request; la publicacion la recupera de aquel commit sin volver a llamar al modelo." ;;
               sin_suites) echo "Sin suites. El artefacto se publicara como **Conforme**: no se distribuye hasta certificarse." ;;
               superada)   echo "Suites superadas. Cada unidad emitio su propia comprobacion y puede certificarse por separado." ;;
@@ -578,4 +639,18 @@ jobs:
         shell: bash
         run: |
           echo "::error::la evaluacion de comportamiento no esta en verde: el cambio no avanza hasta corregir las suites de la unidad afectada"
+          exit 1
+
+      # UN PASO APARTE Y NO UNA RAMA MAS DEL ANTERIOR (Y4): son dos causas distintas -- «se midio y
+      # salio mal» frente a «no se llego a medir» -- y quien mire el portal de Actions tiene que
+      # poder distinguirlas por el NOMBRE del paso, sin abrir el log.
+      #
+      # Y ES UN `exit 1` Y NO UN AVISO: el brazo de evaluacion arranca precisamente para poder
+      # RECHAZAR. Si terminara en verde, la comprobacion requerida quedaria satisfecha por un
+      # artefacto que nadie evaluo -- el modo de fallo exacto que este cambio cierra --.
+      - name: Detener el cambio si no se pudo evaluar por la conformidad
+        if: steps.veredicto.outputs.resultado == 'no_evaluable'
+        shell: bash
+        run: |
+          echo "::error::no se evaluo el comportamiento porque el gate determinista no paso: el veredicto no puede decir que si sin haber medido"
           exit 1
