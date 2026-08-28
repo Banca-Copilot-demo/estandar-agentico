@@ -1,5 +1,29 @@
-name: Evaluar el comportamiento
+name: Revisar cada unidad que cambia
 
+# UN CANAL DE CI POR UNIDAD: dentro de cada uno se VALIDA la unidad y, solo si valida, se EVALUA su
+# comportamiento. Secuencial dentro del canal, paralelo entre canales.
+#
+# POR QUE LOS DOS PASOS VIVEN EN LA MISMA CELDA Y NO EN DOS MATRICES ENCADENADAS. `needs:` opera entre
+# JOBS, no entre celdas: con una matriz de validacion y otra de evaluacion, el fallo de UNA celda de
+# la primera saltaria la segunda ENTERA -- las unidades sanas se quedarian sin evaluar por el defecto
+# de una vecina, que es exactamente el «uno bloquea a todos» que este archivo existe para eliminar --.
+# Dentro de una celda, en cambio, el orden lo da la secuencia de pasos y el aislamiento lo da
+# `fail-fast: false`.
+#
+# Y POR QUE LA VALIDACION SE PARTIO EN DOS. Las reglas de UNIDAD juzgan un artefacto o un plugin y se
+# pueden mirar por separado; las de REPOSITORIO -- higiene, mezcla de aprobadores, huerfanos y subida
+# de version -- se juzgan sobre el arbol entero. Un huerfano lo cierra: por definicion no pertenece a
+# ninguna unidad, asi que ningun recorrido por unidades lo encuentra nunca. Las primeras viajan al
+# canal de su unidad; las segundas se quedan en el trabajo de conformidad del llamador, que corre UNA
+# vez con `--solo-repositorio`. LAS DOS MITADES SUMAN EL RECORRIDO COMPLETO: ninguna regla deja de
+# ejecutarse al repartirlas, que es la propiedad que hace legitimo el reparto.
+#
+# LA MATRIZ VA SOBRE LAS UNIDADES QUE EL CAMBIO TOCA, Y NO SOBRE LAS QUE TRAEN SUITES. Es la
+# diferencia que hace que el reparto no abra un agujero: una unidad tocada hay que VALIDARLA aunque no
+# tenga ninguna evaluacion escrita, y con la matriz abierta sobre `unidades-con-suites` toda unidad sin
+# suites -- la mayoria del inventario -- se quedaria sin gate, en verde. Dentro de la celda, las suites
+# solo corren si esa unidad trae alguna.
+#
 # EJECUTA LAS SUITES DE EVALUACION del repositorio que llama, y dice si pasan.
 #
 # UN TRABAJO POR UNIDAD, Y NO UNO POR REPOSITORIO. Es el cambio que estructura este archivo, y viene
@@ -20,18 +44,33 @@ name: Evaluar el comportamiento
 #
 # QUIEN BLOQUEA ES EL AGREGADOR, NO LAS CELDAS. Con matriz hay N conclusiones y el llamador consume
 # UNA. El job `veredicto` las combina y conserva las respuestas distintas -- `superada`, `sin_suites`,
-# `fallida`, `no_procede` y `no_evaluable` --, que es lo que no se puede colapsar: certificar exige
-# `superada`, y ninguna de las otras cuatro es verde aunque dos de ellas dejen mergear.
+# `fallida` y `no_procede` --, que es lo que no se puede colapsar: certificar exige `superada`, y
+# ninguna de las otras tres es verde aunque dos de ellas dejen mergear.
 #
-# EL BRAZO ARRANCA SIEMPRE Y RECHAZA, EN VEZ DE SALTARSE. Es lo que anade `no_evaluable`, y viene de
-# un defecto MEDIDO en el commit `f6e00a1a` de `agentes-sdlc`: cuando el gate determinista fallaba, el
-# job del llamador se saltaba por su `needs:` y con el se saltaba la LLAMADA entera, asi que los jobs
-# de este archivo no llegaban a existir -- un job saltado al menos reporta algo; uno que no se
-# materializa no reporta NADA --. La comprobacion requerida `Veredicto de comportamiento` quedaba en
-# «Expected — waiting for status», esperando indefinidamente un estado que ya nadie iba a emitir.
-# Ahora el llamador entra con `if: always()` y pasa el resultado del gate como input: la deteccion se
-# cortocircuita -- cero inferencia sobre un artefacto cuyo formato ya se sabe roto -- y el veredicto
-# sale en rojo diciendo POR QUE no se midio.
+# EL AGREGADOR SE PONE EN ROJO TAMBIEN POR LA VALIDACION, y esa es la mitad nueva. La celda valida
+# antes de evaluar, asi que una unidad mal formada deja su celda en `failure` sin llegar a las suites;
+# `needs.evaluar.result` recoge ese rojo igual que el de una suite, y el veredicto sale `fallida`.
+# Sin esto, la validacion por unidad no tendria quien la reportara: el trabajo de conformidad del
+# llamador ya no la ejecuta.
+#
+# EL BRAZO ARRANCA SIEMPRE Y RECHAZA, EN VEZ DE SALTARSE, y viene de un defecto MEDIDO en el commit
+# `f6e00a1a` de `agentes-sdlc`: cuando el gate determinista fallaba, el job del llamador se saltaba
+# por su `needs:` y con el se saltaba la LLAMADA entera, asi que los jobs de este archivo no llegaban
+# a existir -- un job saltado al menos reporta algo; uno que no se materializa no reporta NADA --. La
+# comprobacion requerida `Veredicto de comportamiento` quedaba en «Expected — waiting for status»,
+# esperando indefinidamente un estado que ya nadie iba a emitir. El arreglo sigue vivo y sigue siendo
+# del llamador: entra con `if: always()`, asi que el brazo arranca pase lo que pase con la conformidad.
+#
+# EL INPUT `conformidad` SE RETIRO, Y CON EL EL DESENLACE `no_evaluable`. Existian para cortocircuitar
+# la inferencia cuando el gate determinista del llamador estaba en rojo. Ese cortocircuito ahora vive
+# DENTRO de la celda y es mas fino: se valida la unidad y, si no valida, sus suites no se ejecutan --
+# cero inferencia sobre un artefacto cuyo formato ya se sabe roto, igual que antes, pero solo para esa
+# unidad --. Conservar el input habria significado lo contrario de lo que este rediseño busca: el
+# trabajo de conformidad ya solo mira reglas de REPOSITORIO -- un secreto en el arbol, un huerfano, una
+# version sin subir -- y ninguna de ellas dice nada sobre si el formato de una unidad concreta es
+# valido. Dejar que un huerfano ajeno impidiera evaluar a todo el mundo seria reintroducir el «uno
+# bloquea a todos» por la puerta del input. La conformidad sigue deteniendo el cambio por su cuenta:
+# es comprobacion requerida y emite su propio rojo.
 #
 # EL CASO VACIO SE DECIDE ANTES DE LA MATRIZ, con `if:` sobre un booleano, y no se descubre dentro.
 # Una matriz sin elementos NO se salta: tumba la corrida al arrancar («does not contain any values»),
@@ -89,42 +128,32 @@ on:
         required: false
         type: string
         default: ""
-      # EL RESULTADO DEL GATE DETERMINISTA, Y POR QUE ENTRA COMO INPUT EN VEZ DE DEDUCIRSE.
-      #
-      # Este workflow no ve los jobs del llamador: `needs` vive alla. Sin este dato solo caben dos
-      # comportamientos, y los dos son malos -- evaluar un artefacto cuyo formato ya se sabe roto
-      # (pagar inferencia por descubrir lo que el gate ya dijo, contra el orden por COSTE CRECIENTE
-      # que este archivo defiende), o no arrancar y dejar la comprobacion requerida sin emitir --.
-      #
-      # EL DEFECTO QUE CIERRA, MEDIDO en el commit `f6e00a1a` de `agentes-sdlc`: con `conformidad` en
-      # `failure`, el job `comportamiento` del llamador se saltaba por su `needs:`, y al saltarse el
-      # LLAMADOR los jobs de ESTE workflow no se materializan -- no emiten un check-run «skipped»:
-      # simplemente NO EXISTEN --. El contexto requerido `comportamiento / Veredicto de
-      # comportamiento` se quedaba en «Expected — waiting for status» para siempre.
-      #
-      # EL DEFECTO POR DEFECTO ES `success` Y NO AL REVES, a proposito: un llamador que no reporta su
-      # gate no tiene ningun gate roto que reportar, y exigirlo -- `required: true` -- dejaria a los
-      # llamadores existentes muriendo en `startup_failure`, incluido el pull request que anadiria la
-      # linea que falta. La seguridad la da el llamador pasando el dato, y este archivo no puede
-      # sustituirla por un default pesimista sin bloquearse a si mismo.
-      conformidad:
-        description: >
-          Resultado del gate determinista del llamador (`success`, `failure`, `cancelled`,
-          `skipped`). Si no es `success` no se abre ninguna celda de matriz -- cero inferencia -- y el
-          veredicto sale `no_evaluable`, en rojo.
-        required: false
-        type: string
-        default: success
     outputs:
       resultado:
         description: >
-          `superada`, `sin_suites`, `fallida`, `no_procede` o `no_evaluable`. Es el veredicto que
-          decide si el cambio avanza. `no_procede` significa que no se invoco desde una solicitud de
-          cambio y por tanto no se evaluo nada: NO es verde, pero tampoco detiene nada -- lo que se
-          evalua es la rama, una sola vez --. `no_evaluable` significa que el gate determinista del
-          llamador no paso: no se midio nada, y por eso detiene el cambio igual que `fallida`.
+          `superada`, `sin_suites`, `fallida` o `no_procede`. Es el veredicto que decide si el cambio
+          avanza. `no_procede` significa que no se invoco desde una solicitud de cambio y por tanto no
+          se reviso nada: NO es verde, pero tampoco detiene nada -- lo que se revisa es la rama, una
+          sola vez --. `fallida` cubre las DOS formas de que un canal termine en rojo: que la unidad
+          no valide y que sus suites no pasen.
         value: ${{ jobs.veredicto.outputs.resultado }}
     secrets:
+      # LOS MISMOS DOS QUE PIDE `validar.yml`, Y POR LA MISMA RAZON. La validacion por unidad corre
+      # ahora DENTRO de estas celdas, y G4 exige que el `owner_team` declarado EXISTA en la
+      # organizacion. El `GITHUB_TOKEN` de Actions esta acotado al repositorio: `gh api orgs/<org>/teams`
+      # le responde «Resource not accessible by integration (HTTP 403)» -- MEDIDO --, el validador no
+      # puede comprobar y degrada a AVISO.
+      #
+      # SIN ESTOS SECRETOS AQUI, EL REPARTO HABRIA DEBILITADO UNA REGLA SIN DECIRLO: la comprobacion
+      # del dueño pasaria de bloquear a avisar por el mero hecho de haberse mudado de trabajo, y un
+      # artefacto podria declarar como dueño un equipo inexistente y publicarse en verde. Son
+      # OPCIONALES igual que alla: sin ellos el gate corre y avisa de que no pudo resolver.
+      app-id:
+        description: App ID de la App del ciclo de vida. Sin el, el dueño no se resuelve y se avisa.
+        required: false
+      app-key:
+        description: Clave privada de esa App.
+        required: false
       copilot-token:
         description: >
           Token con permiso `Copilot Requests`. Solo hace falta cuando la ORGANIZACION no tiene
@@ -217,10 +246,10 @@ env:
   DIRECTORIO_DE_INFORMES: ${{ github.workspace }}/informes-de-evaluacion
 
 jobs:
-  # QUE UNIDADES HAY QUE EVALUAR. Es barato -- no habla con ningun modelo -- y por eso puede correr
-  # siempre que proceda evaluar: lo que decide es si se abre matriz y con cuantos elementos.
+  # QUE UNIDADES HAY QUE REVISAR. Es barato -- no habla con ningun modelo -- y por eso puede correr
+  # siempre que proceda: lo que decide es si se abre matriz y con cuantos elementos.
   unidades:
-    name: Unidades con suites
+    name: Unidades que toca el cambio
     runs-on: ubuntu-latest
     # AQUI SE CIERRA LA SEGUNDA PASADA, y se cierra en el primer job para que fuera de un pull
     # request no se encienda NI UN RUNNER: si esta condicion viviera en el job de la matriz, la
@@ -228,13 +257,23 @@ jobs:
     # commit de `main` que nace del squash tiene otro sha pero el MISMO contenido, y quien publica
     # resuelve de que commit colgaba la medicion en vez de repetirla.
     #
-    # Y AQUI SE CIERRA TAMBIEN EL CORTOCIRCUITO POR CONFORMIDAD, en el MISMO sitio y por la misma
-    # razon: si el gate determinista del llamador no paso, no se abre NI UNA celda de matriz y no se
-    # gasta una sola llamada al modelo en un artefacto cuyo formato ya se sabe roto. El veredicto de
-    # abajo si corre -- `if: always()` --, y sale `no_evaluable`: el brazo entero ARRANCA y RECHAZA,
-    # en vez de saltarse y dejar la comprobacion requerida esperando un estado que no llegara nunca.
-    if: github.event_name == 'pull_request' && inputs.conformidad == 'success'
+    # EL CORTOCIRCUITO POR CONFORMIDAD YA NO VIVE AQUI: se mudo DENTRO de la celda, donde es mas fino
+    # -- se valida la unidad y solo entonces se evaluan SUS suites --. Detenerlo todo aqui por el
+    # estado de una regla de REPOSITORIO -- un huerfano, un secreto, una version sin subir -- seria
+    # devolver el «uno bloquea a todos» por otra puerta, y ademas por una senal que no dice nada sobre
+    # si el formato de una unidad concreta es valido.
+    if: github.event_name == 'pull_request'
     outputs:
+      # LAS DOS LISTAS, Y NO UNA. `tocadas` abre la matriz -- una unidad tocada hay que VALIDARLA
+      # aunque no traiga ninguna suite --; `lista` es el subconjunto que ademas tiene algo que
+      # evaluar, y `hay-suites` es lo que el veredicto usa para distinguir «no habia nada que medir»
+      # de «paso todo». Colapsarlas dejaria sin gate a toda unidad sin evaluaciones escritas.
+      tocadas: ${{ steps.detectar.outputs.unidades-tocadas }}
+      # SE COMPARA CONTRA `[]` Y NO SE MIRA LA LONGITUD porque quien lo emite es `json.dumps` de una
+      # lista, cuya serializacion del caso vacio es exactamente esos dos caracteres. La guarda tiene
+      # que ser un booleano y no el texto del array: `fromJSON('[]')` no produce una matriz que se
+      # salte, tumba la corrida al arrancar.
+      hay-tocadas: ${{ steps.detectar.outputs.unidades-tocadas != '[]' }}
       lista: ${{ steps.detectar.outputs.unidades-con-suites }}
       hay-suites: ${{ steps.detectar.outputs.hay-suites }}
     steps:
@@ -278,7 +317,35 @@ jobs:
         run: |
           echo "::notice::sin suites de evaluacion: se publicara como Conforme, sin certificar."
 
-  # UNA CELDA POR UNIDAD, Y SU NOMBRE ES EL DE LA UNIDAD.
+      # LAS DOS PROYECCIONES SALEN DE LA MISMA DETECCION, ASI QUE UNA TIENE QUE CONTENER A LA OTRA.
+      # Toda unidad con suites es, por construccion, una unidad tocada -- el filtro por cambios se
+      # aplica antes de agrupar --. Si alguna vez dejara de serlo, la matriz no abriria celda para
+      # ella y SUS SUITES NO SE CORRERIAN: el veredicto diria `superada` sin haberla medido, en verde,
+      # y el guardian de la certificacion promocionaria un artefacto que nadie evaluo. Se comprueba
+      # aqui, donde las dos listas estan juntas, en vez de descubrirlo dentro de una celda que no
+      # existe.
+      - name: Comprobar que toda unidad con suites tiene su canal abierto
+        shell: bash
+        env:
+          TOCADAS: ${{ steps.detectar.outputs.unidades-tocadas }}
+          CON_SUITES: ${{ steps.detectar.outputs.unidades-con-suites }}
+        run: |
+          # `jq` Y NO UN `python -c`: la diferencia de conjuntos es una operacion sobre datos, y un
+          # script incrustado en un `run:` es como este repositorio ya rompio un YAML una vez.
+          huerfanas="$(jq -n --argjson tocadas "$TOCADAS" --argjson con_suites "$CON_SUITES" \
+                         -r '($con_suites - $tocadas) | join(" ")')"
+          if [ -n "$huerfanas" ]; then
+            echo "::error::estas unidades traen suites pero no aparecen entre las tocadas, asi que no se les abriria canal y sus suites no se correrian: $huerfanas"
+            exit 1
+          fi
+
+  # UN CANAL POR UNIDAD: VALIDAR, Y SOLO ENTONCES EVALUAR. Y SU NOMBRE ES EL DE LA UNIDAD.
+  #
+  # EL NOMBRE DEL JOB NO SE TOCA. `Evaluacion de comportamiento — <unidad>` es la senal que el guardian
+  # de la certificacion busca POR SUFIJO en `publicar.yml`, y hay una prueba de forma que ata la pareja.
+  # El canal hace hoy dos cosas, pero renombrarlo dejaria al guardian buscando un texto que ya nadie
+  # emite -- y esa busqueda no falla ruidosamente: no encuentra nada, se lee como «no existe
+  # comprobacion» y NINGUN artefacto se certificaria nunca --.
   #
   # EL NOMBRE NO ES DECORACION: es la senal que consume el guardian de la certificacion. GitHub nombra el
   # check-run de un workflow reutilizable `<job del llamador> / <nombre del job llamado>`, asi que con
@@ -292,12 +359,24 @@ jobs:
     # LA GUARDA DEL CASO VACIO, y es obligatoria: `fromJSON('[]')` no produce una matriz que se salte,
     # tumba la corrida al arrancar. Se mira el booleano y no el texto del array porque cualquier
     # diferencia de serializacion -- un espacio, `[ ]` -- romperia la comparacion en silencio.
-    if: needs.unidades.outputs.hay-suites == 'true'
+    #
+    # SE GUARDA POR `hay-tocadas` Y NO POR `hay-suites`, que es la mitad del rediseño que mas facil
+    # seria deshacer: la celda VALIDA antes de evaluar, asi que cerrar la matriz cuando no hay suites
+    # dejaria sin validar a toda unidad sin evaluaciones escritas -- la mayoria del inventario -- y en
+    # verde, porque el trabajo de conformidad del llamador ya no revisa reglas de unidad.
+    if: needs.unidades.outputs.hay-tocadas == 'true'
     runs-on: ubuntu-latest
+    # EL SECRETO SE CONSULTA POR `env` DEL JOB Y NUNCA EN EL `if` DE UN PASO: el contexto `secrets` no
+    # existe ahi y GitHub rechaza el workflow AL ARRANCAR con «Unrecognized named-value: 'secrets'» --
+    # en 0 segundos, sin jobs y sin log --. Hay una prueba de forma sobre todos los archivos que lo fija.
+    env:
+      APP_ID: ${{ secrets.app-id }}
     strategy:
       # UNA UNIDAD EN ROJO NO CANCELA A LAS DEMAS. Es literalmente el defecto que este archivo
-      # arregla: con `fail-fast` por defecto, la primera suite que fallara dejaria a las otras en
-      # `cancelled` y volveriamos a no tener veredicto propio de cada artefacto -- por otra puerta --.
+      # arregla, y ahora cubre las DOS causas de rojo: con `fail-fast` por defecto, la primera unidad
+      # que no validara -- o cuya suite fallara -- dejaria a las otras en `cancelled`, y volveriamos a
+      # no tener veredicto propio de cada artefacto por otra puerta. Es el «uno bloquea a todos» que
+      # este rediseño elimina, asi que la linea es OBLIGATORIA y hay una prueba de forma que la fija.
       fail-fast: false
       # EL LITERAL NO ES UN DESCUIDO: `strategy` NO ADMITE EXPRESIONES AQUI. MEDIDO en el run
       # 33067070476 de `agentes-sdlc`, y el modo de fallo es de los peores: con
@@ -312,7 +391,7 @@ jobs:
       # cosas cuando el motor no deja interpolar --.
       max-parallel: 2
       matrix:
-        unidad: ${{ fromJSON(needs.unidades.outputs.lista) }}
+        unidad: ${{ fromJSON(needs.unidades.outputs.tocadas) }}
     steps:
       - name: Descargar el repositorio que se evalua
         uses: actions/checkout@v4
@@ -325,6 +404,44 @@ jobs:
         with:
           repository: ${{ env.REPO_DEL_ESTANDAR }}
           path: ${{ env.DIRECTORIO_DEL_ESTANDAR }}
+
+      # SE ACUÑA UN TOKEN DE LA APP SOLO PARA RESOLVER EL DUEÑO, exactamente como en `validar.yml`.
+      # Con `continue-on-error` porque su ausencia NO debe tumbar la validacion: sin token el gate
+      # corre igual y avisa de que no pudo comprobar el equipo.
+      - name: Token de la App (para resolver los equipos de la organizacion)
+        id: token
+        if: ${{ env.APP_ID != '' }}
+        continue-on-error: true
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.app-id }}
+          private-key: ${{ secrets.app-key }}
+          owner: ${{ github.repository_owner }}
+
+      # EL FALLO DEL PASO ANTERIOR TIENE QUE DEJAR RASTRO (Y6). Con `continue-on-error` y sin esto, no
+      # acuñar el token se ve igual que no haberlo pedido: la comprobacion que estos secretos existen
+      # para hacer posible deja de hacerse Y NADIE LO DICE.
+      - name: Registrar que el token de la App no se pudo acuñar
+        if: steps.token.outcome == 'failure'
+        shell: bash
+        env:
+          RESULTADO: ${{ steps.token.outcome }}
+        run: |
+          echo "::warning::no se pudo acuñar el token de la App (${RESULTADO}): la comprobacion del equipo dueño degradara a aviso y un \`owner_team\` inexistente NO bloqueara ${{ matrix.unidad }}"
+
+      # LA VALIDACION DE ESTA UNIDAD, Y VA ANTES DE TODO LO DEMAS. Es el orden por COSTE CRECIENTE
+      # dentro del canal: si la unidad no valida, este paso falla, el job termina y NINGUNO de los
+      # pasos siguientes corre -- no se instala el motor, no se coloca nada y no se gasta una sola
+      # llamada al modelo en un artefacto cuyo formato ya se sabe roto --.
+      #
+      # ES LA MISMA ACCION QUE USA EL TRABAJO DE CONFORMIDAD, acotada con `unidad` (G2/Y1). Un segundo
+      # comando escrito a mano aqui seria una segunda version del gate, y la que corre en CI acabaria
+      # comprobando algo distinto de la que corre en la maquina del autor.
+      - name: Validar esta unidad · G1 G3 G4
+        uses: Banca-Copilot-demo/estandar-agentico/.github/actions/validar@main
+        with:
+          unidad: ${{ matrix.unidad }}
+          token-organizacion: ${{ steps.token.outputs.token }}
 
       # LA MISMA ACCION, ACOTADA A ESTA UNIDAD. No hay una segunda busqueda escrita para la matriz:
       # es el input `subruta` que la accion ya tenia, el mismo que usa la publicacion para preguntar
@@ -347,22 +464,33 @@ jobs:
         run: |
           echo "slug=$(printf '%s' "$UNIDAD" | tr -c 'A-Za-z0-9._-' '-')" >> "$GITHUB_OUTPUT"
 
-      # UNA UNIDAD SIN SUITES NO DEBERIA LLEGAR AQUI -- la matriz sale de la misma deteccion --, y si
-      # llega es que las dos proyecciones divergieron. Se dice, y no se traga: una celda verde sin
-      # haber medido nada es exactamente la senal que el guardian confundiria con «certificable».
-      - name: Detener la celda si esta unidad no trae suites
-        if: steps.detectar.outputs.hay-suites != 'true'
+      # UNA UNIDAD SIN SUITES YA NO ES UN ERROR AQUI, y ese cambio es consecuencia de que la matriz se
+      # abra sobre las unidades TOCADAS: la celda existe para validar, y evaluar es lo que se anade
+      # cuando ademas hay algo que medir. Antes, con la matriz abierta sobre las unidades con suites,
+      # llegar sin ninguna solo podia significar que las dos proyecciones habian divergido -- esa
+      # comprobacion sigue viva, en el job de deteccion, donde las dos listas estan juntas --.
+      #
+      # LA CONDICION SE RESUELVE UNA SOLA VEZ Y SE NOMBRA (Y3). La consultan cinco pasos, y repetir
+      # `steps.detectar.outputs.hay-suites` en los cinco es cinco sitios donde equivocarse al negarla.
+      # Va por `$GITHUB_ENV` porque el `env:` de un job no puede leer `steps`.
+      - name: Decidir si esta unidad ademas se evalua
         shell: bash
+        env:
+          HAY_SUITES: ${{ steps.detectar.outputs.hay-suites }}
         run: |
-          echo "::error::la matriz abrio un trabajo para ${{ matrix.unidad }} pero al acotar a esa subruta no aparece ninguna suite: las dos proyecciones de la deteccion han divergido"
-          exit 1
+          echo "SE_EVALUA=${HAY_SUITES}" >> "$GITHUB_ENV"
+          if [ "$HAY_SUITES" != "true" ]; then
+            echo "::notice::${{ matrix.unidad }} valida pero no trae suites: se publicara como Conforme, sin certificar"
+          fi
 
       - name: Preparar Node (motor de evaluacion)
+        if: env.SE_EVALUA == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.VERSION_NODE }}
 
       - name: Instalar el CLI de Copilot
+        if: env.SE_EVALUA == 'true'
         shell: bash
         run: npm install -g @github/copilot
 
@@ -377,6 +505,7 @@ jobs:
       # cumplian por conocimiento general del modelo y la evaluacion no probaba nada del artefacto.
       # Un fallo que pasa se lee como cobertura y no lo es.
       - name: Colocar los artefactos donde el cliente los ve
+        if: env.SE_EVALUA == 'true'
         shell: bash
         run: |
           mkdir -p .github/skills .github/agents
@@ -437,6 +566,7 @@ jobs:
 
       - name: Ejecutar las suites
         id: correr
+        if: env.SE_EVALUA == 'true'
         shell: bash
         env:
           # DOS TOKENS, Y EL ORDEN IMPORTA. El CLI busca `COPILOT_GITHUB_TOKEN`, luego `GH_TOKEN` y
@@ -517,8 +647,12 @@ jobs:
       #
       # LA RUTA ES LA MISMA EXPRESION QUE ESCRIBE EL PASO ANTERIOR (Y5): esta accion no comparte el
       # directorio de trabajo del `run`, y un relativo aqui subiria un artefacto vacio sin decirlo.
+      # `env.SE_EVALUA` SE SUMA AL `always()` Y NO LO SUSTITUYE: son dos preguntas distintas. El
+      # `always()` cubre «las suites corrieron y fallaron» -- el caso que hay que diagnosticar --; la
+      # segunda mitad evita que las unidades que no evaluan nada, que ahora tambien tienen celda,
+      # suban un artefacto vacio y llenen la corrida de avisos «no files found» que nadie debe leer.
       - name: Conservar el informe del juez — se sube tambien (y sobre todo) si las suites fallan
-        if: always()
+        if: always() && env.SE_EVALUA == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: informes-de-evaluacion-${{ steps.nombre.outputs.slug }}-intento-${{ github.run_attempt }}
@@ -554,76 +688,68 @@ jobs:
         id: veredicto
         shell: bash
         env:
-          # SE PREGUNTA POR EL INPUT Y NO POR EL `result` DE LA DETECCION, porque ese `result` ya no
-          # distingue: con el cortocircuito, «no es un pull request» y «la conformidad esta rota»
-          # dejan los dos la deteccion en `skipped`, y uno deja mergear mientras el otro debe
-          # detener. La causa solo la conserva el dato que entro por la puerta.
-          CONFORMIDAD: ${{ inputs.conformidad }}
           DETECCION: ${{ needs.unidades.result }}
           HAY_SUITES: ${{ needs.unidades.outputs.hay-suites }}
           # DE UNA MATRIZ, `result` COLAPSA LAS N CELDAS EN UN SOLO VALOR: `success` si todas pasaron,
           # `failure` si alguna fallo -- y con `fail-fast: false` todas llegan a correr --, `skipped`
-          # si la matriz no se abrio.
-          EVALUACION: ${{ needs.evaluar.result }}
+          # si la matriz no se abrio. AHORA RECOGE LAS DOS CAUSAS DE ROJO: una celda cae igual si su
+          # unidad no valida que si su suite no pasa, porque las dos ocurren dentro del mismo job.
+          CANALES: ${{ needs.evaluar.result }}
+          TOCADAS: ${{ needs.unidades.outputs.tocadas }}
           UNIDADES: ${{ needs.unidades.outputs.lista }}
         run: |
           # EL ORDEN DE LAS PREGUNTAS ES EL ARREGLO, no un detalle de estilo.
           #
-          # 0) FUERA DE UNA SOLICITUD DE CAMBIO NO SE EVALUA, y eso no es un fallo ni un verde. La
-          #    deteccion queda `skipped` por su propia condicion -- no por un error --, y decirlo con
-          #    un valor propio es lo que impide que alguien lo lea como «paso»: exactamente el error
-          #    que se comete con los trabajos saltados, que reportan «Success».
-          # 1) SI LA DETECCION NO TERMINO BIEN, NO SE SABE NADA. Que no haya suites que evaluar y que
+          # 0) FUERA DE UNA SOLICITUD DE CAMBIO NO SE REVISA NADA AQUI, y eso no es un fallo ni un
+          #    verde. La deteccion queda `skipped` por su propia condicion -- no por un error --, y
+          #    decirlo con un valor propio es lo que impide que alguien lo lea como «paso»:
+          #    exactamente el error que se comete con los trabajos saltados, que reportan «Success».
+          # 1) SI LA DETECCION NO TERMINO BIEN, NO SE SABE NADA. Que no hubiera nada que revisar y que
           #    no se haya podido mirar son cosas distintas, y solo la primera permite publicar.
           #    Leerlas igual certificaria por un fallo de infraestructura.
-          # 2) EL CASO VACIO SE DECIDE POR `hay-suites`, NO POR EL `result` DE LA MATRIZ. Una matriz
+          # 2) EL ROJO DE LOS CANALES SE PREGUNTA ANTES QUE `hay-suites`, y ese orden es la mitad
+          #    nueva del arreglo. Un canal cae por DOS causas -- su unidad no valida, o su suite no
+          #    pasa -- y la primera existe tambien en unidades SIN suites. Preguntando por
+          #    `hay-suites` antes, una unidad sin evaluaciones cuya VALIDACION fallo saldria
+          #    `sin_suites`: verde, dejando mergear un artefacto que el gate acaba de rechazar. Es el
+          #    agujero que abre mover la validacion dentro de la celda, y este orden es lo que lo tapa.
+          # 3) EL CASO VACIO SE DECIDE POR `hay-suites`, NO POR EL `result` DE LA MATRIZ. Una matriz
           #    que no se abre deja `skipped`, y `skipped` leido a la ligera pasa por verde: es el
           #    mismo modo de fallo del trabajo saltado que reporta «Success», ya medido aqui. Con la
           #    senal explicita, «no habia nada que medir» y «paso todo» no pueden confundirse.
-          # 3) SOLO `success` DE LA MATRIZ ES `superada`. `cancelled` y `skipped` con suites
-          #    presentes son `fallida`: significan que algo impidio medir, y lo que no se midio no se
-          #    certifica.
-          #
-          # LA CONFORMIDAD SE PREGUNTA LA PRIMERA, ANTES QUE NADA, y ese orden es parte del arreglo:
-          # con el cortocircuito la deteccion queda `skipped` igual que fuera de un pull request, asi
-          # que preguntar por `$DETECCION` antes daria `no_procede` -- que es VERDE y significa «no se
-          # invoco desde una solicitud de cambio», una situacion legitima --. Seria un veredicto en
-          # verde diciendo que no se pudo evaluar: un control que termina en verde protegiendo nada.
-          # Por eso `no_evaluable` es un desenlace PROPIO y en ROJO, y no una reutilizacion del otro:
-          # hoy la conformidad ya esta en rojo al lado, pero el dia que alguien la quite de las
-          # comprobaciones requeridas, un artefacto sin medir pasaria con dos verdes.
-          if [ "$CONFORMIDAD" != "success" ]; then
-            resultado=no_evaluable
-            detalle="el gate determinista del llamador termino en «${CONFORMIDAD}»: no se evaluo nada, porque evaluar un artefacto cuyo formato ya se sabe roto es pagar inferencia por descubrir lo que el gate ya dijo"
-          elif [ "$DETECCION" = "skipped" ]; then
+          # 4) SOLO `success` DE LA MATRIZ CON SUITES PRESENTES ES `superada`: lo que no se midio no
+          #    se certifica.
+          if [ "$DETECCION" = "skipped" ]; then
             resultado=no_procede
-            detalle="no se invoco desde una solicitud de cambio: la suite se ejecuta UNA sola vez, sobre la rama, y no se repite en el push a main"
+            detalle="no se invoco desde una solicitud de cambio: cada unidad se revisa UNA sola vez, sobre la rama, y no se repite en el push a main"
           elif [ "$DETECCION" != "success" ]; then
             resultado=fallida
-            detalle="la deteccion de suites termino en «${DETECCION}»: no se sabe que habia que evaluar"
+            detalle="la deteccion de unidades termino en «${DETECCION}»: no se sabe que habia que revisar"
+          elif [ "$CANALES" = "failure" ] || [ "$CANALES" = "cancelled" ]; then
+            resultado=fallida
+            detalle="algun canal por unidad termino en «${CANALES}» sobre ${TOCADAS}: o la unidad no valida, o sus suites no pasan"
           elif [ "$HAY_SUITES" != "true" ]; then
             resultado=sin_suites
-            detalle="ninguna unidad tocada por este cambio trae suites"
-          elif [ "$EVALUACION" = "success" ]; then
+            detalle="ninguna unidad tocada por este cambio trae suites; las tocadas (${TOCADAS}) si se validaron"
+          elif [ "$CANALES" = "success" ]; then
             resultado=superada
-            detalle="todas las unidades evaluadas pasan sus suites: ${UNIDADES}"
+            detalle="todas las unidades tocadas validan y las que traen suites las pasan: ${UNIDADES}"
           else
             resultado=fallida
-            detalle="la evaluacion por unidad termino en «${EVALUACION}» sobre ${UNIDADES}"
+            detalle="los canales por unidad terminaron en «${CANALES}» sobre ${TOCADAS}, que no es un desenlace del que se pueda certificar"
           fi
           echo "resultado=$resultado" >> "$GITHUB_OUTPUT"
           echo "$detalle"
           {
-            echo "## Evaluacion de comportamiento"
+            echo "## Revision por unidad"
             echo
             echo "$detalle"
             echo
             case "$resultado" in
-              no_evaluable) echo "**No se pudo evaluar.** El gate determinista esta en rojo, asi que no se abrio ninguna celda de matriz ni se gasto inferencia. Corrige la conformidad y el brazo de evaluacion volvera a medir. Este veredicto NO es verde: lo que no se ha medido no se certifica." ;;
-              no_procede) echo "No se evaluo aqui. La medicion vive en la comprobacion del pull request; la publicacion la recupera de aquel commit sin volver a llamar al modelo." ;;
+              no_procede) echo "No se reviso aqui. La medicion vive en la comprobacion del pull request; la publicacion la recupera de aquel commit sin volver a llamar al modelo." ;;
               sin_suites) echo "Sin suites. El artefacto se publicara como **Conforme**: no se distribuye hasta certificarse." ;;
               superada)   echo "Suites superadas. Cada unidad emitio su propia comprobacion y puede certificarse por separado." ;;
-              *)          echo "Alguna unidad esta en rojo. Solo esa deja de certificarse: las demas conservan su comprobacion en verde." ;;
+              *)          echo "Alguna unidad esta en rojo. Solo esa deja de certificarse: las demas conservan su comprobacion en verde. Abre su canal en el portal para ver si cayo al validar o al evaluar." ;;
             esac
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -632,25 +758,14 @@ jobs:
       # haria que la proxima persona que anadiera una rama al `case` no supiera cual de las dos
       # estaba tocando --.
       #
-      # SIN ESTO EL GATE NO GATE-A: con la matriz, la celda roja es un job hermano, no un antecesor
-      # del llamador, y el workflow reutilizable terminaria en verde con una suite en rojo dentro.
+      # SIN ESTO EL GATE NO GATE-A: con la matriz, el canal rojo es un job hermano, no un antecesor
+      # del llamador, y el workflow reutilizable terminaria en verde con una unidad rota dentro. Y ES
+      # LA UNICA SALIDA EN ROJO DE LA VALIDACION POR UNIDAD: el trabajo de conformidad del llamador ya
+      # no ejecuta esas reglas, asi que si este paso desapareciera, un artefacto mal formado se
+      # mergearia con todo en verde.
       - name: Detener el cambio si alguna unidad esta en rojo
         if: steps.veredicto.outputs.resultado == 'fallida'
         shell: bash
         run: |
-          echo "::error::la evaluacion de comportamiento no esta en verde: el cambio no avanza hasta corregir las suites de la unidad afectada"
-          exit 1
-
-      # UN PASO APARTE Y NO UNA RAMA MAS DEL ANTERIOR (Y4): son dos causas distintas -- «se midio y
-      # salio mal» frente a «no se llego a medir» -- y quien mire el portal de Actions tiene que
-      # poder distinguirlas por el NOMBRE del paso, sin abrir el log.
-      #
-      # Y ES UN `exit 1` Y NO UN AVISO: el brazo de evaluacion arranca precisamente para poder
-      # RECHAZAR. Si terminara en verde, la comprobacion requerida quedaria satisfecha por un
-      # artefacto que nadie evaluo -- el modo de fallo exacto que este cambio cierra --.
-      - name: Detener el cambio si no se pudo evaluar por la conformidad
-        if: steps.veredicto.outputs.resultado == 'no_evaluable'
-        shell: bash
-        run: |
-          echo "::error::no se evaluo el comportamiento porque el gate determinista no paso: el veredicto no puede decir que si sin haber medido"
+          echo "::error::algun canal por unidad no esta en verde: el cambio no avanza hasta corregir la unidad afectada -- al validarla o al evaluarla, segun donde cayo su canal"
           exit 1

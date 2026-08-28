@@ -403,8 +403,8 @@ def test_la_matriz_esta_guardada_contra_el_caso_vacio():
     """
     condicion = str(_jobs_de(_EVALUAR)["evaluar"].get("if", ""))
 
-    assert "hay-suites" in condicion, (
-        f"el job de matriz no esta guardado por `hay-suites` (if={condicion!r}): con cero unidades, "
+    assert "hay-tocadas" in condicion, (
+        f"el job de matriz no esta guardado por `hay-tocadas` (if={condicion!r}): con cero unidades, "
         "`fromJSON('[]')` tumba la corrida entera al arrancar y no se reporta ninguna comprobacion")
 
 
@@ -654,7 +654,6 @@ _DESENLACES_DEL_VEREDICTO = {
     "sin_suites": False,
     "no_procede": False,
     "fallida": True,
-    "no_evaluable": True,
 }
 
 
@@ -684,10 +683,11 @@ def test_todo_desenlace_del_veredicto_esta_clasificado_como_bloqueante_o_no():
 
 
 def test_ningun_desenlace_que_no_llego_a_medir_deja_pasar_el_cambio():
-    """EL VEREDICTO NUNCA DEBE DECIR QUE SI SIN HABER MEDIDO. `fallida` y `no_evaluable` significan
-    las dos que no hay medicion que certifique -- una porque la suite salio mal, otra porque no se
-    llego a ejecutar --, y las dos tienen que salir con error. Si `no_evaluable` no detuviera, un
-    artefacto sin evaluar pasaria en cuanto alguien quitara la conformidad de las requeridas."""
+    """EL VEREDICTO NUNCA DEBE DECIR QUE SI SIN HABER MEDIDO. `fallida` cubre las TRES formas de que
+    no haya medicion que certifique -- la unidad no valida, su suite salio mal, o algo impidio abrir
+    su canal -- y tiene que salir con error. Los otros tres desenlaces son legitimos y dejan pasar,
+    pero ninguno certifica: solo `superada` lo hace, y esa distincion la vigila el guardian de la
+    promocion, no este paso."""
     detienen = _desenlaces_que_detienen()
 
     for desenlace, bloquea in _DESENLACES_DEL_VEREDICTO.items():
@@ -698,35 +698,153 @@ def test_ningun_desenlace_que_no_llego_a_medir_deja_pasar_el_cambio():
             f"condicionados a {sorted(detienen)}")
 
 
-def test_la_conformidad_rota_no_abre_ninguna_celda_de_matriz():
-    """CERO INFERENCIA SOBRE UN ARTEFACTO CUYO FORMATO YA SE SABE ROTO. Es el orden por COSTE
-    CRECIENTE que este workflow defiende: el gate determinista tarda segundos y no consume modelo;
-    una suite tarda minutos y gasta la unica cuota de inferencia de la organizacion. Si el
-    cortocircuito se cayera, el brazo arrancaria -- que es el arreglo -- pero pagando por descubrir
-    lo que el gate ya dijo."""
-    deteccion = next(iter(_jobs_de(_EVALUAR).values()))
+# --- UN CANAL POR UNIDAD: se valida, y solo entonces se evalua ---------------------------------
+#
+# EL REPARTO QUE ESTAS PRUEBAS VIGILAN. Las reglas de UNIDAD viajaron al canal de su unidad; las de
+# REPOSITORIO -- higiene, mezcla de aprobadores, huerfanos, subida de version -- se quedaron en el
+# trabajo de conformidad del llamador, que corre una vez con `--solo-repositorio`. El reparto solo es
+# legitimo mientras las dos mitades SUMEN el recorrido completo, y cada una de estas pruebas fija una
+# forma concreta de romper esa suma sin que nada se ponga rojo.
 
-    assert "inputs.conformidad" in str(deteccion.get("if", "")), (
-        f"la deteccion de suites no mira el resultado del gate del llamador (if="
-        f"{deteccion.get('if')!r}): con la conformidad en rojo se abriria la matriz igualmente y se "
-        "gastaria inferencia en un artefacto que ya se sabe mal formado")
+def _cell_pasos() -> list[dict]:
+    return _jobs_de(_EVALUAR)["evaluar"].get("steps") or []
 
 
-def test_el_veredicto_no_confunde_no_haber_medido_con_no_proceder():
-    """LOS DOS DEJAN LA DETECCION EN `skipped`, Y SOLO UNO ES LEGITIMO. Con el cortocircuito, «no es
-    un pull request» y «la conformidad esta rota» son indistinguibles por `needs.unidades.result`: la
-    causa solo la conserva el input. Y el orden de las preguntas es parte del arreglo -- si
-    `no_procede` se preguntara primero, la conformidad rota saldria VERDE diciendo que no se evaluo --.
+def test_la_matriz_se_abre_sobre_las_unidades_tocadas_y_no_sobre_las_que_traen_suites():
+    """EL AGUJERO QUE ABRE MOVER LA VALIDACION DENTRO DE LA CELDA, y es el mas facil de introducir
+    «simplificando»: la matriz salia de `unidades-con-suites` cuando el canal solo evaluaba. Ahora el
+    canal tambien VALIDA, y el trabajo de conformidad ya no ejecuta reglas de unidad, asi que abrirla
+    sobre las unidades con suites dejaria SIN VALIDAR a toda unidad sin evaluaciones escritas -- la
+    mayoria del inventario -- y en verde, sin un solo error."""
+    matriz = (_jobs_de(_EVALUAR)["evaluar"].get("strategy") or {}).get("matrix") or {}
+
+    assert "unidades.outputs.tocadas" in str(matriz.get("unidad", "")), (
+        f"la matriz no sale de las unidades TOCADAS ({matriz!r}): las unidades sin suites no tendrian "
+        "canal, y como la conformidad ya no revisa reglas de unidad, nadie las validaria")
+
+
+def test_una_celda_en_rojo_no_cancela_a_sus_hermanas():
+    """`fail-fast` POR DEFECTO ES `true`, Y ESO REINTRODUCE EL «UNO BLOQUEA A TODOS». Sin esta linea,
+    la primera unidad que no validara -- o cuya suite fallara -- dejaria a las demas en `cancelled`, y
+    una celda cancelada no emite veredicto propio de su artefacto: exactamente el defecto que la
+    matriz existe para eliminar, MEDIDO en el run 33040368778 de `agentes-sdlc` en su version de un
+    solo trabajo. Es ademas una linea que se lee como configuracion de rendimiento y que la proxima
+    limpieza va a querer quitar."""
+    estrategia = (_jobs_de(_EVALUAR)["evaluar"].get("strategy") or {})
+
+    assert estrategia.get("fail-fast") is False, (
+        f"el job de matriz no declara `fail-fast: false` (strategy={estrategia!r}): una unidad en "
+        "rojo cancelaria a sus hermanas y volveriamos a no tener veredicto por artefacto")
+
+
+def test_la_celda_valida_su_unidad_antes_de_gastar_una_llamada_al_modelo():
+    """EL ORDEN POR COSTE CRECIENTE, AHORA DENTRO DEL CANAL. Validar tarda segundos y no consume
+    modelo; una suite tarda MEDIDOS ~2,5-3,5 minutos y gasta la unica cuota de inferencia de la
+    organizacion. Si la validacion se colara DESPUES de las suites, se pagaria por descubrir lo que el
+    gate ya sabia -- y el cortocircuito que se retiro del input `conformidad` no tendria sustituto --.
+    """
+    nombres = [str(paso.get("name", "")) for paso in _cell_pasos()]
+    valida = next((i for i, n in enumerate(nombres) if n.startswith("Validar esta unidad")), None)
+    evalua = next((i for i, n in enumerate(nombres) if n.startswith("Ejecutar las suites")), None)
+
+    assert valida is not None, f"la celda ya no valida su unidad: pasos={nombres}"
+    assert evalua is not None, f"la celda ya no ejecuta suites: pasos={nombres}"
+    assert valida < evalua, (
+        f"la celda evalua (paso {evalua}) antes de validar (paso {valida}): se gastaria inferencia en "
+        "un artefacto cuyo formato el gate ya habria declarado roto")
+
+
+def test_la_celda_valida_con_la_misma_accion_que_el_gate_y_acotada_a_SU_unidad():
+    """DOS DEFECTOS EN UNO. Si la celda no usa la accion compartida, hay una SEGUNDA version del gate
+    -- y la que corre en CI acabaria comprobando algo distinto de la que corre en la maquina del autor
+    (G2/Y1) --. Y si no la acota a `matrix.unidad`, cada celda validaria el repositorio ENTERO: las N
+    darian el MISMO veredicto y todas saldrian en rojo por el defecto de una sola, que es el bloqueo
+    de siempre repetido N veces y pagando N recorridos."""
+    validaciones = [p for p in _cell_pasos() if "actions/validar" in str(p.get("uses", ""))]
+
+    assert validaciones, ("ningun paso de la celda usa la accion `validar` del estandar: o no se "
+                          "valida, o se escribio un segundo gate a mano")
+    culpables = [p.get("name") for p in validaciones
+                 if "matrix.unidad" not in str((p.get("with") or {}).get("unidad", ""))]
+    assert not culpables, (
+        f"{culpables} no acota la validacion a `matrix.unidad`: cada celda revisaria el repositorio "
+        "entero y las N conclusiones volverian a ser una sola")
+
+
+def test_el_veredicto_se_pone_en_rojo_tambien_cuando_una_unidad_NO_VALIDA():
+    """LA MITAD DEL REPARTO QUE NO TIENE OTRO REPORTERO. El trabajo de conformidad ya no ejecuta las
+    reglas de unidad, asi que el UNICO camino por el que un artefacto mal formado llega a poner algo
+    en rojo es este: su canal cae al validar, `needs.evaluar.result` sale `failure` y el agregador
+    tiene que traducirlo a `fallida`.
+
+    Y EL ORDEN DE LAS PREGUNTAS ES PARTE DEL ARREGLO: si `hay-suites` se preguntara antes, una unidad
+    SIN suites cuya validacion fallo saldria `sin_suites` -- que es VERDE y deja mergear --. El gate
+    habria rechazado el artefacto y el veredicto diria que no habia nada que medir.
     """
     _, agregador = _agregador_de(_jobs_de(_EVALUAR))
     guion = "\n".join(str(paso.get("run", "")) for paso in (agregador.get("steps") or []))
     entorno = {c: str(v) for paso in (agregador.get("steps") or [])
                for c, v in (paso.get("env") or {}).items()}
 
-    assert any("inputs.conformidad" in v for v in entorno.values()), (
-        f"el agregador no recibe el resultado del gate del llamador ({sorted(entorno)}): solo le "
-        "queda el `result` de una deteccion que el cortocircuito deja en `skipped`, el mismo valor "
-        "que fuera de un pull request")
-    assert guion.index("resultado=no_evaluable") < guion.index("resultado=no_procede"), (
-        "el veredicto decide `no_procede` antes de mirar la conformidad: la conformidad rota saldria "
-        "en VERDE -- «no se invoco desde una solicitud de cambio» -- en vez de en rojo")
+    assert any("needs.evaluar.result" in v for v in entorno.values()), (
+        f"el agregador no recibe el resultado de los canales ({sorted(entorno)}): no puede ponerse en "
+        "rojo cuando una unidad no valida, y nadie mas lo reportaria")
+    # SE BUSCA LA RAMA POR LA VARIABLE QUE PREGUNTA, no por el veredicto que emite: `fallida` aparece
+    # antes por otra causa -- la deteccion rota -- y comparar esa posicion pasaria la prueba sin
+    # comprobar nada de lo que dice comprobar.
+    assert guion.index("$CANALES") < guion.index("$HAY_SUITES"), (
+        "el veredicto pregunta por `hay-suites` antes que por el rojo de los canales: una unidad sin "
+        "suites cuya VALIDACION fallo saldria `sin_suites`, que es verde y deja mergear")
+
+
+# --- Las comprobaciones REQUERIDAS del ruleset se siguen emitiendo con su texto exacto -----------
+#
+# EL DEFECTO QUE ESTE BLOQUE FIJA YA OCURRIO DOS VECES EN ESTE PROYECTO, y es el peor de los que
+# aparecen en esta cadena porque no se lee como un rechazo: se lee como un fallo de la plataforma.
+#
+# El ruleset del repositorio de dominio exige dos contextos por coincidencia EXACTA de texto:
+#
+#     conformidad / validar
+#     comportamiento / Veredicto de comportamiento
+#
+# GitHub nombra el check-run de un workflow reutilizable `<id del job del llamador> / <name del job
+# llamado>`. La primera mitad la elige cada repositorio de dominio -- y alli tiene sus propias pruebas
+# --; la segunda la declara ESTE repositorio, y es la que se fija aqui. Si cualquiera de las dos
+# cambia, la comprobacion requerida deja de emitirse con ese nombre y TODAS las solicitudes de cambio
+# quedan bloqueadas para siempre en «Expected — waiting for status», esperando un estado que ya nadie
+# enviara.
+#
+# SON DOS PRUEBAS Y NO UNA (T5): cada nombre vive en un archivo distinto y se rompe por su cuenta, asi
+# que un fallo tiene que senalar cual de los dos se movio.
+
+def _job_llamado(ruta: Path, identificador: str) -> dict:
+    jobs = _jobs_de(ruta)
+    assert identificador in jobs, (
+        f"{_identificador(ruta)} ya no declara el job `{identificador}`: la comprobacion requerida "
+        f"que se componia con el nombre de ese job dejo de emitirse")
+    return jobs[identificador]
+
+
+def test_el_gate_determinista_sigue_emitiendo_la_comprobacion_conformidad_barra_validar():
+    """La mitad que el estandar controla de `conformidad / validar` es el nombre del job de
+    `validar.yml`. Sin `name:` explicito, GitHub usa el ID del job -- `validar` --, que es justo el
+    texto que el ruleset espera. Renombrar el job, o ponerle un `name:` mas descriptivo, cambia el
+    contexto emitido sin que nada falle: simplemente nadie envia ya el estado que se exige."""
+    validar = _job_llamado(_RAIZ / ".github" / "workflows" / "validar.yml", "validar")
+
+    assert validar.get("name", "validar") == "validar", (
+        f"el job `validar` declara `name: {validar.get('name')!r}`: la comprobacion pasaria a "
+        "llamarse `conformidad / <ese nombre>` y el ruleset seguiria esperando `conformidad / validar`")
+
+
+def test_el_agregador_sigue_emitiendo_la_comprobacion_veredicto_de_comportamiento():
+    """La mitad que el estandar controla de `comportamiento / Veredicto de comportamiento` es el
+    `name:` del job agregador de `evaluar.yml`. El canal por unidad hace hoy DOS cosas -- validar y
+    evaluar --, lo que invita a renombrar este job para que lo refleje; el texto, sin embargo, es un
+    identificador del ruleset y no una etiqueta descriptiva."""
+    veredicto = _job_llamado(_EVALUAR, "veredicto")
+
+    assert veredicto.get("name") == "Veredicto de comportamiento", (
+        f"el agregador se llama {veredicto.get('name')!r} y no «Veredicto de comportamiento»: el "
+        "ruleset exige ese contexto por coincidencia exacta, y sin el las solicitudes de cambio "
+        "quedan bloqueadas esperando un estado que ya nadie envia")

@@ -175,3 +175,23 @@ def unidad_de(ruta: str, unidades: Sequence[str]) -> str | None:
     if candidatas:
         return max(candidatas, key=len)
     return RAIZ_DEL_REPOSITORIO if RAIZ_DEL_REPOSITORIO in unidades else None
+
+
+def unidades_tocadas(cambiados: Sequence[str], unidades: Sequence[str]) -> tuple[str, ...]:
+    """Las unidades publicables a las que pertenece algun archivo cambiado, ordenadas.
+
+    ES LA PREGUNTA QUE ABRE UN CANAL DE CI POR UNIDAD, y no «que unidades traen suites»: una unidad
+    que el cambio toca hay que VALIDARLA aunque no tenga ninguna suite que evaluar. Preguntar por las
+    suites para decidir a quien se valida dejaria sin gate a toda unidad sin evaluaciones -- que es
+    justo la mayoria del inventario --.
+
+    SIN LISTA DE CAMBIOS SE DEVUELVEN TODAS. Fuera de una solicitud de cambio no hay «lo que cambia»,
+    hay un estado que revisar entero, y devolver «ninguna» seria un recorrido vacio en verde.
+
+    VIVE EN EL DOMINIO Y NO EN EL SELECTOR DE SUITES porque la pertenencia ya vive aqui
+    (`unidad_de`): calcularla aparte alli seria una segunda respuesta a «que unidades toca el cambio»
+    y podria discrepar de la que decide que suites corren (G2).
+    """
+    if not cambiados:
+        return tuple(sorted(unidades))
+    return tuple(sorted({u for u in (unidad_de(c, unidades) for c in cambiados) if u}))

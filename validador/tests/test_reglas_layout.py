@@ -17,6 +17,7 @@ from validador_agentico.dominio.reglas_layout import (
     raices_de_plugin,
     tiene_artefactos_propios,
     unidades_publicables,
+    unidades_tocadas,
 )
 
 RUTAS = (".claude-plugin/plugin.json", "plugin.json")
@@ -245,3 +246,47 @@ def test_un_artefacto_individual_NO_aparece_como_plugin_anidado(tmp_path):
     _crear_plugin(tmp_path / "skills" / "revisar-jql")
 
     assert raices_de_plugin(tmp_path, RUTAS) == ()
+
+
+# --- Que unidades abre un canal de CI el cambio -------------------------------------------------
+#
+# ESTAS CUATRO CUBREN EL REPARTO DEL GATE. Las reglas de cada unidad se mudaron a un canal por unidad
+# de la matriz de CI; las de repositorio se quedaron en un trabajo aparte. El reparto solo es legitimo
+# mientras esta funcion diga QUE unidades abren canal, porque una unidad sin canal no se valida -- y
+# no se valida EN VERDE, que es el modo de fallo que este proyecto persigue --.
+
+_UNIDADES = ("plugins/contratos", "skills/revisar-jql")
+
+
+def test_solo_abre_canal_la_unidad_que_el_cambio_toca():
+    """LA RAZON DE SER DEL ACOTADO: sin el, cada solicitud de cambio validaria y evaluaria el
+    inventario entero, y una unidad en rojo bloquearia a cualquiera que tocase el repositorio aunque
+    no fuera suya y no pudiera arreglarla."""
+    tocadas = unidades_tocadas(["skills/revisar-jql/SKILL.md"], _UNIDADES)
+
+    assert tocadas == ("skills/revisar-jql",), tocadas
+
+
+def test_una_unidad_sin_suites_tambien_abre_canal():
+    """EL DEFECTO QUE ABRIA MOVER LA VALIDACION DENTRO DE LA CELDA. La matriz salia de «unidades con
+    suites» cuando el canal solo evaluaba; ahora tambien valida, asi que preguntar por las suites para
+    decidir a quien se abre canal dejaria sin gate a toda unidad sin evaluaciones escritas -- la
+    mayoria del inventario --. Esta funcion no sabe nada de suites A PROPOSITO, y esta prueba fija esa
+    ignorancia: si alguien le anadiera el filtro, se caeria aqui."""
+    tocadas = unidades_tocadas(["plugins/contratos/GOVERNANCE.json"], _UNIDADES)
+
+    assert tocadas == ("plugins/contratos",), tocadas
+
+
+def test_sin_lista_de_cambios_abren_canal_todas():
+    """Fuera de una solicitud de cambio no hay «lo que cambia», hay un estado que revisar entero.
+    Devolver «ninguna» seria un recorrido vacio que termina en verde sin haber mirado nada."""
+    assert unidades_tocadas([], _UNIDADES) == tuple(sorted(_UNIDADES))
+
+
+def test_un_archivo_fuera_de_toda_unidad_no_abre_ningun_canal():
+    """EL HUERFANO, Y POR QUE HAY QUE SEGUIR TENIENDO UN RECORRIDO DE REPOSITORIO. Un archivo que no
+    cuelga de ninguna unidad publicable no puede atribuirse a un canal, asi que NINGUN recorrido por
+    unidades lo encuentra nunca: la regla que lo detecta solo se puede juzgar sobre el arbol entero.
+    """
+    assert unidades_tocadas([".github/workflows/validar.yml"], _UNIDADES) == ()

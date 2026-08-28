@@ -20,7 +20,7 @@ import logging
 from pathlib import Path
 
 from validador_agentico.adaptadores import gh_skill
-from validador_agentico.aplicacion.validar_repositorio import validar
+from validador_agentico.aplicacion.validar_repositorio import Alcance, validar
 from validador_agentico.dominio.comprobacion import (
     Comprobacion,
     Resultado,
@@ -50,21 +50,38 @@ def ejecutar(raiz: Path, *, comprobador_oficial: ComprobadorOficial = gh_skill,
              equipos_conocidos: frozenset[str] | None = None,
              archivos_cambiados: tuple[str, ...] | None = None,
              versiones_en_base: dict[str, str | None] | None = None,
-             directorio_de_esquemas: Path | None = None) -> ResultadoGate:
+             directorio_de_esquemas: Path | None = None,
+             alcance: Alcance = Alcance.TODO,
+             solo_la_unidad: str | None = None) -> ResultadoGate:
     """Corre TODAS las comprobaciones y agrega al final.
 
     `con_comprobacion_oficial=False` existe para poder correr el gate sin salir a un proceso
     externo -- util en local y en las pruebas del propio validador --. No cambia el criterio: una
     comprobacion que no se ejecuta se declara `NO_APLICA` con su motivo, nunca se da por buena en
     silencio.
+
+    `solo_la_unidad` acota la validacion a una unidad publicable, para que cada celda de la matriz de
+    CI valide lo suyo. Cuando se acota NO se invoca la comprobacion oficial: es un proceso externo que
+    recorre el repositorio entero, asi que ejecutarla en cada celda daria N veces el mismo resultado
+    y N veces su coste. Su sitio es el recorrido sin acotar.
     """
     veredicto = validar(raiz, equipos_conocidos=equipos_conocidos,
                         archivos_cambiados=archivos_cambiados,
                         versiones_en_base=versiones_en_base,
-                        directorio_de_esquemas=directorio_de_esquemas)
+                        directorio_de_esquemas=directorio_de_esquemas,
+                        alcance=alcance, solo_la_unidad=solo_la_unidad)
     comprobaciones = [_comprobacion_propia(veredicto)]
 
-    if con_comprobacion_oficial:
+    # LA COMPROBACION OFICIAL RECORRE EL REPOSITORIO ENTERO, asi que su sitio es el trabajo que ya
+    # mira el arbol completo -- `TODO` en local y en la publicacion, `REPOSITORIO` en CI -- y NO cada
+    # celda de la matriz: invocarla N veces daria N veces el mismo resultado, N veces su coste y N
+    # procesos externos. Se declara `NO_APLICA` con su motivo, nunca se da por buena en silencio.
+    if alcance is Alcance.UNIDAD:
+        comprobaciones.append(Comprobacion(
+            NOMBRE_COMPROBACION_OFICIAL, Resultado.NO_APLICA,
+            f"validacion acotada a `{solo_la_unidad}`: la comprobacion oficial recorre el "
+            f"repositorio entero y corre una sola vez, en el trabajo de reglas de repositorio"))
+    elif con_comprobacion_oficial:
         comprobaciones.append(comprobador_oficial.comprobar(raiz))
     else:
         comprobaciones.append(Comprobacion(

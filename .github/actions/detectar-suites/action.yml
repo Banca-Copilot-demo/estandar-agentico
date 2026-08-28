@@ -47,6 +47,17 @@ outputs:
       a «¿que unidades hay que evaluar?» divergiria de la primera y se abriria un trabajo para una
       unidad cuyas suites el otro filtro descarto -- o se dejaria fuera una que si corre --.
     value: ${{ steps.detectar.outputs.unidades-con-suites }}
+  unidades-tocadas:
+    description: >
+      ARRAY JSON con las subrutas de las unidades publicables que el cambio TOCA, tengan o no suites
+      -- `[]` si ninguna --. Es lo que abre UN CANAL DE CI POR UNIDAD: dentro de cada canal se valida
+      la unidad y, solo si valida, se evalua su comportamiento.
+
+      NO ES `unidades-con-suites` NI SE PUEDE SUSTITUIR POR ELLA: una unidad tocada hay que VALIDARLA
+      aunque no tenga ninguna evaluacion escrita, y como la validacion por unidad vive ahora dentro de
+      la celda, abrir la matriz sobre las que traen suites dejaria sin gate a todas las demas -- que
+      son la mayoria del inventario --.
+    value: ${{ steps.detectar.outputs.unidades-tocadas }}
 
 runs:
   using: composite
@@ -116,25 +127,36 @@ runs:
         #    corriendo, UNA en rojo bloquea a cualquiera que toque el repositorio, aunque no sea suya
         #    y no pueda arreglarla -- MEDIDO: un cambio de cableado quedo bloqueado por la suite de
         #    un agente ajeno --.
+        # LAS UNIDADES Y LOS CAMBIOS SE RESUELVEN SIEMPRE, no solo cuando hay suites. `unidades-tocadas`
+        # existe precisamente para las unidades que NO traen ninguna: calcularlo dentro del `if` de
+        # antes devolveria `[]` en un repositorio sin evaluaciones escritas y no se abriria ningun
+        # canal de CI, o sea que sus unidades no se validarian -- en verde --.
+        python -m validador_agentico.listar_plugins . 2>/dev/null \
+          | awk '{print $1}' > "$RUNNER_TEMP/unidades.txt"
+        # P10/lista y no concatenacion: los flags opcionales se anaden como elementos, no como texto.
+        acotado=(--unidades "$RUNNER_TEMP/unidades.txt")
+        if [ -n "$RAMA_BASE" ]; then
+          git diff --name-only "origin/${RAMA_BASE}...HEAD" > "$RUNNER_TEMP/cambiados.txt"
+          acotado+=(--cambiados "$RUNNER_TEMP/cambiados.txt")
+        fi
+
+        # LAS TRES PROYECCIONES SALEN DEL MISMO MODULO CON LOS MISMOS ARGUMENTOS. Quien ejecuta
+        # necesita las rutas; quien abre un canal por unidad necesita las unidades tocadas; quien
+        # decide si una unidad puede certificarse necesita cuales traen suites. Derivar una de otra
+        # con un `dirname` aqui seria una segunda definicion de «a que unidad pertenece un archivo»
+        # -- la que ya vive en `unidad_de` y que usan tambien el gate y el empaquetado --, y su
+        # divergencia no haria ruido: se abriria un canal para una unidad que el otro filtro descarto,
+        # o se dejaria una unidad sin canal y nadie lo notaria porque nada se pondria rojo.
+        tocadas_json="$(python "${RUTA_DEL_ESTANDAR}/evals/suites_a_evaluar.py" \
+                          "${acotado[@]}" --salida unidades-tocadas)"
+        echo "unidades-tocadas=$tocadas_json" >> "$GITHUB_OUTPUT"
+        printf 'unidades tocadas: %s\n' "$tocadas_json"
+
         if [ -n "$suites" ]; then
           printf '%s\n' "$suites" > "$RUNNER_TEMP/todas.txt"
-          python -m validador_agentico.listar_plugins . 2>/dev/null \
-            | awk '{print $1}' > "$RUNNER_TEMP/unidades.txt"
-          # P10/lista y no concatenacion: el flag opcional se anade como elemento, no como texto.
-          acotado=(--suites "$RUNNER_TEMP/todas.txt" --unidades "$RUNNER_TEMP/unidades.txt")
-          if [ -n "$RAMA_BASE" ]; then
-            git diff --name-only "origin/${RAMA_BASE}...HEAD" > "$RUNNER_TEMP/cambiados.txt"
-            acotado+=(--cambiados "$RUNNER_TEMP/cambiados.txt")
-          fi
-          # LA MISMA SELECCION, EN SUS DOS PROYECCIONES, y las dos salen del MISMO modulo con los
-          # MISMOS argumentos. Quien ejecuta necesita las rutas; quien abre un trabajo por unidad
-          # necesita las unidades. Derivar las segundas de las primeras con un `dirname` aqui seria
-          # una tercera definicion de «a que unidad pertenece una suite» -- la que ya vive en
-          # `unidad_de` y que usan tambien el gate y el empaquetado --, y su divergencia no haria
-          # ruido: se abriria un trabajo para una unidad sin suites, o se dejaria una suite sin
-          # trabajo que la corriera y nadie lo notaria porque nada se pondria rojo.
+          acotado+=(--suites "$RUNNER_TEMP/todas.txt")
           unidades_json="$(python "${RUTA_DEL_ESTANDAR}/evals/suites_a_evaluar.py" \
-                             "${acotado[@]}" --agrupado-por-unidad)"
+                             "${acotado[@]}" --salida unidades-con-suites)"
           suites="$(python "${RUTA_DEL_ESTANDAR}/evals/suites_a_evaluar.py" "${acotado[@]}")"
         fi
 
