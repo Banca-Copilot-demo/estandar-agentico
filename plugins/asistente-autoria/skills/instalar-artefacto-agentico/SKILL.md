@@ -59,11 +59,21 @@ workflow reutilizable del estandar.
 
 Si la verificacion falla, **no se instala**. No hay atajo.
 
-### Prompts e instructions no viajan en el paquete
+### Un prompt SI viaja en el paquete -- salvo cuando no lo transporta ninguno
 
-Un `prompt` y unas `instructions` no van dentro de un plugin -- ni Agent Plugins v1 ni los cinco
-componentes de Copilot los incluyen --. Se traen fijados al `sha` y se comprueban contra el
-`sha256_archivo` de la ficha:
+**Un `prompt` dentro de un plugin viaja en el paquete sellado**, en `commands/` y ya en la posicion
+donde el cliente lo busca. Esta medido sobre un paquete real: `tar -tzf` lista
+`commands/<nombre>.prompt.md` junto al resto de componentes. Si el artefacto llega asi, no hay nada
+aparte que traer: la atestacion del paso 4 ya cubre el prompt.
+
+Quedan **dos casos en los que el consumidor acaba con un archivo suelto** y no con un paquete:
+
+- un **prompt fuera de `plugins/`**, que no pertenece a ningun plugin y por tanto no tiene entrada de
+  marketplace;
+- un **prompt dentro de un plugin cuyo estado aun no promociona** (`conformant` y no `certified`).
+
+En esos dos, la pista de la ficha es una descarga cruda fijada al `sha` y la unica integridad
+disponible es el `sha256_archivo`. Compruebalo antes de copiar nada al repositorio del consumidor:
 
 `bash scripts/verificar-archivo.sh <repo> <sha> <ruta-en-el-repo> <sha256_archivo> <destino>`
 

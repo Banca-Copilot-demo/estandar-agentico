@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Trae un archivo suelto FIJADO AL SHA y comprueba su sha256 contra el de la ficha.
 #
-# POR QUE NO VIENE COMO PAQUETE. Un `prompt` y unas `instructions` no viajan en un plugin: ni Agent
-# Plugins v1 ni los cinco componentes de Copilot los incluyen. La unica forma de traerlos es el
-# contenido crudo fijado al sha, y entonces la integridad la da el `sha256_archivo` de la ficha, no
-# una atestacion de paquete.
+# CUANDO HACE FALTA ESTO Y CUANDO NO. Un `prompt` que pertenece a un plugin SI viaja en el paquete
+# sellado -- medido con `tar -tzf`: aparece bajo `commands/`, ya en la posicion donde lo busca el
+# cliente --, y entonces la integridad la da la atestacion y este script sobra. Quedan dos casos en
+# los que no hay paquete que verificar: un prompt suelto fuera de `plugins/`, sin entrada de
+# marketplace, y un prompt de un plugin cuyo estado aun no promociona. En esos la ficha emite una
+# descarga cruda fijada al sha, y la unica integridad disponible es su `sha256_archivo`.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_comun.sh"
 

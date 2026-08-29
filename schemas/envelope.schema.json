@@ -28,7 +28,7 @@
       "minLength": 1,
       "maxLength": 64,
       "x-read-from": "frontmatter",
-      "description": "El identificador TECNICO que usa el cliente para encontrar el artefacto, no una etiqueta legible — lo legible es `description`. Cada tipo estrecha el patron: un skill solo admite minusculas, digitos y guiones porque la especificacion lo exige; un agent y un prompt admiten puntos porque son extensiones de cliente y su convencion es con espacio de nombres. El gate exige que coincida con la carpeta (skill, mcp) o con el nombre de archivo (agent, prompt, instructions)."
+      "description": "El identificador TECNICO que usa el cliente para encontrar el artefacto, no una etiqueta legible — lo legible es `description`. Cada tipo estrecha el patron: un skill solo admite minusculas, digitos y guiones porque la especificacion lo exige; un agent y un prompt admiten puntos porque son extensiones de cliente y su convencion es con espacio de nombres. El gate exige que coincida con la carpeta (skill, mcp) o con el nombre de archivo (agent, prompt)."
     },
     "kind": {
       "type": "string",
@@ -121,7 +121,7 @@
         "sunset_date": {
           "type": "string",
           "format": "date",
-          "description": "Fecha a partir de la cual el artefacto deja de estar disponible. Es lo que convierte el retiro en un cambio gestionado. EL GATE la comprueba, no el esquema: JSON Schema no compara dos fechas. Plazo minimo al publicar la deprecacion: 60 dias por defecto -- el suelo de Anthropic, su mediana observada, y dentro de la banda de 30 a 90 dias que la industria recomienda para APIs INTERNAS -- y 90 dias para unas `instructions` gestionadas, porque su retiro borra un archivo del repositorio de OTRO equipo y le cambia el comportamiento sin que nadie alli haya hecho nada. El plazo escala con el coste de migrar."
+          "description": "Fecha a partir de la cual el artefacto deja de estar disponible. Es lo que convierte el retiro en un cambio gestionado. EL GATE la comprueba, no el esquema: JSON Schema no compara dos fechas. Plazo minimo al publicar la deprecacion: 60 dias por defecto -- el suelo de Anthropic, su mediana observada, y dentro de la banda de 30 a 90 dias que la industria recomienda para APIs INTERNAS --. El plazo escala con el coste de migrar: alargalo cuando el retiro cambie el comportamiento en el repositorio de OTRO equipo sin que nadie alli haya hecho nada."
         },
         "reason": {
           "type": "string",

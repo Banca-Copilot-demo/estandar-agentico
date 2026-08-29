@@ -100,7 +100,7 @@ mkdir -p "$trabajo/consumidor"
 [ -f "$trabajo/consumidor/.agents/skills/$NOMBRE_SKILL/SKILL.md" ]
 comprobar "el skill aterriza en .agents/skills del repositorio" $?
 
-fase "4 · el prompt, que no viaja en el plugin"
+fase "4 · el prompt traido suelto: su sha256 contra el de la ficha"
 python3 "$AQUI/leer_ficha.py" "$ID_PROMPT" > "$trabajo/prompt.env"
 # shellcheck disable=SC1090
 source "$trabajo/prompt.env"
