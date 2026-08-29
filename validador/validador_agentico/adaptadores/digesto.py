@@ -1,9 +1,10 @@
 """Calcula el sha256 de un archivo del repositorio.
 
-POR QUE ENTRA EN EL PREDICADO FIRMADO. La atestacion sella el PAQUETE. Un `prompt` o unas
-`instructions` no viajan dentro de un plugin: se distribuyen copiando el archivo al repositorio del
-consumidor, y en ese momento el archivo PIERDE el vinculo con el sello -- el consumidor tiene un
-archivo y ninguna forma de comprobar que es el que se aprobo.
+POR QUE ENTRA EN EL PREDICADO FIRMADO. La atestacion sella el PAQUETE, y no todo artefacto llega
+dentro de uno: un `prompt` suelto -- fuera de `plugins/`, o dentro de un plugin cuyo estado aun no
+promociona -- se distribuye copiando el archivo al repositorio del consumidor, y en ese momento el
+archivo PIERDE el vinculo con el sello: el consumidor tiene un archivo y ninguna forma de comprobar
+que es el que se aprobo.
 
 Con el digesto de cada archivo dentro del predicado, cualquiera puede calcular el sha256 de lo que
 tiene y compararlo contra lo firmado, sin bajar el paquete entero. Y el flujo de obsolescencia puede

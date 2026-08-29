@@ -95,8 +95,8 @@ class ArtefactoPublicado:
     version: str
     data_classification: str
     standard_version: str
-    # sha256 del ARCHIVO, no del paquete. Es lo que permite verificar un artefacto que se copio
-    # fuera del paquete -- un prompt, unas instructions -- contra lo que se firmo.
+    # sha256 del ARCHIVO, no del paquete. Es lo que permite verificar un artefacto que llego suelto
+    # -- un prompt fuera de un plugin, o de un plugin que aun no promociona -- contra lo que se firmo.
     sha256: str = ""
     # SOLO LO USA EL `mcp`, y esta en el dataclass compartido a proposito: el predicado es una lista
     # plana de artefactos, y partirla por tipo obligaria a todo consumidor a saber de tipos para leer

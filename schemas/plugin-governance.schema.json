@@ -194,7 +194,7 @@
         "sunset_date": {
           "type": "string",
           "format": "date",
-          "description": "Fecha de retiro efectivo. NO DEBE ser anterior a la fecha en que se declaro deprecated (RFC 9745 §4). Propuesta de arranque: 90 dias cuando el plugin contiene instructions managed —cambian comportamiento ajeno— y 30 para el resto; sin medir, a calibrar con el equipo."
+          "description": "Fecha de retiro efectivo. NO DEBE ser anterior a la fecha en que se declaro deprecated (RFC 9745 §4). Propuesta de arranque: 90 dias cuando el retiro cambia el comportamiento en repositorios ajenos y 30 para el resto; sin medir, a calibrar con el equipo."
         },
         "decided_by": {
           "type": "string",
@@ -202,7 +202,7 @@
         },
         "behavior_change": {
           "type": "string",
-          "description": "Que cambia de comportamiento al retirarse, no solo que archivos desaparecen. Obligatorio en la practica cuando hay instructions managed: al retirarlas, la siguiente instalacion ELIMINA el archivo del repositorio destino y el comportamiento vuelve al anterior sin que nadie alli haya hecho nada."
+          "description": "Que cambia de comportamiento al retirarse, no solo que archivos desaparecen. Obligatorio en la practica cuando el retiro alcanza repositorios ajenos: la siguiente instalacion puede ELIMINAR archivos del repositorio destino y devolver el comportamiento al anterior sin que nadie alli haya hecho nada."
         },
         "affected_repositories": {
           "type": "array",
