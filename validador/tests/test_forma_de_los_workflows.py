@@ -947,3 +947,31 @@ def test_el_agregador_no_pide_permisos_que_el_llamador_podria_no_conceder():
     assert "checks" not in permisos, (
         "`evaluar.yml` pide el permiso `checks`: todo repositorio de dominio que no lo conceda en su "
         "job llamador veria la llamada morir en `startup_failure`, y leer check-runs no lo necesita")
+
+
+def test_el_aviso_al_indice_tiene_segunda_fuente_para_cuando_publica_el_propio_estandar():
+    """EL DEFECTO QUE FIJA. `publicar.yml` declara DOS disparadores: `workflow_call` para los
+    repositorios de dominio y `push` de etiqueta para publicar su PROPIO plugin, el asistente de
+    autoria. En un `push` el contexto `inputs` NO EXISTE -- solo se rellena en `workflow_call` y
+    `workflow_dispatch` --, asi que `inputs.repositorio-indice` resolvia a nada y `avisar-al-indice`
+    se saltaba entero: todos sus pasos van condicionados a que esa ruta no este vacia.
+
+    EL SINTOMA ERA SILENCIOSO Y YA SE HABIA MEDIDO EN OTRO SITIO: en
+    `demo.sdlc.revisar-jql--v0.1.2` el artefacto quedo certificado y NO INSTALABLE porque el indice
+    seguia ofreciendo la version anterior. Aquello se corrigio para los repositorios de dominio y
+    seguia vivo para el propio estandar, cuyo plugin es ademas la puerta de entrada al marco.
+
+    Y NO SE ARREGLA CON UN `default:` DISTINTO en el `workflow_call`: los defaults no se aplican en
+    un `push`, porque no hay contexto que rellenar. Hace falta una SEGUNDA FUENTE, que es lo que los
+    secretos de este mismo archivo ya usaban (`secrets.x || secrets.X`).
+    """
+    texto = _PUBLICAR.read_text(encoding="utf-8")
+    usos = [linea.strip() for linea in texto.splitlines()
+            if "repositorio-indice:" in linea and "${{" in linea]
+
+    assert usos, "`publicar.yml` ya no pasa `repositorio-indice`: ¿se retiro el aviso al indice?"
+    for uso in usos:
+        assert "||" in uso, (
+            f"«{uso}» no tiene segunda fuente: en un `push` del propio estandar el contexto `inputs` "
+            "esta vacio, no se avisaria al indice, y el plugin publicado se quedaria fuera del "
+            "marketplace hasta la pasada diaria — en verde y sin que nadie lo note")
