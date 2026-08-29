@@ -85,11 +85,26 @@ jobs:
         id: sellar
         uses: Banca-Copilot-demo/estandar-agentico/.github/actions/publicar@main
         with:
-          repositorio-indice: ${{ inputs.repositorio-indice }}
-          # DOS FUENTES, por los dos disparadores: como PARAMETRO cuando lo invoca un repositorio de
-          # dominio, y del repositorio u organizacion cuando lo dispara un `push` de aqui. Las tres
-          # son opcionales, asi que sin ellas la publicacion se completa igual -- la ficha y el aviso
-          # al indice son aceleradores, la garantia la da el sello --.
+          # DOS FUENTES, igual que los secretos de abajo y por el mismo motivo: los dos disparadores.
+          #
+          # EL DEFECTO QUE CIERRA. En un `push` de este repositorio el contexto `inputs` esta VACIO --
+          # no existe fuera de `workflow_call` y `workflow_dispatch` --, asi que esto resolvia a nada y
+          # `avisar-al-indice` se saltaba entero: todos sus pasos van condicionados a que la ruta del
+          # indice no este vacia. Resultado: el estandar publicaba su propio plugin y el marketplace no
+          # se enteraba hasta la pasada diaria.
+          #
+          # Y NO ES UN ARTEFACTO CUALQUIERA: el asistente de autoria es la puerta de entrada al marco.
+          # Es ademas el MISMO defecto ya medido en `demo.sdlc.revisar-jql--v0.1.2` -- certificado y no
+          # instalable porque el indice seguia ofreciendo la version anterior --, corregido entonces
+          # para los repositorios de dominio y vivo aqui.
+          #
+          # OJO: no basta con poner un `default:` distinto en el `workflow_call`. Los defaults de
+          # `workflow_call` no se aplican en un `push`, porque no hay contexto que rellenar.
+          repositorio-indice: ${{ inputs.repositorio-indice || vars.REPOSITORIO_INDICE }}
+          # Los secretos, igual: como PARAMETRO cuando lo invoca un repositorio de dominio, y del
+          # repositorio u organizacion cuando lo dispara un `push` de aqui. Todos son opcionales, asi
+          # que sin ellos la publicacion se completa igual -- la ficha y el aviso al indice son
+          # aceleradores, la garantia la da el sello --.
           port-client-id: ${{ secrets.port-client-id || secrets.PORT_CLIENT_ID }}
           port-client-secret: ${{ secrets.port-client-secret || secrets.PORT_CLIENT_SECRET }}
           app-id: ${{ secrets.app-id || secrets.APP_ID_AGENTICO }}
@@ -346,7 +361,10 @@ jobs:
       # EL MISMO INDICE AL QUE AVISO LA PUBLICACION. Promocionar cambia lo que el indice debe mostrar
       # -- el artefacto pasa a distribuirse -- y sin avisar se queda fuera del marketplace hasta la
       # pasada diaria: certificado y no instalable.
-      repositorio-indice: ${{ inputs.repositorio-indice }}
+      # LA MISMA SEGUNDA FUENTE QUE EN LA PUBLICACION, y por el mismo motivo: en un `push` de este
+      # repositorio el contexto `inputs` esta vacio. Sin ella, certificar tampoco avisaria y el
+      # artefacto quedaria distribuible pero fuera del marketplace hasta la pasada diaria.
+      repositorio-indice: ${{ inputs.repositorio-indice || vars.REPOSITORIO_INDICE }}
     # LA PROMOCION TAMBIEN ESCRIBE EN PORT, y por eso necesita las mismas credenciales que la
     # publicacion. Sin ellas quitaba la marca de prelanzamiento -- el artefacto YA se distribuia -- y
     # dejaba la ficha diciendo `conformant`: Port contradecia al marketplace.
