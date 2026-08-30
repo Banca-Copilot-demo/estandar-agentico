@@ -170,11 +170,19 @@ jobs:
       # DE QUE COMMIT COLGO LA MEDICION. No es el que se etiqueta, y esa diferencia es la que dejaba
       # al guardian apoyandose sin querer en una segunda evaluacion que no debia existir.
       #
-      # La suite se ejecuta UNA sola vez, en la solicitud de cambio, o sea sobre el sha de la RAMA. El
-      # merge con squash crea un commit NUEVO en `main` -- otro sha -- y es ese el que se etiqueta, asi
-      # que preguntar por las comprobaciones del commit etiquetado es preguntar por un commit que
-      # nadie evaluo. Funcionaba solo porque el push a `main` volvia a evaluarlo todo: la respuesta
-      # llegaba de la pasada que sobraba, la que duplicaba el gasto del unico token de inferencia.
+      # La suite se ejecuta UNA sola vez, en la solicitud de cambio, o sea sobre el sha de la RAMA. La
+      # fusion suele dejar en `main` un commit con OTRO sha -- y es ese el que se etiqueta --, asi que
+      # preguntar por las comprobaciones del commit etiquetado es preguntar por un commit que nadie
+      # evaluo. Funcionaba solo porque el push a `main` volvia a evaluarlo todo: la respuesta llegaba
+      # de la pasada que sobraba, la que duplicaba el gasto del unico token de inferencia.
+      #
+      # ESTO NO ES «EL CASO DEL SQUASH»: LAS TRES FORMAS DE FUSION QUEDAN CUBIERTAS, y esta MEDIDO en
+      # `agentes-sdlc` que la consulta asocia bien el pull request en las tres, asi que no hay motivo
+      # para restringir los metodos de merge del repositorio creyendo que solo el squash funciona:
+      #
+      #   squash        9f3cdf8b7bc524ee520a8c02616783fb99f5c192 -> 71d3fb1123427aaa1d9fae6368aeab2086ea4ffd  (PR #30)
+      #   merge commit  b843198ad1455690a0fdef5c8978f0f706db5704 -> b34735625fd91fd683b1c30a2855555a97ae5ae0  (PR #4, y otros 4 casos en #5-#8)
+      #   rebase        cc6e8ee5...                              -> 3717be16...                              (sha reescrito)
       #
       # NO SE TRANSPORTA NADA, SE PREGUNTA DE DONDE VENIA. Un check-run no caduca, asi que la medicion
       # del pull request sigue existiendo sobre el sha de la rama; lo unico que faltaba era el puente
@@ -187,7 +195,7 @@ jobs:
       # SI NO SE PUEDE RESOLVER, NO SE INVENTA. Un commit que no llego por un pull request -- un push
       # directo a main -- no tiene medicion recuperable, y eso NO es «paso»: es «no se sabe». Se sigue
       # mirando tambien el propio commit etiquetado, por si alguien evaluo ahi a mano.
-      - name: ¿Que commit se evaluo, si el etiquetado nacio de un squash?
+      - name: ¿En que commit se evaluo? El pull request de origen, sea cual sea la forma de fusion
         id: origen
         if: steps.suites.outputs.hay-suites == 'true'
         shell: bash
@@ -198,15 +206,32 @@ jobs:
           # leeria como «este commit no vino de ningun pull request».
           set -o pipefail
           sha="$(git rev-parse HEAD)"
+          export SHA="$sha"
           echo "etiquetado=$sha" >> "$GITHUB_OUTPUT"
-          if ! rama="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/pulls" \
-                         --jq '.[0].head.sha // ""' | tail -1)"; then
+          # NO VALE `.[0]`. El endpoint no devuelve «el pull request que INTRODUJO el commit» sino la
+          # LISTA de los que lo CONTIENEN, y con ramas apiladas -- una rama abierta desde otra -- el
+          # primero puede ser otro, con lo que `head.sha` apuntaria a una cabeza donde nunca corrio la
+          # evaluacion de ESTE commit. MEDIDO en `agentes-sdlc`: el commit
+          # 423a734ed0ea6c09f0c16663f2e86bf6f597ce31 es a la vez cabeza y merge del PR #3, y la
+          # consulta devuelve el #4 (head b34735625fd91fd683b1c30a2855555a97ae5ae0).
+          #
+          # El unico dato que distingue «lo introdujo» de «lo contiene» es `merge_commit_sha`, asi que
+          # se elige por ahi y `.[0]` queda solo como RESPALDO -- y cuando se usa se dice, porque una
+          # eleccion por descarte no merece la misma confianza que una por coincidencia --.
+          if ! eleccion="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/pulls" \
+                             --jq '(map(select(.merge_commit_sha == env.SHA)) + .)[0] as $pr
+                                   | [($pr.head.sha // ""),
+                                      (if $pr.merge_commit_sha == env.SHA then "coincidencia" else "descarte" end)]
+                                   | @tsv' | tail -1)"; then
             echo "::warning::no se pudo preguntar de que pull request nacio $sha (¿falta \`pull-requests: read\`?): solo se mirara el commit etiquetado"
-            rama=""
+            eleccion=""
           fi
+          IFS="$(printf '\t')" read -r rama criterio <<< "$eleccion"
           echo "rama=$rama" >> "$GITHUB_OUTPUT"
-          if [ -n "$rama" ]; then
-            echo "el commit etiquetado $sha nacio del pull request cuya rama estaba en $rama: ahi vive la medicion"
+          if [ -n "$rama" ] && [ "$criterio" = "coincidencia" ]; then
+            echo "el commit etiquetado $sha es el merge de un pull request cuya rama estaba en $rama: ahi vive la medicion"
+          elif [ -n "$rama" ]; then
+            echo "::warning::ningun pull request declara $sha como su commit de merge; se toma por descarte la rama $rama del primero que lo contiene, y puede no ser donde corrio la evaluacion"
           else
             echo "::warning::$sha no se puede asociar a ningun pull request: si nadie evaluo ese commit directamente, no habra medicion que recuperar y el artefacto se quedara en Conforme"
           fi
