@@ -536,6 +536,26 @@ def test_el_guardian_resuelve_de_que_commit_colgaba_la_medicion():
         "esta apoyando otra vez en una segunda evaluacion en el push a main")
 
 
+def test_el_guardian_no_toma_el_primer_pull_request_que_contiene_el_commit():
+    """`/commits/{sha}/pulls` NO devuelve «el pull request que introdujo el commit», sino la LISTA de
+    los que lo CONTIENEN. Con ramas apiladas el primero puede ser otro, y `head.sha` apuntaria a una
+    cabeza donde nunca corrio la evaluacion de ese commit.
+
+    MEDIDO en `agentes-sdlc`: para 423a734ed0ea6c09f0c16663f2e86bf6f597ce31 -- que es a la vez cabeza
+    y merge del PR #3 -- la consulta devuelve el PR #4
+    (head b34735625fd91fd683b1c30a2855555a97ae5ae0). El unico dato que distingue «lo introdujo» de
+    «lo contiene» es `merge_commit_sha`, asi que el guardian debe seleccionar por ahi.
+    """
+    guardian = _guardian_de_la_promocion(_jobs_de(_PUBLICAR))
+    consultas = "\n".join(str(paso.get("run", ""))
+                          for paso in (_jobs_de(_PUBLICAR)[guardian].get("steps") or []))
+
+    assert "merge_commit_sha" in consultas, (
+        f"el guardian `{guardian}` elige el pull request sin mirar `merge_commit_sha`: con ramas "
+        "apiladas se quedaria con un pull request que solo CONTIENE el commit, y buscaria la "
+        "medicion en una cabeza donde ese commit nunca se evaluo")
+
+
 def test_el_guardian_no_lee_una_medicion_irrecuperable_como_verde():
     """EL FALLO QUE RECORRE TODA ESTA CADENA: leer «no se sabe» como «paso». Un commit que no llego
     por un pull request no tiene medicion recuperable, y eso no certifica -- pero se dice con su
